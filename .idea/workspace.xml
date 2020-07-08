@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="7da8b7d0-88a5-4268-96a3-ceb275f053b8" name="Default Changelist" comment="" />
+    <list default="true" id="7da8b7d0-88a5-4268-96a3-ceb275f053b8" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -15,7 +17,7 @@
     </option>
   </component>
   <component name="Git.Settings">
-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="MavenImportPreferences">
     <option name="generalSettings">
@@ -43,6 +45,7 @@
   <component name="PropertiesComponent">
     <property name="ASKED_ADD_EXTERNAL_FILES" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$/webapps" />
@@ -93,7 +96,7 @@
       <workItem from="1592485739293" duration="1466000" />
       <workItem from="1594217641699" duration="608000" />
       <workItem from="1594218473246" duration="844000" />
-      <workItem from="1594219461610" duration="3399000" />
+      <workItem from="1594219461610" duration="3965000" />
     </task>
     <servers />
   </component>
@@ -127,6 +130,10 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="690" y="274" key="#com.intellij.util.ui.classpath.ChooseLibrariesDialog/0.0.1920.1040@0.0.1920.1040" timestamp="1592485132213" />
+    <state x="585" y="112" key="CommitChangelistDialog2" timestamp="1594223566054">
+      <screen x="0" y="0" width="1920" height="1040" />
+    </state>
+    <state x="585" y="112" key="CommitChangelistDialog2/0.0.1920.1040@0.0.1920.1040" timestamp="1594223566054" />
     <state x="714" y="235" key="DetectedRootsChooserDialog" timestamp="1594218784665">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
@@ -155,6 +162,10 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="440" y="94" key="SettingsEditor/0.0.1920.1040@0.0.1920.1040" timestamp="1594222836321" />
+    <state x="552" y="252" key="Vcs.Push.Dialog.v2" timestamp="1594223582467">
+      <screen x="0" y="0" width="1920" height="1040" />
+    </state>
+    <state x="552" y="252" key="Vcs.Push.Dialog.v2/0.0.1920.1040@0.0.1920.1040" timestamp="1594223582467" />
     <state x="656" y="252" width="607" height="536" key="find.popup" timestamp="1592486147057">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>

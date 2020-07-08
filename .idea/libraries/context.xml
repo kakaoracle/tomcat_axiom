@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="context">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/test/deployment/context.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="file://$USER_HOME$/tomcat-build-libs/commons-daemon-1.2.2/apidocs" />
+    </JAVADOC>
+    <SOURCES />
+  </library>
+</component>

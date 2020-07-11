@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="7da8b7d0-88a5-4268-96a3-ceb275f053b8" name="Default Changelist" comment="">
+    <list default="true" id="7da8b7d0-88a5-4268-96a3-ceb275f053b8" name="Default Changelist" comment="udpate">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/java/kakaTest/servlet/ClientSocketDemo.java" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/java/kakaTest/servlet/ServerSocketDemo.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -21,7 +21,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="zhouyu" />
+        <entry key="$PROJECT_DIR$" value="7.0.x-anno" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -55,7 +55,7 @@
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/java" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="project.structure.last.edited" value="Modules" />
     <property name="project.structure.proportion" value="0.15" />
     <property name="project.structure.side.proportion" value="0.2" />
@@ -64,6 +64,7 @@
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\githubrepository\axiom_tomcat9.0.36" />
       <recent name="D:\githubrepository\axiom_tomcat9.0.36\webapps" />
       <recent name="D:\githubrepository\axiom_tomcat9.0.36\resources\META-INF" />
       <recent name="D:\githubrepository\axiom_tomcat9.0.36\resources\META-INF.services" />
@@ -87,6 +88,9 @@
       <list>
         <item itemvalue="Application.Bootstrap" />
         <item itemvalue="Application.Bootstrap" />
+        <item itemvalue="Application.Bootstrap" />
+        <item itemvalue="Application.Bootstrap" />
+        <item itemvalue="Application.Bootstrap" />
       </list>
     </recent_temporary>
   </component>
@@ -106,6 +110,8 @@
       <workItem from="1594218473246" duration="844000" />
       <workItem from="1594219461610" duration="4917000" />
       <workItem from="1594473735941" duration="229000" />
+      <workItem from="1594480294928" duration="703000" />
+      <workItem from="1594492578182" duration="174000" />
     </task>
     <task id="LOCAL-00001" summary="udpate">
       <created>1594223710250</created>
@@ -114,13 +120,29 @@
       <option name="project" value="LOCAL" />
       <updated>1594223710250</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="udpate">
+      <created>1594492328692</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1594492328692</updated>
+    </task>
+    <task id="LOCAL-00003" summary="udpate">
+      <created>1594492637058</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1594492637058</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="1" />
   </component>
   <component name="VcsManagerConfiguration">
+    <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
+    <option name="CHECK_NEW_TODO" value="false" />
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
     <ignored-roots>
       <path value="$PROJECT_DIR$/.." />
@@ -149,10 +171,10 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="690" y="274" key="#com.intellij.util.ui.classpath.ChooseLibrariesDialog/0.0.1920.1040@0.0.1920.1040" timestamp="1592485132213" />
-    <state x="585" y="112" key="CommitChangelistDialog2" timestamp="1594223708731">
+    <state x="585" y="112" key="CommitChangelistDialog2" timestamp="1594492635863">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="585" y="112" key="CommitChangelistDialog2/0.0.1920.1040@0.0.1920.1040" timestamp="1594223708731" />
+    <state x="585" y="112" key="CommitChangelistDialog2/0.0.1920.1040@0.0.1920.1040" timestamp="1594492635863" />
     <state x="714" y="235" key="DetectedRootsChooserDialog" timestamp="1594218784665">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
@@ -161,33 +183,37 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="375" y="247" key="FileChooserDialogImpl/0.0.1920.1040@0.0.1920.1040" timestamp="1594222663530" />
-    <state width="1877" height="270" key="GridCell.Tab.0.bottom" timestamp="1594224513708">
+    <state width="1877" height="337" key="GridCell.Tab.0.bottom" timestamp="1594492411556">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="270" key="GridCell.Tab.0.bottom/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
-    <state width="1877" height="270" key="GridCell.Tab.0.center" timestamp="1594224513708">
+    <state width="1877" height="337" key="GridCell.Tab.0.bottom/0.0.1920.1040@0.0.1920.1040" timestamp="1594492411556" />
+    <state width="1877" height="337" key="GridCell.Tab.0.center" timestamp="1594492411556">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="270" key="GridCell.Tab.0.center/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
-    <state width="1877" height="270" key="GridCell.Tab.0.left" timestamp="1594224513708">
+    <state width="1877" height="337" key="GridCell.Tab.0.center/0.0.1920.1040@0.0.1920.1040" timestamp="1594492411556" />
+    <state width="1877" height="337" key="GridCell.Tab.0.left" timestamp="1594492411556">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="270" key="GridCell.Tab.0.left/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
-    <state width="1877" height="270" key="GridCell.Tab.0.right" timestamp="1594224513708">
+    <state width="1877" height="337" key="GridCell.Tab.0.left/0.0.1920.1040@0.0.1920.1040" timestamp="1594492411556" />
+    <state width="1877" height="337" key="GridCell.Tab.0.right" timestamp="1594492411556">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="270" key="GridCell.Tab.0.right/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
-    <state x="440" y="94" key="SettingsEditor" timestamp="1594224178878">
+    <state width="1877" height="337" key="GridCell.Tab.0.right/0.0.1920.1040@0.0.1920.1040" timestamp="1594492411556" />
+    <state x="389" y="188" key="SettingsEditor" timestamp="1594491957247">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="440" y="94" key="SettingsEditor/0.0.1920.1040@0.0.1920.1040" timestamp="1594224178878" />
-    <state x="552" y="252" key="Vcs.Push.Dialog.v2" timestamp="1594473958450">
+    <state x="389" y="188" key="SettingsEditor/0.0.1920.1040@0.0.1920.1040" timestamp="1594491957247" />
+    <state x="552" y="252" key="Vcs.Push.Dialog.v2" timestamp="1594492640663">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="552" y="252" key="Vcs.Push.Dialog.v2/0.0.1920.1040@0.0.1920.1040" timestamp="1594473958450" />
+    <state x="552" y="252" key="Vcs.Push.Dialog.v2/0.0.1920.1040@0.0.1920.1040" timestamp="1594492640663" />
     <state x="656" y="252" width="607" height="536" key="find.popup" timestamp="1592486147057">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="656" y="252" width="607" height="536" key="find.popup/0.0.1920.1040@0.0.1920.1040" timestamp="1592486147057" />
+    <state x="741" y="232" key="git4idea.branch.GitSmartOperationDialog" timestamp="1594492662075">
+      <screen x="0" y="0" width="1920" height="1040" />
+    </state>
+    <state x="741" y="232" key="git4idea.branch.GitSmartOperationDialog/0.0.1920.1040@0.0.1920.1040" timestamp="1594492662075" />
   </component>
 </project>

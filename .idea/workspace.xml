@@ -2,7 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="7da8b7d0-88a5-4268-96a3-ceb275f053b8" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/java/kakaTest/servlet/ClientSocketDemo.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/java/kakaTest/servlet/ServerSocketDemo.java" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -17,6 +19,11 @@
     </option>
   </component>
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="zhouyu" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="MavenImportPreferences">
@@ -48,7 +55,7 @@
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/webapps" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/java" />
     <property name="project.structure.last.edited" value="Modules" />
     <property name="project.structure.proportion" value="0.15" />
     <property name="project.structure.side.proportion" value="0.2" />
@@ -79,6 +86,7 @@
     <recent_temporary>
       <list>
         <item itemvalue="Application.Bootstrap" />
+        <item itemvalue="Application.Bootstrap" />
       </list>
     </recent_temporary>
   </component>
@@ -96,8 +104,17 @@
       <workItem from="1592485739293" duration="1466000" />
       <workItem from="1594217641699" duration="608000" />
       <workItem from="1594218473246" duration="844000" />
-      <workItem from="1594219461610" duration="3965000" />
+      <workItem from="1594219461610" duration="4917000" />
+      <workItem from="1594473735941" duration="229000" />
     </task>
+    <task id="LOCAL-00001" summary="udpate">
+      <created>1594223710250</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1594223710250</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -108,6 +125,8 @@
     <ignored-roots>
       <path value="$PROJECT_DIR$/.." />
     </ignored-roots>
+    <MESSAGE value="udpate" />
+    <option name="LAST_COMMIT_MESSAGE" value="udpate" />
   </component>
   <component name="WindowStateProjectService">
     <state x="648" y="180" key="#Bootstrap" timestamp="1594219245595">
@@ -130,10 +149,10 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="690" y="274" key="#com.intellij.util.ui.classpath.ChooseLibrariesDialog/0.0.1920.1040@0.0.1920.1040" timestamp="1592485132213" />
-    <state x="585" y="112" key="CommitChangelistDialog2" timestamp="1594223566054">
+    <state x="585" y="112" key="CommitChangelistDialog2" timestamp="1594223708731">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="585" y="112" key="CommitChangelistDialog2/0.0.1920.1040@0.0.1920.1040" timestamp="1594223566054" />
+    <state x="585" y="112" key="CommitChangelistDialog2/0.0.1920.1040@0.0.1920.1040" timestamp="1594223708731" />
     <state x="714" y="235" key="DetectedRootsChooserDialog" timestamp="1594218784665">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
@@ -142,30 +161,30 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="375" y="247" key="FileChooserDialogImpl/0.0.1920.1040@0.0.1920.1040" timestamp="1594222663530" />
-    <state width="1780" height="270" key="GridCell.Tab.0.bottom" timestamp="1594223009145">
+    <state width="1877" height="270" key="GridCell.Tab.0.bottom" timestamp="1594224513708">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1780" height="270" key="GridCell.Tab.0.bottom/0.0.1920.1040@0.0.1920.1040" timestamp="1594223009145" />
-    <state width="1780" height="270" key="GridCell.Tab.0.center" timestamp="1594223009144">
+    <state width="1877" height="270" key="GridCell.Tab.0.bottom/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
+    <state width="1877" height="270" key="GridCell.Tab.0.center" timestamp="1594224513708">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1780" height="270" key="GridCell.Tab.0.center/0.0.1920.1040@0.0.1920.1040" timestamp="1594223009144" />
-    <state width="1780" height="270" key="GridCell.Tab.0.left" timestamp="1594223009144">
+    <state width="1877" height="270" key="GridCell.Tab.0.center/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
+    <state width="1877" height="270" key="GridCell.Tab.0.left" timestamp="1594224513708">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1780" height="270" key="GridCell.Tab.0.left/0.0.1920.1040@0.0.1920.1040" timestamp="1594223009144" />
-    <state width="1780" height="270" key="GridCell.Tab.0.right" timestamp="1594223009144">
+    <state width="1877" height="270" key="GridCell.Tab.0.left/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
+    <state width="1877" height="270" key="GridCell.Tab.0.right" timestamp="1594224513708">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1780" height="270" key="GridCell.Tab.0.right/0.0.1920.1040@0.0.1920.1040" timestamp="1594223009144" />
-    <state x="440" y="94" key="SettingsEditor" timestamp="1594222836321">
+    <state width="1877" height="270" key="GridCell.Tab.0.right/0.0.1920.1040@0.0.1920.1040" timestamp="1594224513708" />
+    <state x="440" y="94" key="SettingsEditor" timestamp="1594224178878">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="440" y="94" key="SettingsEditor/0.0.1920.1040@0.0.1920.1040" timestamp="1594222836321" />
-    <state x="552" y="252" key="Vcs.Push.Dialog.v2" timestamp="1594223582467">
+    <state x="440" y="94" key="SettingsEditor/0.0.1920.1040@0.0.1920.1040" timestamp="1594224178878" />
+    <state x="552" y="252" key="Vcs.Push.Dialog.v2" timestamp="1594473958450">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="552" y="252" key="Vcs.Push.Dialog.v2/0.0.1920.1040@0.0.1920.1040" timestamp="1594223582467" />
+    <state x="552" y="252" key="Vcs.Push.Dialog.v2/0.0.1920.1040@0.0.1920.1040" timestamp="1594473958450" />
     <state x="656" y="252" width="607" height="536" key="find.popup" timestamp="1592486147057">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>

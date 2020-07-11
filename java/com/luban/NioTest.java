@@ -1,16 +1,16 @@
 package com.luban;
 
-import org.junit.Test;
+/*import org.junit.Test;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
-import java.util.Set;
+import java.util.Set;*/
 
 public class NioTest {
 
-    @Test
+    /*@Test
     public void server() throws IOException {
         ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
         serverSocketChannel.bind(new InetSocketAddress(8888));
@@ -47,5 +47,5 @@ public class NioTest {
 
 
 
-    }
+    }*/
 }

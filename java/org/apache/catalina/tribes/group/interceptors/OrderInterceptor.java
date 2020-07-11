@@ -18,7 +18,6 @@
 package org.apache.catalina.tribes.group.interceptors;
 
 import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -28,7 +27,6 @@ import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.group.ChannelInterceptorBase;
 import org.apache.catalina.tribes.group.InterceptorPayload;
 import org.apache.catalina.tribes.io.XByteBuffer;
-import org.apache.catalina.tribes.util.StringManager;
 
 
 /**
@@ -52,13 +50,13 @@ import org.apache.catalina.tribes.util.StringManager;
  * false means, forget the message and reset the message counter. <b>default=true</b>
  *
  *
+ * @author Filip Hanik
  * @version 1.1
  */
 public class OrderInterceptor extends ChannelInterceptorBase {
-    protected static final StringManager sm = StringManager.getManager(OrderInterceptor.class);
-    private final Map<Member, Counter> outcounter = new HashMap<>();
-    private final Map<Member, Counter> incounter = new HashMap<>();
-    private final Map<Member, MessageOrder> incoming = new HashMap<>();
+    private HashMap<Member, Counter> outcounter = new HashMap<Member, Counter>();
+    private HashMap<Member, Counter> incounter = new HashMap<Member, Counter>();
+    private HashMap<Member, MessageOrder> incoming = new HashMap<Member, MessageOrder>();
     private long expire = 3000;
     private boolean forwardExpired = true;
     private int maxQueue = Integer.MAX_VALUE;
@@ -73,24 +71,24 @@ public class OrderInterceptor extends ChannelInterceptorBase {
             return;
         }
         ChannelException cx = null;
-        for (Member member : destination) {
+        for (int i=0; i<destination.length; i++ ) {
             try {
                 int nr = 0;
                 outLock.writeLock().lock();
                 try {
-                    nr = incCounter(member);
+                    nr = incCounter(destination[i]);
                 } finally {
                     outLock.writeLock().unlock();
                 }
                 //reduce byte copy
                 msg.getMessage().append(nr);
                 try {
-                    getNext().sendMessage(new Member[]{member}, msg, payload);
+                    getNext().sendMessage(new Member[] {destination[i]}, msg, payload);
                 } finally {
                     msg.getMessage().trim(4);
                 }
-            } catch (ChannelException x) {
-                if (cx == null) cx = x;
+            }catch ( ChannelException x ) {
+                if ( cx == null ) cx = x;
                 cx.addFaultyMember(x.getFaultyMembers());
             }
         }//for
@@ -295,7 +293,7 @@ public class OrderInterceptor extends ChannelInterceptorBase {
                 add.next = iter;
 
             } else {
-                throw new ArithmeticException(sm.getString("orderInterceptor.messageAdded.sameCounter"));
+                throw new ArithmeticException("Message added has the same counter, synchronization bug. Disable the order interceptor");
             }
 
             return head;

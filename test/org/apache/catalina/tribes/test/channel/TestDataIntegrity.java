@@ -31,8 +31,18 @@ import org.apache.catalina.tribes.ManagedChannel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
-import org.apache.catalina.tribes.group.interceptors.MessageDispatchInterceptor;
+import org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor;
 
+/**
+ * <p>Title: </p>
+ *
+ * <p>Description: </p>
+ *
+ * <p>Company: </p>
+ *
+ * @author not attributable
+ * @version 1.0
+ */
 public class TestDataIntegrity {
     private int msgCount = 500;
     private int threadCount = 20;
@@ -43,9 +53,9 @@ public class TestDataIntegrity {
     @Before
     public void setUp() throws Exception {
         channel1 = new GroupChannel();
-        channel1.addInterceptor(new MessageDispatchInterceptor());
+        channel1.addInterceptor(new MessageDispatch15Interceptor());
         channel2 = new GroupChannel();
-        channel2.addInterceptor(new MessageDispatchInterceptor());
+        channel2.addInterceptor(new MessageDispatch15Interceptor());
         listener1 = new Listener();
         channel2.addChannelListener(listener1);
         TesterUtil.addRandomDomain(new ManagedChannel[] {channel1, channel2});
@@ -73,16 +83,13 @@ public class TestDataIntegrity {
                         System.out.println("Thread["+this.getName()+"] sent "+msgCount+" messages in "+(System.currentTimeMillis()-start)+" ms.");
                     }catch ( Exception x ) {
                         x.printStackTrace();
+                        return;
                     }
                 }
             };
         }
-        for (Thread thread : threads) {
-            thread.start();
-        }
-        for (Thread thread : threads) {
-            thread.join();
-        }
+        for (int x=0; x<threads.length; x++ ) { threads[x].start();}
+        for (int x=0; x<threads.length; x++ ) { threads[x].join();}
         //sleep for 50 sec, let the other messages in
         long start = System.currentTimeMillis();
         while ( (System.currentTimeMillis()-start)<15000 && msgCount*threadCount!=listener1.count) Thread.sleep(500);
@@ -92,33 +99,30 @@ public class TestDataIntegrity {
 
     @Test
     public void testDataSendASYNCM() throws Exception {
-        System.err.println("Starting ASYNC MULTI THREAD");
-        Thread[] threads = new Thread[threadCount];
-        for (int x=0; x<threads.length; x++ ) {
-            threads[x] = new Thread() {
-                @Override
-                public void run() {
-                    try {
-                        long start = System.currentTimeMillis();
-                        for (int i = 0; i < msgCount; i++) channel1.send(new Member[] {channel2.getLocalMember(false)}, Data.createRandomData(),Channel.SEND_OPTIONS_ASYNCHRONOUS);
-                        System.out.println("Thread["+this.getName()+"] sent "+msgCount+" messages in "+(System.currentTimeMillis()-start)+" ms.");
-                    }catch ( Exception x ) {
-                        x.printStackTrace();
+            System.err.println("Starting ASYNC MULTI THREAD");
+            Thread[] threads = new Thread[threadCount];
+            for (int x=0; x<threads.length; x++ ) {
+                threads[x] = new Thread() {
+                    @Override
+                    public void run() {
+                        try {
+                            long start = System.currentTimeMillis();
+                            for (int i = 0; i < msgCount; i++) channel1.send(new Member[] {channel2.getLocalMember(false)}, Data.createRandomData(),Channel.SEND_OPTIONS_ASYNCHRONOUS);
+                            System.out.println("Thread["+this.getName()+"] sent "+msgCount+" messages in "+(System.currentTimeMillis()-start)+" ms.");
+                        }catch ( Exception x ) {
+                            x.printStackTrace();
+                            return;
+                        }
                     }
-                }
-            };
-        }
-        for (Thread thread : threads) {
-            thread.start();
-        }
-        for (Thread thread : threads) {
-            thread.join();
-        }
-        //sleep for 50 sec, let the other messages in
-        long start = System.currentTimeMillis();
-        while ( (System.currentTimeMillis()-start)<25000 && msgCount*threadCount!=listener1.count) Thread.sleep(500);
-        System.err.println("Finished ASYNC MULTI THREAD ["+listener1.count+"]");
-        Assert.assertEquals("Checking success messages.",msgCount*threadCount,listener1.count);
+                };
+            }
+            for (int x=0; x<threads.length; x++ ) { threads[x].start();}
+            for (int x=0; x<threads.length; x++ ) { threads[x].join();}
+            //sleep for 50 sec, let the other messages in
+            long start = System.currentTimeMillis();
+            while ( (System.currentTimeMillis()-start)<25000 && msgCount*threadCount!=listener1.count) Thread.sleep(500);
+            System.err.println("Finished ASYNC MULTI THREAD ["+listener1.count+"]");
+            Assert.assertEquals("Checking success messages.",msgCount*threadCount,listener1.count);
     }
 
     @Test
@@ -176,7 +180,7 @@ public class TestDataIntegrity {
         public int length;
         public byte[] data;
         public byte key;
-        public static final Random r = new Random();
+        public static Random r = new Random();
         public static Data createRandomData() {
             int i = r.nextInt();
             i = ( i % 127 );

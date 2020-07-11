@@ -14,10 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina.startup;
 
+
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSet;
+import org.apache.tomcat.util.digester.RuleSetBase;
+
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a
@@ -27,24 +31,29 @@ import org.apache.tomcat.util.digester.RuleSet;
  *
  * @author Craig R. McClanahan
  */
-public class EngineRuleSet implements RuleSet {
+public class EngineRuleSet extends RuleSetBase {
+
 
     // ----------------------------------------------------- Instance Variables
+
 
     /**
      * The matching pattern prefix to use for recognizing our elements.
      */
-    protected final String prefix;
+    protected String prefix = null;
 
 
     // ------------------------------------------------------------ Constructor
+
 
     /**
      * Construct an instance of this <code>RuleSet</code> with the default
      * matching pattern prefix.
      */
     public EngineRuleSet() {
+
         this("");
+
     }
 
 
@@ -56,11 +65,16 @@ public class EngineRuleSet implements RuleSet {
      *  trailing slash character)
      */
     public EngineRuleSet(String prefix) {
+
+        super();
+        this.namespaceURI = null;
         this.prefix = prefix;
+
     }
 
 
     // --------------------------------------------------------- Public Methods
+
 
     /**
      * <p>Add the set of Rule instances defined in this RuleSet to the
@@ -73,18 +87,22 @@ public class EngineRuleSet implements RuleSet {
      */
     @Override
     public void addRuleInstances(Digester digester) {
+        // prefix是Server/Service/
 
+        // 创建StandardEngine
         digester.addObjectCreate(prefix + "Engine",
                                  "org.apache.catalina.core.StandardEngine",
                                  "className");
+        // set方式初始化属性
         digester.addSetProperties(prefix + "Engine");
         digester.addRule(prefix + "Engine",
                          new LifecycleListenerRule
                          ("org.apache.catalina.startup.EngineConfig",
                           "engineConfigClass"));
+        // 将StandardEngine通过调用Service的setContainer方法设置进Service中
         digester.addSetNext(prefix + "Engine",
                             "setContainer",
-                            "org.apache.catalina.Engine");
+                            "org.apache.catalina.Container");
 
         //Cluster configuration start
         digester.addObjectCreate(prefix + "Engine/Cluster",
@@ -107,6 +125,7 @@ public class EngineRuleSet implements RuleSet {
 
         digester.addRuleSet(new RealmRuleSet(prefix + "Engine/"));
 
+        // Valve也必须指定className
         digester.addObjectCreate(prefix + "Engine/Valve",
                                  null, // MUST be specified in the element
                                  "className");
@@ -114,5 +133,8 @@ public class EngineRuleSet implements RuleSet {
         digester.addSetNext(prefix + "Engine/Valve",
                             "addValve",
                             "org.apache.catalina.Valve");
+
     }
+
+
 }

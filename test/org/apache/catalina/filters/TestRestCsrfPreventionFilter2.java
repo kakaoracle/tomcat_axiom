@@ -17,13 +17,10 @@
 package org.apache.catalina.filters;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.Predicate;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -36,15 +33,16 @@ import org.junit.Test;
 import org.apache.catalina.Context;
 import org.apache.catalina.authenticator.AuthenticatorBase;
 import org.apache.catalina.authenticator.BasicAuthenticator;
+import org.apache.catalina.deploy.FilterDef;
+import org.apache.catalina.deploy.FilterMap;
+import org.apache.catalina.deploy.LoginConfig;
+import org.apache.catalina.deploy.SecurityCollection;
+import org.apache.catalina.deploy.SecurityConstraint;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.codec.binary.Base64;
-import org.apache.tomcat.util.descriptor.web.FilterDef;
-import org.apache.tomcat.util.descriptor.web.FilterMap;
-import org.apache.tomcat.util.descriptor.web.LoginConfig;
-import org.apache.tomcat.util.descriptor.web.SecurityCollection;
-import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
 
 public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
     private static final boolean USE_COOKIES = true;
@@ -75,7 +73,7 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
     private static final String USER = "user";
     private static final String PWD = "pwd";
     private static final String ROLE = "role";
-    private static final String METHOD = "BASIC";
+    private static final String METHOD = "Basic";
     private static final BasicCredentials CREDENTIALS = new BasicCredentials(METHOD, USER, PWD);
 
     private static final String CLIENT_AUTH_HEADER = "authorization";
@@ -86,7 +84,7 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
 
     private Tomcat tomcat;
     private Context context;
-    private List<String> cookies = new ArrayList<>();
+    private List<String> cookies = new ArrayList<String>();
     private String validNonce;
 
     @Override
@@ -168,13 +166,13 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         String validBody = Constants.CSRF_REST_NONCE_HEADER_NAME + "=" + validNonce;
         String invalidbody = Constants.CSRF_REST_NONCE_HEADER_NAME + "=" + INVALID_NONCE_1;
         doTest(METHOD_POST, REMOVE_CUSTOMER, CREDENTIALS,
-                validBody.getBytes(StandardCharsets.ISO_8859_1), USE_COOKIES,
+                validBody.getBytes(B2CConverter.ISO_8859_1), USE_COOKIES,
                 HttpServletResponse.SC_OK, CUSTOMER_REMOVED_RESPONSE, null, false, null);
         doTest(METHOD_POST, ADD_CUSTOMER, CREDENTIALS,
-                validBody.getBytes(StandardCharsets.ISO_8859_1), USE_COOKIES,
+                validBody.getBytes(B2CConverter.ISO_8859_1), USE_COOKIES,
                 HttpServletResponse.SC_OK, CUSTOMER_ADDED_RESPONSE, null, false, null);
         doTest(METHOD_POST, REMOVE_CUSTOMER, CREDENTIALS,
-                invalidbody.getBytes(StandardCharsets.ISO_8859_1), USE_COOKIES,
+                invalidbody.getBytes(B2CConverter.ISO_8859_1), USE_COOKIES,
                 HttpServletResponse.SC_OK, CUSTOMER_REMOVED_RESPONSE, validNonce, false, null);
     }
 
@@ -184,15 +182,15 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         String invalidbody2 = Constants.CSRF_REST_NONCE_HEADER_NAME + "="
                 + Constants.CSRF_REST_NONCE_HEADER_FETCH_VALUE;
         doTest(METHOD_POST, REMOVE_ALL_CUSTOMERS, CREDENTIALS,
-                validBody.getBytes(StandardCharsets.ISO_8859_1), USE_COOKIES,
+                validBody.getBytes(B2CConverter.ISO_8859_1), USE_COOKIES,
                 HttpServletResponse.SC_FORBIDDEN, null, null, true,
                 Constants.CSRF_REST_NONCE_HEADER_REQUIRED_VALUE);
         doTest(METHOD_POST, REMOVE_CUSTOMER, CREDENTIALS,
-                invalidbody1.getBytes(StandardCharsets.ISO_8859_1), USE_COOKIES,
+                invalidbody1.getBytes(B2CConverter.ISO_8859_1), USE_COOKIES,
                 HttpServletResponse.SC_FORBIDDEN, null, null, true,
                 Constants.CSRF_REST_NONCE_HEADER_REQUIRED_VALUE);
         doTest(METHOD_POST, REMOVE_CUSTOMER, CREDENTIALS,
-                invalidbody2.getBytes(StandardCharsets.ISO_8859_1), USE_COOKIES,
+                invalidbody2.getBytes(B2CConverter.ISO_8859_1), USE_COOKIES,
                 HttpServletResponse.SC_FORBIDDEN, null, null, true,
                 Constants.CSRF_REST_NONCE_HEADER_REQUIRED_VALUE);
     }
@@ -200,16 +198,16 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
     private void doTest(String method, String uri, BasicCredentials credentials, byte[] body,
             boolean useCookie, int expectedRC, String expectedResponse, String nonce,
             boolean expectCsrfRH, String expectedCsrfRHV) throws Exception {
-        Map<String, List<String>> reqHeaders = new HashMap<>();
-        Map<String, List<String>> respHeaders = new HashMap<>();
+        Map<String, List<String>> reqHeaders = new HashMap<String, List<String>>();
+        Map<String, List<String>> respHeaders = new HashMap<String, List<String>>();
 
-        addNonce(reqHeaders, nonce, n -> Objects.nonNull(n));
+        addNonce(reqHeaders, nonce);
 
         if (useCookie) {
-            addCookies(reqHeaders, l -> Objects.nonNull(l) && l.size() > 0);
+            addCookies(reqHeaders);
         }
 
-        addCredentials(reqHeaders, credentials, c -> Objects.nonNull(c));
+        addCredentials(reqHeaders, credentials);
 
         ByteChunk bc = new ByteChunk();
         int rc;
@@ -224,7 +222,7 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         if (expectedRC == HttpServletResponse.SC_OK) {
             Assert.assertEquals(expectedResponse, bc.toString());
             List<String> newCookies = respHeaders.get(SERVER_COOKIE_HEADER);
-            saveCookies(newCookies, l -> Objects.nonNull(l) && l.size() > 0);
+            saveCookies(newCookies);
         }
 
         if (!expectCsrfRH) {
@@ -232,7 +230,7 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         } else {
             List<String> respHeaderValue = respHeaders.get(Constants.CSRF_REST_NONCE_HEADER_NAME);
             Assert.assertNotNull(respHeaderValue);
-            if (Objects.nonNull(expectedCsrfRHV)) {
+            if (expectedCsrfRHV != null) {
                 Assert.assertTrue(respHeaderValue.contains(expectedCsrfRHV));
             } else {
                 validNonce = respHeaderValue.get(0);
@@ -240,14 +238,16 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         }
     }
 
-    private void saveCookies(List<String> newCookies, Predicate<List<String>> tester) {
-        if (tester.test(newCookies)) {
-            newCookies.forEach(h -> cookies.add(h.substring(0, h.indexOf(';'))));
+    private void saveCookies(List<String> newCookies) {
+        if (newCookies != null && newCookies.size() > 0) {
+            for (String header : newCookies) {
+                cookies.add(header.substring(0, header.indexOf(';')));
+            }
         }
     }
 
-    private void addCookies(Map<String, List<String>> reqHeaders, Predicate<List<String>> tester) {
-        if (tester.test(cookies)) {
+    private void addCookies(Map<String, List<String>> reqHeaders) {
+        if (cookies != null && cookies.size() > 0) {
             StringBuilder cookieHeader = new StringBuilder();
             boolean first = true;
             for (String cookie : cookies) {
@@ -262,22 +262,20 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         }
     }
 
-    private void addNonce(Map<String, List<String>> reqHeaders, String nonce,
-            Predicate<String> tester) {
-        if (tester.test(nonce)) {
+    private void addNonce(Map<String, List<String>> reqHeaders, String nonce) {
+        if (nonce != null) {
             addRequestHeader(reqHeaders, Constants.CSRF_REST_NONCE_HEADER_NAME, nonce);
         }
     }
 
-    private void addCredentials(Map<String, List<String>> reqHeaders, BasicCredentials credentials,
-            Predicate<BasicCredentials> tester) {
-        if (tester.test(credentials)) {
+    private void addCredentials(Map<String, List<String>> reqHeaders, BasicCredentials credentials) {
+        if (credentials != null) {
             addRequestHeader(reqHeaders, CLIENT_AUTH_HEADER, credentials.getCredentials());
         }
     }
 
     private void addRequestHeader(Map<String, List<String>> reqHeaders, String key, String value) {
-        List<String> valueList = new ArrayList<>(1);
+        List<String> valueList = new ArrayList<String>(1);
         valueList.add(value);
         reqHeaders.put(key, valueList);
     }
@@ -287,7 +285,7 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         context.setSessionTimeout(SHORT_SESSION_TIMEOUT_MINS);
 
         Tomcat.addServlet(context, SERVLET_NAME, new TesterServlet());
-        context.addServletMappingDecoded(URI_PROTECTED, SERVLET_NAME);
+        context.addServletMapping(URI_PROTECTED, SERVLET_NAME);
 
         FilterDef filterDef = new FilterDef();
         filterDef.setFilterName(FILTER_NAME);
@@ -297,11 +295,11 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
 
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName(FILTER_NAME);
-        filterMap.addURLPatternDecoded(URI_CSRF_PROTECTED);
+        filterMap.addURLPattern(URI_CSRF_PROTECTED);
         context.addFilterMap(filterMap);
 
         SecurityCollection collection = new SecurityCollection();
-        collection.addPatternDecoded(URI_PROTECTED);
+        collection.addPattern(URI_PROTECTED);
 
         SecurityConstraint sc = new SecurityConstraint();
         sc.addAuthRole(ROLE);
@@ -327,7 +325,7 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
             username = aUsername;
             password = aPassword;
             String userCredentials = username + ":" + password;
-            byte[] credentialsBytes = userCredentials.getBytes(StandardCharsets.ISO_8859_1);
+            byte[] credentialsBytes = userCredentials.getBytes(B2CConverter.ISO_8859_1);
             String base64auth = Base64.encodeBase64String(credentialsBytes);
             credentials = method + " " + base64auth;
         }
@@ -343,7 +341,7 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         @Override
         protected void doGet(HttpServletRequest req, HttpServletResponse resp)
                 throws ServletException, IOException {
-            if (Objects.equals(LIST_CUSTOMERS, getRequestedPath(req))) {
+            if (LIST_CUSTOMERS.equals(getRequestedPath(req))) {
                 resp.getWriter().print(CUSTOMERS_LIST_RESPONSE);
             }
         }
@@ -351,16 +349,16 @@ public class TestRestCsrfPreventionFilter2 extends TomcatBaseTest {
         @Override
         protected void doPost(HttpServletRequest req, HttpServletResponse resp)
                 throws ServletException, IOException {
-            if (Objects.equals(REMOVE_CUSTOMER, getRequestedPath(req))) {
+            if (REMOVE_CUSTOMER.equals(getRequestedPath(req))) {
                 resp.getWriter().print(CUSTOMER_REMOVED_RESPONSE);
-            } else if (Objects.equals(ADD_CUSTOMER, getRequestedPath(req))) {
+            } else if (ADD_CUSTOMER.equals(getRequestedPath(req))) {
                 resp.getWriter().print(CUSTOMER_ADDED_RESPONSE);
             }
         }
 
         private String getRequestedPath(HttpServletRequest request) {
             String path = request.getServletPath();
-            if (Objects.nonNull(request.getPathInfo())) {
+            if (request.getPathInfo() != null) {
                 path = path + request.getPathInfo();
             }
             return path;

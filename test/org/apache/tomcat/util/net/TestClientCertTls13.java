@@ -40,16 +40,14 @@ public class TestClientCertTls13 extends TomcatBaseTest {
 
     @Test
     public void testClientCertGet() throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-        tomcat.start();
+        getTomcatInstance().start();
         ByteChunk res = getUrl("https://localhost:" + getPort() + "/protected");
         Assert.assertEquals("OK-" + TesterSupport.ROLE, res.toString());
     }
 
     @Test
     public void testClientCertPost() throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-        tomcat.start();
+        getTomcatInstance().start();
 
         int size = 32 * 1024;
 
@@ -75,10 +73,13 @@ public class TestClientCertTls13 extends TomcatBaseTest {
 
         TesterSupport.configureClientCertContext(tomcat);
         // Need to override some of the previous settings
-        Assert.assertTrue(tomcat.getConnector().setProperty("sslEnabledProtocols", Constants.SSL_PROTO_TLSv1_3));
+        tomcat.getConnector().setProperty("sslEnabledProtocols", Constants.SSL_PROTO_TLSv1_3);
         // And add force authentication to occur on the initial handshake
-        Assert.assertTrue(tomcat.getConnector().setProperty("clientAuth", "required"));
-
-        TesterSupport.configureClientSsl();
+        // JSSE
+        tomcat.getConnector().setProperty("clientAuth", "true");
+        // OpenSSL
+        tomcat.getConnector().setProperty("SSLVerifyClient", "require");
+        // Force client to use TLS 1.3
+        TesterSupport.configureClientSsl("TLSv1.3");
     }
 }

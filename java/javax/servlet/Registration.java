@@ -68,7 +68,7 @@ public interface Registration {
      * @throws IllegalStateException if the ServletContext associated with this
      *         registration has already been initialised
      */
-    public Set<String> setInitParameters(Map<String,String> initParameters);
+    public Set<String> setInitParameters(Map<String, String> initParameters);
 
     /**
      * Get the names and values of all the initialisation parameters.

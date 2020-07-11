@@ -18,7 +18,6 @@ package org.apache.tomcat.websocket;
 
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -40,7 +39,8 @@ import org.apache.tomcat.websocket.TesterMessageCountClient.TesterProgrammaticEn
 
 public class TestWsPingPongMessages extends WebSocketBaseTest {
 
-    ByteBuffer applicationData = ByteBuffer.wrap("mydata".getBytes(StandardCharsets.UTF_8));
+    ByteBuffer applicationData = ByteBuffer.wrap(new String("mydata")
+            .getBytes());
 
     @Test
     public void testPingPongMessages() throws Exception {
@@ -50,12 +50,14 @@ public class TestWsPingPongMessages extends WebSocketBaseTest {
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
 
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
 
         tomcat.start();
 
         WebSocketContainer wsContainer = ContainerProvider
                 .getWebSocketContainer();
+
+        tomcat.start();
 
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class, ClientEndpointConfig.Builder

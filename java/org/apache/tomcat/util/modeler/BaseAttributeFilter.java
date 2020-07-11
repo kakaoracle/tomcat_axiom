@@ -20,7 +20,6 @@ package org.apache.tomcat.util.modeler;
 
 
 import java.util.HashSet;
-import java.util.Set;
 
 import javax.management.AttributeChangeNotification;
 import javax.management.Notification;
@@ -64,7 +63,7 @@ public class BaseAttributeFilter implements NotificationFilter {
      * The set of attribute names that are accepted by this filter.  If this
      * list is empty, all attribute names are accepted.
      */
-    private Set<String> names = new HashSet<>();
+    private HashSet<String> names = new HashSet<String>();
 
 
     // --------------------------------------------------------- Public Methods
@@ -101,12 +100,11 @@ public class BaseAttributeFilter implements NotificationFilter {
      * Return the set of names that are accepted by this filter.  If this
      * filter accepts all attribute names, a zero length array will be
      * returned.
-     * @return the array of names
      */
     public String[] getNames() {
 
         synchronized (names) {
-            return names.toArray(new String[0]);
+            return names.toArray(new String[names.size()]);
         }
 
     }
@@ -126,18 +124,18 @@ public class BaseAttributeFilter implements NotificationFilter {
     public boolean isNotificationEnabled(Notification notification) {
 
         if (notification == null)
-            return false;
+            return (false);
         if (!(notification instanceof AttributeChangeNotification))
-            return false;
+            return (false);
         AttributeChangeNotification acn =
             (AttributeChangeNotification) notification;
         if (!AttributeChangeNotification.ATTRIBUTE_CHANGE.equals(acn.getType()))
-            return false;
+            return (false);
         synchronized (names) {
             if (names.size() < 1)
-                return true;
+                return (true);
             else
-                return names.contains(acn.getAttributeName());
+                return (names.contains(acn.getAttributeName()));
         }
 
     }

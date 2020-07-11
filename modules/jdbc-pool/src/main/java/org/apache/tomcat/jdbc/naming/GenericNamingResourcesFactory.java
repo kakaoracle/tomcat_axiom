@@ -31,8 +31,6 @@ import javax.naming.spi.ObjectFactory;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.jdbc.pool.ClassLoaderUtil;
-
 /**
  * Simple way of configuring generic resources by using reflection.
  * Example usage:
@@ -59,11 +57,7 @@ public class GenericNamingResourcesFactory implements ObjectFactory {
         Enumeration<RefAddr> refs = ref.getAll();
 
         String type = ref.getClassName();
-        Object o =
-            ClassLoaderUtil.loadClass(
-                type,
-                GenericNamingResourcesFactory.class.getClassLoader(),
-                Thread.currentThread().getContextClassLoader()).getConstructor().newInstance();
+        Object o = Class.forName(type).newInstance();
 
         while (refs.hasMoreElements()) {
             RefAddr addr = refs.nextElement();
@@ -72,7 +66,7 @@ public class GenericNamingResourcesFactory implements ObjectFactory {
             if (addr.getContent()!=null) {
                 value = addr.getContent().toString();
             }
-            if (setProperty(o, param, value)) {
+            if (setProperty(o, param, value,false)) {
 
             } else {
                 log.debug("Property not configured["+param+"]. No setter found on["+o+"].");
@@ -81,8 +75,7 @@ public class GenericNamingResourcesFactory implements ObjectFactory {
         return o;
     }
 
-    @SuppressWarnings("null") // setPropertyMethodVoid can't be null when used
-    private static boolean setProperty(Object o, String name, String value) {
+    public static boolean setProperty(Object o, String name, String value,boolean invokeSetProperty) {
         if (log.isDebugEnabled())
             log.debug("IntrospectionUtils: setProperty(" +
                     o.getClass() + " " + name + "=" + value + ")");
@@ -90,13 +83,13 @@ public class GenericNamingResourcesFactory implements ObjectFactory {
         String setter = "set" + capitalize(name);
 
         try {
-            Method[] methods = o.getClass().getMethods();
+            Method methods[] = o.getClass().getMethods();
             Method setPropertyMethodVoid = null;
             Method setPropertyMethodBool = null;
 
             // First, the ideal case - a setFoo( String ) method
             for (int i = 0; i < methods.length; i++) {
-                Class<?>[] paramT = methods[i].getParameterTypes();
+                Class<?> paramT[] = methods[i].getParameterTypes();
                 if (setter.equals(methods[i].getName()) && paramT.length == 1
                         && "java.lang.String".equals(paramT[0].getName())) {
 
@@ -113,7 +106,7 @@ public class GenericNamingResourcesFactory implements ObjectFactory {
 
                     // match - find the type and invoke it
                     Class<?> paramType = methods[i].getParameterTypes()[0];
-                    Object[] params = new Object[1];
+                    Object params[] = new Object[1];
 
                     // Try a setFoo ( int )
                     if ("java.lang.Integer".equals(paramType.getName())
@@ -174,7 +167,7 @@ public class GenericNamingResourcesFactory implements ObjectFactory {
 
             // Ok, no setXXX found, try a setProperty("name", "value")
             if (setPropertyMethodBool != null || setPropertyMethodVoid != null) {
-                Object[] params = new Object[2];
+                Object params[] = new Object[2];
                 params[0] = name;
                 params[1] = value;
                 if (setPropertyMethodBool != null) {
@@ -225,7 +218,7 @@ public class GenericNamingResourcesFactory implements ObjectFactory {
         if (name == null || name.length() == 0) {
             return name;
         }
-        char[] chars = name.toCharArray();
+        char chars[] = name.toCharArray();
         chars[0] = Character.toUpperCase(chars[0]);
         return new String(chars);
     }

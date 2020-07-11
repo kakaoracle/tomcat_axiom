@@ -64,6 +64,25 @@ public class JMXAccessorQueryTask extends JMXAccessorTask {
 
     private boolean attributebinding = false;
 
+    // ----------------------------------------------------- Instance Info
+
+    /**
+     * Descriptive information describing this implementation.
+     */
+    private static final String info = "org.apache.catalina.ant.JMXAccessorQueryTask/1.0";
+
+    /**
+     * Return descriptive information about this implementation and the
+     * corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    @Override
+    public String getInfo() {
+
+        return (info);
+
+    }
+
     // ------------------------------------------------------------- Properties
 
     /**
@@ -128,46 +147,55 @@ public class JMXAccessorQueryTask extends JMXAccessorTask {
                 oindex++;
                 setProperty(pname + "Name", oname.toString());
                 if (isAttributebinding()) {
-                    bindAttributes(jmxServerConnection, pname, oname);
+                    bindAttributes(jmxServerConnection, resultproperty, pname, oname);
                 }
             }
         }
         return isError;
     }
 
-    protected void bindAttributes(MBeanServerConnection jmxServerConnection, String pname, ObjectName oname) {
-        try {
-            MBeanInfo minfo = jmxServerConnection.getMBeanInfo(oname);
-            MBeanAttributeInfo attrs[] = minfo.getAttributes();
-            Object value = null;
+    /**
+     * @param jmxServerConnection
+     * @param resultproperty
+     * @param pname
+     * @param oname
+     */
+    protected void bindAttributes(MBeanServerConnection jmxServerConnection, String resultproperty, String pname, ObjectName oname) {
+        if (jmxServerConnection != null  && resultproperty != null
+                && pname != null && oname != null ) {
+            try {
+                MBeanInfo minfo = jmxServerConnection.getMBeanInfo(oname);
+                MBeanAttributeInfo attrs[] = minfo.getAttributes();
+                Object value = null;
 
-            for (MBeanAttributeInfo attr : attrs) {
-                if (!attr.isReadable())
-                    continue;
-                String attName = attr.getName();
-                if (attName.indexOf('=') >= 0 || attName.indexOf(':') >= 0
-                        || attName.indexOf(' ') >= 0) {
-                    continue;
-                }
+                for (int i = 0; i < attrs.length; i++) {
+                    if (!attrs[i].isReadable())
+                        continue;
+                    String attName = attrs[i].getName();
+                    if (attName.indexOf('=') >= 0 || attName.indexOf(':') >= 0
+                            || attName.indexOf(' ') >= 0) {
+                        continue;
+                    }
 
-                try {
-                    value = jmxServerConnection
-                            .getAttribute(oname, attName);
-                } catch (Exception e) {
-                    if (isEcho())
-                        handleErrorOutput("Error getting attribute "
-                                + oname + " " + pname + attName + " "
-                                + e.toString());
-                    continue;
+                    try {
+                        value = jmxServerConnection
+                                .getAttribute(oname, attName);
+                    } catch (Exception e) {
+                        if (isEcho())
+                            handleErrorOutput("Error getting attribute "
+                                    + oname + " " + pname + attName + " "
+                                    + e.toString());
+                        continue;
+                    }
+                    if (value == null)
+                        continue;
+                    if ("modelerType".equals(attName))
+                        continue;
+                    createProperty(pname + attName, value);
                 }
-                if (value == null)
-                    continue;
-                if ("modelerType".equals(attName))
-                    continue;
-                createProperty(pname + attName, value);
+            } catch (Exception e) {
+                // Ignore
             }
-        } catch (Exception e) {
-            // Ignore
         }
     }
 }

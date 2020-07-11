@@ -45,7 +45,7 @@ import java.util.ResourceBundle;
  * @author James Duncan Davidson [duncan@eng.sun.com]
  * @author James Todd [gonzo@eng.sun.com]
  * @author Mel Martinez [mmartinez@g1440.com]
- * @see java.util.ResourceBundle
+ * @see ResourceBundle
  */
 public class StringManager {
 
@@ -157,7 +157,7 @@ public class StringManager {
     // --------------------------------------------------------------
 
     private static final Hashtable<String, StringManager> managers =
-            new Hashtable<>();
+            new Hashtable<String, StringManager>();
 
     /**
      * Get the StringManager for a particular package. If a manager for

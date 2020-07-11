@@ -6,7 +6,6 @@ package org.apache.el.parser;
  * An implementation of interface CharStream, where the stream is assumed to
  * contain only ASCII characters (without unicode processing).
  */
-
 @SuppressWarnings("all") // Ignore warnings in generated code
 public class SimpleCharStream
 {
@@ -60,7 +59,9 @@ public class SimpleCharStream
         bufcolumn = newbufcolumn;
 
         maxNextCharInd = (bufpos += (bufsize - tokenBegin));
-      } else {
+      }
+      else
+      {
         System.arraycopy(buffer, tokenBegin, newbuffer, 0, bufsize - tokenBegin);
         buffer = newbuffer;
 
@@ -430,7 +431,9 @@ public class SimpleCharStream
     if (bufpos >= tokenBegin)
     {
       len = bufpos - tokenBegin + inBuf + 1;
-    } else {
+    }
+    else
+    {
       len = bufsize - tokenBegin + bufpos + 1 + inBuf;
     }
 

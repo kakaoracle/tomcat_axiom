@@ -34,8 +34,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import org.junit.Assert;
-
 /**
  * Simple client for unit testing. It isn't robust, it isn't secure and
  * should not be used as the basis for production code. Its only purpose
@@ -51,10 +49,7 @@ public abstract class SimpleHttpClient {
 
     public static final String INFO_100 = "HTTP/1.1 100 ";
     public static final String OK_200 = "HTTP/1.1 200 ";
-    public static final String CREATED_201 = "HTTP/1.1 201 ";
-    public static final String NOCONTENT_204 = "HTTP/1.1 204 ";
     public static final String REDIRECT_302 = "HTTP/1.1 302 ";
-    public static final String REDIRECT_303 = "HTTP/1.1 303 ";
     public static final String FAIL_400 = "HTTP/1.1 400 ";
     public static final String FORBIDDEN_403 = "HTTP/1.1 403 ";
     public static final String FAIL_404 = "HTTP/1.1 404 ";
@@ -95,11 +90,10 @@ public abstract class SimpleHttpClient {
     private String[] request;
     private boolean useContinue = false;
     private boolean useCookies = true;
-    private boolean useHttp09 = false;
     private int requestPause = 1000;
 
     private String responseLine;
-    private List<String> responseHeaders = new ArrayList<>();
+    private List<String> responseHeaders = new ArrayList<String>();
     private String sessionId;
     private boolean useContentLength;
     private int contentLength;
@@ -133,10 +127,6 @@ public abstract class SimpleHttpClient {
 
     public boolean getUseCookies() {
         return useCookies;
-    }
-
-    public void setUseHttp09(boolean theUseHttp09Flag) {
-        useHttp09 = theUseHttp09Flag;
     }
 
     public void setRequestPause(int theRequestPause) {
@@ -193,7 +183,7 @@ public abstract class SimpleHttpClient {
         socket = new Socket();
         socket.setSoTimeout(soTimeout);
         socket.connect(addr,connectTimeout);
-        OutputStream os = createOutputStream(socket);
+        OutputStream os = socket.getOutputStream();
         writer = new OutputStreamWriter(os, encoding);
         InputStream is = socket.getInputStream();
         Reader r = new InputStreamReader(is, encoding);
@@ -201,10 +191,6 @@ public abstract class SimpleHttpClient {
     }
     public void connect() throws UnknownHostException, IOException {
         connect(0,0);
-    }
-
-    protected OutputStream createOutputStream(Socket socket) throws IOException {
-        return socket.getOutputStream();
     }
 
     public void processRequest() throws IOException, InterruptedException {
@@ -229,7 +215,8 @@ public abstract class SimpleHttpClient {
             if (requestPart != null) {
                 if (first) {
                     first = false;
-                } else {
+                }
+                else {
                     Thread.sleep(requestPause);
                 }
                 writer.write(requestPart);
@@ -246,26 +233,23 @@ public abstract class SimpleHttpClient {
             bodyUriElements.clear();
         }
 
-        // HTTP 0.9 has neither response line nor headers
-        if (!useHttp09) {
-            // Read the response status line
-            responseLine = readLine();
+        // Read the response status line
+        responseLine = readLine();
 
-            // Is a 100 continue response expected?
-            if (useContinue) {
-                if (isResponse100()) {
-                    // Skip the blank after the 100 Continue response
-                    readLine();
-                    // Now get the final response
-                    responseLine = readLine();
-                } else {
-                    throw new IOException("No 100 Continue response");
-                }
+        // Is a 100 continue response expected?
+        if (useContinue) {
+            if (isResponse100()) {
+                // Skip the blank after the 100 Continue response
+                readLine();
+                // Now get the final response
+                responseLine = readLine();
+            } else {
+                throw new IOException("No 100 Continue response");
             }
-
-            // Put the headers into a map, and process interesting ones
-            processHeaders();
         }
+
+        // Put the headers into a map, and process interesting ones
+        processHeaders();
 
         // Read the body, if requested and if one exists
         processBody(wantBody);
@@ -316,10 +300,10 @@ public abstract class SimpleHttpClient {
         if (wantBody) {
             if (useContentLength && (contentLength > -1)) {
                 char[] body = new char[contentLength];
-                int read = reader.read(body);
-                Assert.assertEquals(contentLength, read);
+                reader.read(body);
                 builder.append(body);
-            } else {
+            }
+            else {
                 // not using content length, so just read it line by line
                 String line = null;
                 try {
@@ -348,7 +332,7 @@ public abstract class SimpleHttpClient {
      * @see #getResponseBodyUriElements()
      */
     public void extractUriElements() {
-        bodyUriElements = new ArrayList<>();
+        bodyUriElements = new ArrayList<String>();
         if (responseBody.length() > 0) {
             int ix = 0;
             while ((ix = extractUriElement(responseBody, ix, RESOURCE_TAG)) > 0){
@@ -415,7 +399,7 @@ public abstract class SimpleHttpClient {
 
     public void resetResponse() {
         responseLine = null;
-        responseHeaders = new ArrayList<>();
+        responseHeaders = new ArrayList<String>();
         responseBody = null;
     }
 
@@ -435,20 +419,8 @@ public abstract class SimpleHttpClient {
         return responseLineStartsWith(OK_200);
     }
 
-    public boolean isResponse201() {
-        return responseLineStartsWith(CREATED_201);
-    }
-
-    public boolean isResponse204() {
-        return responseLineStartsWith(NOCONTENT_204);
-    }
-
     public boolean isResponse302() {
         return responseLineStartsWith(REDIRECT_302);
-    }
-
-    public boolean isResponse303() {
-        return responseLineStartsWith(REDIRECT_303);
     }
 
     public boolean isResponse400() {

@@ -17,13 +17,13 @@
 package org.apache.catalina.filters;
 
 import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
 
+import javax.servlet.Filter;
 import javax.servlet.FilterChain;
-import javax.servlet.GenericFilter;
+import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
@@ -48,9 +48,7 @@ import org.apache.juli.logging.LogFactory;
  *
  * @author Craig R. McClanahan
  */
-public class RequestDumperFilter extends GenericFilter {
-
-    private static final long serialVersionUID = 1L;
+public class RequestDumperFilter implements Filter {
 
     private static final String NON_HTTP_REQ_MSG =
         "Not available. Non-http request.";
@@ -67,7 +65,7 @@ public class RequestDumperFilter extends GenericFilter {
 
     // Log must be non-static as loggers are created per class-loader and this
     // Filter may be used in multiple class loaders
-    private transient Log log = LogFactory.getLog(RequestDumperFilter.class);
+    private final Log log = LogFactory.getLog(RequestDumperFilter.class); // must not be static
 
 
     /**
@@ -109,7 +107,7 @@ public class RequestDumperFilter extends GenericFilter {
 
         doLog(" characterEncoding", request.getCharacterEncoding());
         doLog("     contentLength",
-                Long.toString(request.getContentLengthLong()));
+                Integer.toString(request.getContentLength()));
         doLog("       contentType", request.getContentType());
 
         if (hRequest == null) {
@@ -120,9 +118,9 @@ public class RequestDumperFilter extends GenericFilter {
             doLog("       contextPath", hRequest.getContextPath());
             Cookie cookies[] = hRequest.getCookies();
             if (cookies != null) {
-                for (Cookie cookie : cookies) {
-                    doLog("            cookie", cookie.getName() +
-                            "=" + cookie.getValue());
+                for (int i = 0; i < cookies.length; i++) {
+                    doLog("            cookie", cookies[i].getName() +
+                            "=" + cookies[i].getValue());
                 }
             }
             Enumeration<String> hnames = hRequest.getHeaderNames();
@@ -265,17 +263,15 @@ public class RequestDumperFilter extends GenericFilter {
         return ts.dateString;
     }
 
-
-    /*
-     * Log objects are not Serializable but this Filter is because it extends
-     * GenericFilter. Tomcat won't serialize a Filter but in case something else
-     * does...
-     */
-    private void readObject(ObjectInputStream ois) throws ClassNotFoundException, IOException {
-        ois.defaultReadObject();
-        log = LogFactory.getLog(RequestDumperFilter.class);
+    @Override
+    public void init(FilterConfig filterConfig) throws ServletException {
+        // NOOP
     }
 
+    @Override
+    public void destroy() {
+        // NOOP
+    }
 
     private static final class Timestamp {
         private final Date date = new Date(0);

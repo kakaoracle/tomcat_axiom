@@ -28,7 +28,6 @@ import javax.servlet.jsp.JspWriter;
 import javax.servlet.jsp.tagext.BodyContent;
 
 import org.apache.jasper.Constants;
-import org.apache.jasper.compiler.Localizer;
 
 /**
  * Write text to a character-output stream, buffering characters so as
@@ -42,17 +41,27 @@ import org.apache.jasper.compiler.Localizer;
  */
 public class BodyContentImpl extends BodyContent {
 
+    private static final String LINE_SEPARATOR;
     private static final boolean LIMIT_BUFFER;
     private static final int TAG_BUFFER_SIZE;
 
     static {
         if (System.getSecurityManager() == null) {
+            LINE_SEPARATOR = System.getProperty("line.separator");
             LIMIT_BUFFER = Boolean.parseBoolean(System.getProperty(
                     "org.apache.jasper.runtime.BodyContentImpl.LIMIT_BUFFER", "false"));
             TAG_BUFFER_SIZE = Integer.getInteger(
                     "org.apache.jasper.runtime.BodyContentImpl.BUFFER_SIZE",
                     Constants.DEFAULT_TAG_BUFFER_SIZE).intValue();
         } else {
+            LINE_SEPARATOR = AccessController.doPrivileged(
+                    new PrivilegedAction<String>() {
+                        @Override
+                        public String run() {
+                            return System.getProperty("line.separator");
+                        }
+                    }
+            );
             LIMIT_BUFFER = AccessController.doPrivileged(
                     new PrivilegedAction<Boolean>() {
                         @Override
@@ -216,15 +225,15 @@ public class BodyContentImpl extends BodyContent {
     @Override
     public void newLine() throws IOException {
         if (writer != null) {
-            writer.write(System.lineSeparator());
+            writer.write(LINE_SEPARATOR);
         } else {
-            write(System.lineSeparator());
+            write(LINE_SEPARATOR);
         }
     }
 
     /**
      * Print a boolean value.  The string produced by <code>{@link
-     * java.lang.String#valueOf(boolean)}</code> is translated into bytes
+     * String#valueOf(boolean)}</code> is translated into bytes
      * according to the platform's default character encoding, and these bytes
      * are written in exactly the manner of the <code>{@link
      * #write(int)}</code> method.
@@ -261,7 +270,7 @@ public class BodyContentImpl extends BodyContent {
 
     /**
      * Print an integer.  The string produced by <code>{@link
-     * java.lang.String#valueOf(int)}</code> is translated into bytes according
+     * String#valueOf(int)}</code> is translated into bytes according
      * to the platform's default character encoding, and these bytes are
      * written in exactly the manner of the <code>{@link #write(int)}</code>
      * method.
@@ -280,7 +289,7 @@ public class BodyContentImpl extends BodyContent {
 
     /**
      * Print a long integer.  The string produced by <code>{@link
-     * java.lang.String#valueOf(long)}</code> is translated into bytes
+     * String#valueOf(long)}</code> is translated into bytes
      * according to the platform's default character encoding, and these bytes
      * are written in exactly the manner of the
      * <code>{@link #write(int)}</code> method.
@@ -299,7 +308,7 @@ public class BodyContentImpl extends BodyContent {
 
     /**
      * Print a floating-point number.  The string produced by <code>{@link
-     * java.lang.String#valueOf(float)}</code> is translated into bytes
+     * String#valueOf(float)}</code> is translated into bytes
      * according to the platform's default character encoding, and these bytes
      * are written in exactly the manner of the
      * <code>{@link #write(int)}</code> method.
@@ -318,7 +327,7 @@ public class BodyContentImpl extends BodyContent {
 
     /**
      * Print a double-precision floating-point number.  The string produced by
-     * <code>{@link java.lang.String#valueOf(double)}</code> is translated into
+     * <code>{@link String#valueOf(double)}</code> is translated into
      * bytes according to the platform's default character encoding, and these
      * bytes are written in exactly the manner of the <code>{@link
      * #write(int)}</code> method.
@@ -377,7 +386,7 @@ public class BodyContentImpl extends BodyContent {
 
     /**
      * Print an object.  The string produced by the <code>{@link
-     * java.lang.String#valueOf(Object)}</code> method is translated into bytes
+     * String#valueOf(Object)}</code> method is translated into bytes
      * according to the platform's default character encoding, and these bytes
      * are written in exactly the manner of the
      * <code>{@link #write(int)}</code> method.
@@ -681,9 +690,7 @@ public class BodyContentImpl extends BodyContent {
     }
 
     private void ensureOpen() throws IOException {
-        if (closed) {
-            throw new IOException(Localizer.getMessage("jsp.error.stream.closed"));
-        }
+        if (closed) throw new IOException("Stream closed");
     }
 
     /**

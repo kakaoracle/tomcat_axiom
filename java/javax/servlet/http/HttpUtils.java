@@ -18,7 +18,6 @@
 package javax.servlet.http;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Hashtable;
 import java.util.ResourceBundle;
 import java.util.StringTokenizer;
@@ -31,12 +30,12 @@ import javax.servlet.ServletInputStream;
  *                        with the default encoding and have been moved
  *                        to the request interfaces.
  */
-@Deprecated
+@SuppressWarnings("dep-ann") // Spec API does not use @Deprecated
 public class HttpUtils {
 
     private static final String LSTRING_FILE =
         "javax.servlet.http.LocalStrings";
-    private static final ResourceBundle lStrings =
+    private static ResourceBundle lStrings =
         ResourceBundle.getBundle(LSTRING_FILE);
 
 
@@ -87,7 +86,7 @@ public class HttpUtils {
         if (s == null) {
             throw new IllegalArgumentException();
         }
-        Hashtable<String,String[]> ht = new Hashtable<>();
+        Hashtable<String,String[]> ht = new Hashtable<String,String[]>();
         StringBuilder sb = new StringBuilder();
         StringTokenizer st = new StringTokenizer(s, "&");
         while (st.hasMoreTokens()) {
@@ -102,7 +101,9 @@ public class HttpUtils {
             String val = parseName(pair.substring(pos+1, pair.length()), sb);
             if (ht.containsKey(key)) {
                 String oldVals[] = ht.get(key);
-                valArray = Arrays.copyOf(oldVals, oldVals.length + 1);
+                valArray = new String[oldVals.length + 1];
+                for (int i = 0; i < oldVals.length; i++)
+                    valArray[i] = oldVals[i];
                 valArray[oldVals.length] = val;
             } else {
                 valArray = new String[1];
@@ -160,7 +161,7 @@ public class HttpUtils {
 
         // cheap hack to return an empty hash
         if (len <=0)
-            return new Hashtable<>();
+            return new Hashtable<String,String[]>();
 
         if (in == null) {
             throw new IllegalArgumentException();
@@ -266,7 +267,8 @@ public class HttpUtils {
         url.append (scheme);                // http, https
         url.append ("://");
         url.append (req.getServerName ());
-        if ((scheme.equals ("http") && port != 80) || (scheme.equals ("https") && port != 443)) {
+        if ((scheme.equals ("http") && port != 80)
+                || (scheme.equals ("https") && port != 443)) {
             url.append (':');
             url.append (req.getServerPort ());
         }

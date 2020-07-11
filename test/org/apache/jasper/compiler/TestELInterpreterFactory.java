@@ -38,7 +38,7 @@ public class TestELInterpreterFactory extends TomcatBaseTest {
         @Override
         public String interpreterCall(JspCompilationContext context,
                 boolean isTagFile, String expression, Class<?> expectedType,
-                String fnmapvar) {
+                String fnmapvar, boolean xmlEscape) {
             return expression;
         }
     }
@@ -92,6 +92,11 @@ public class TestELInterpreterFactory extends TomcatBaseTest {
         public void contextInitialized(ServletContextEvent sce) {
             sce.getServletContext().setInitParameter(ELInterpreter.class.getName(),
                     SimpleELInterpreter.class.getName());
+        }
+
+        @Override
+        public void contextDestroyed(ServletContextEvent sce) {
+            // NO-OP
         }
     }
 }

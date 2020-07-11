@@ -16,6 +16,7 @@
  */
 package org.apache.tomcat.websocket;
 
+import java.util.Iterator;
 import java.util.ServiceLoader;
 
 /**
@@ -32,19 +33,13 @@ public class AuthenticatorFactory {
     public static Authenticator getAuthenticator(String authScheme) {
 
         Authenticator auth = null;
-        switch (authScheme.toLowerCase()) {
-
-        case BasicAuthenticator.schemeName:
+        String authSchemeLowerCase = authScheme.toLowerCase();
+        if (BasicAuthenticator.schemeName.equals(authSchemeLowerCase)) {
             auth = new BasicAuthenticator();
-            break;
-
-        case DigestAuthenticator.schemeName:
+        } else if (DigestAuthenticator.schemeName.equals(authSchemeLowerCase)) {
             auth = new DigestAuthenticator();
-            break;
-
-        default:
+        } else {
             auth = loadAuthenticators(authScheme);
-            break;
         }
 
         return auth;
@@ -53,8 +48,10 @@ public class AuthenticatorFactory {
 
     private static Authenticator loadAuthenticators(String authScheme) {
         ServiceLoader<Authenticator> serviceLoader = ServiceLoader.load(Authenticator.class);
+        Iterator<Authenticator> auths = serviceLoader.iterator();
 
-        for (Authenticator auth : serviceLoader) {
+        while (auths.hasNext()) {
+            Authenticator auth = auths.next();
             if (auth.getSchemeName().equalsIgnoreCase(authScheme))
                 return auth;
         }

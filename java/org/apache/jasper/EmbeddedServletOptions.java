@@ -29,7 +29,7 @@ import javax.servlet.jsp.tagext.TagLibraryInfo;
 import org.apache.jasper.compiler.JspConfig;
 import org.apache.jasper.compiler.Localizer;
 import org.apache.jasper.compiler.TagPluginManager;
-import org.apache.jasper.compiler.TldCache;
+import org.apache.jasper.compiler.TldLocationsCache;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
@@ -63,9 +63,9 @@ public final class EmbeddedServletOptions implements Options {
     private boolean keepGenerated = true;
 
     /**
-     * How should template text that consists entirely of whitespace be handled?
+     * Should template text that consists entirely of whitespace be removed?
      */
-    private TrimSpacesOption trimSpaces = TrimSpacesOption.FALSE;
+    private boolean trimSpaces = false;
 
     /**
      * Determines whether tag handler pooling is enabled.
@@ -132,12 +132,12 @@ public final class EmbeddedServletOptions implements Options {
     /**
      * Compiler target VM.
      */
-    private String compilerTargetVM = "1.8";
+    private String compilerTargetVM = "1.6";
 
     /**
      * The compiler source VM.
      */
-    private String compilerSourceVM = "1.8";
+    private String compilerSourceVM = "1.6";
 
     /**
      * The compiler class name.
@@ -145,9 +145,9 @@ public final class EmbeddedServletOptions implements Options {
     private String compilerClassName = null;
 
     /**
-     * Cache for the TLD URIs, resource paths and parsed files.
+     * Cache for the TLD locations
      */
-    private TldCache tldCache = null;
+    private TldLocationsCache tldLocationsCache = null;
 
     /**
      * Jsp config information
@@ -200,12 +200,6 @@ public final class EmbeddedServletOptions implements Options {
     private int jspIdleTimeout = -1;
 
     /**
-     * Should JSP.1.6 be applied strictly to attributes defined using scriptlet
-     * expressions?
-     */
-    private boolean strictQuoteEscaping = true;
-
-    /**
      * When EL is used in JSP attribute values, should the rules for quoting of
      * attributes described in JSP.1.6 be applied to the expression?
      */
@@ -238,8 +232,11 @@ public final class EmbeddedServletOptions implements Options {
         return keepGenerated;
     }
 
+    /**
+     * Should template text that consists entirely of whitespace be removed?
+     */
     @Override
-    public TrimSpacesOption getTrimSpaces() {
+    public boolean getTrimSpaces() {
         return trimSpaces;
     }
 
@@ -395,12 +392,12 @@ public final class EmbeddedServletOptions implements Options {
     }
 
     @Override
-    public TldCache getTldCache() {
-        return tldCache;
+    public TldLocationsCache getTldLocationsCache() {
+        return tldLocationsCache;
     }
 
-    public void setTldCache(TldCache tldCache) {
-        this.tldCache = tldCache;
+    public void setTldLocationsCache( TldLocationsCache tldC ) {
+        tldLocationsCache = tldC;
     }
 
     @Override
@@ -460,18 +457,12 @@ public final class EmbeddedServletOptions implements Options {
         return jspIdleTimeout;
     }
 
-    @Override
-    public boolean getStrictQuoteEscaping() {
-        return strictQuoteEscaping;
-    }
-
     /**
      * Create an EmbeddedServletOptions object using data available from
      * ServletConfig and ServletContext.
-     * @param config The Servlet config
-     * @param context The Servlet context
      */
-    public EmbeddedServletOptions(ServletConfig config, ServletContext context) {
+    public EmbeddedServletOptions(ServletConfig config,
+            ServletContext context) {
 
         Enumeration<String> enumeration=config.getInitParameterNames();
         while( enumeration.hasMoreElements() ) {
@@ -496,17 +487,20 @@ public final class EmbeddedServletOptions implements Options {
 
         String trimsp = config.getInitParameter("trimSpaces");
         if (trimsp != null) {
-            try {
-                trimSpaces = TrimSpacesOption.valueOf(trimsp.toUpperCase());
-            } catch (IllegalArgumentException iae) {
+            if (trimsp.equalsIgnoreCase("true")) {
+                trimSpaces = true;
+            } else if (trimsp.equalsIgnoreCase("false")) {
+                trimSpaces = false;
+            } else {
                 if (log.isWarnEnabled()) {
-                    log.warn(Localizer.getMessage("jsp.warning.trimspaces"), iae);
+                    log.warn(Localizer.getMessage("jsp.warning.trimspaces"));
                 }
             }
         }
 
         this.isPoolingEnabled = true;
-        String poolingEnabledParam = config.getInitParameter("enablePooling");
+        String poolingEnabledParam
+        = config.getInitParameter("enablePooling");
         if (poolingEnabledParam != null
                 && !poolingEnabledParam.equalsIgnoreCase("true")) {
             if (poolingEnabledParam.equalsIgnoreCase("false")) {
@@ -630,7 +624,8 @@ public final class EmbeddedServletOptions implements Options {
             }
         }
 
-        String errBeanClass = config.getInitParameter("errorOnUseBeanInvalidClassAttribute");
+        String errBeanClass =
+            config.getInitParameter("errorOnUseBeanInvalidClassAttribute");
         if (errBeanClass != null) {
             if (errBeanClass.equalsIgnoreCase("true")) {
                 errorOnUseBeanInvalidClassAttribute = true;
@@ -765,19 +760,6 @@ public final class EmbeddedServletOptions implements Options {
             }
         }
 
-        String strictQuoteEscaping = config.getInitParameter("strictQuoteEscaping");
-        if (strictQuoteEscaping != null) {
-            if (strictQuoteEscaping.equalsIgnoreCase("true")) {
-                this.strictQuoteEscaping = true;
-            } else if (strictQuoteEscaping.equalsIgnoreCase("false")) {
-                this.strictQuoteEscaping = false;
-            } else {
-                if (log.isWarnEnabled()) {
-                    log.warn(Localizer.getMessage("jsp.warning.strictQuoteEscaping"));
-                }
-            }
-        }
-
         String quoteAttributeEL = config.getInitParameter("quoteAttributeEL");
         if (quoteAttributeEL != null) {
             if (quoteAttributeEL.equalsIgnoreCase("true")) {
@@ -793,7 +775,7 @@ public final class EmbeddedServletOptions implements Options {
 
         // Setup the global Tag Libraries location cache for this
         // web-application.
-        tldCache = TldCache.getInstance(context);
+        tldLocationsCache = TldLocationsCache.getInstance(context);
 
         // Setup the jsp config info for this web app.
         jspConfig = new JspConfig(context);

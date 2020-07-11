@@ -16,14 +16,13 @@
  */
 package org.apache.catalina.realm;
 
-import java.io.Serializable;
+
 import java.security.Principal;
 import java.util.Arrays;
 import java.util.List;
 
 import javax.security.auth.login.LoginContext;
 
-import org.apache.catalina.TomcatPrincipal;
 import org.ietf.jgss.GSSCredential;
 
 /**
@@ -32,12 +31,28 @@ import org.ietf.jgss.GSSCredential;
  *
  * @author Craig R. McClanahan
  */
-public class GenericPrincipal implements TomcatPrincipal, Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class GenericPrincipal implements Principal {
 
 
     // ----------------------------------------------------------- Constructors
+
+
+    /**
+     * Construct a new Principal, associated with the specified Realm, for the
+     * specified username and password.
+     *
+     * @param name The username of the user represented by this Principal
+     * @param password Credentials used to authenticate this user
+     *
+     * @deprecated  Unused
+     */
+    @Deprecated
+    public GenericPrincipal(String name, String password) {
+
+        this(name, password, null);
+
+    }
+
 
     /**
      * Construct a new Principal, associated with the specified Realm, for the
@@ -107,13 +122,11 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
         this.name = name;
         this.password = password;
         this.userPrincipal = userPrincipal;
-        if (roles == null) {
-            this.roles = new String[0];
-        } else {
-            this.roles = roles.toArray(new String[0]);
-            if (this.roles.length > 1) {
+        if (roles != null) {
+            this.roles = new String[roles.size()];
+            this.roles = roles.toArray(this.roles);
+            if (this.roles.length > 1)
                 Arrays.sort(this.roles);
-            }
         }
         this.loginContext = loginContext;
         this.gssCredential = gssCredential;
@@ -125,7 +138,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
     /**
      * The username of the user represented by this Principal.
      */
-    protected final String name;
+    protected String name = null;
 
     @Override
     public String getName() {
@@ -137,7 +150,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
      * The authentication credentials for the user represented by
      * this Principal.
      */
-    protected final String password;
+    protected String password = null;
 
     public String getPassword() {
         return this.password;
@@ -147,7 +160,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
     /**
      * The set of roles associated with this user.
      */
-    protected final String roles[];
+    protected String roles[] = new String[0];
 
     public String[] getRoles() {
         return this.roles;
@@ -157,9 +170,8 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
     /**
      * The authenticated Principal to be exposed to applications.
      */
-    protected final Principal userPrincipal;
+    protected Principal userPrincipal = null;
 
-    @Override
     public Principal getUserPrincipal() {
         if (userPrincipal != null) {
             return userPrincipal;
@@ -173,15 +185,14 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
      * The JAAS LoginContext, if any, used to authenticate this Principal.
      * Kept so we can call logout().
      */
-    protected final transient LoginContext loginContext;
+    protected LoginContext loginContext = null;
 
 
     /**
      * The user's delegated credentials.
      */
-    protected transient GSSCredential gssCredential = null;
+    protected GSSCredential gssCredential = null;
 
-    @Override
     public GSSCredential getGssCredential() {
         return this.gssCredential;
     }
@@ -220,15 +231,23 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
         StringBuilder sb = new StringBuilder("GenericPrincipal[");
         sb.append(this.name);
         sb.append("(");
-        for (String role : roles) {
-            sb.append(role).append(",");
+        for (int i = 0; i < roles.length; i++ ) {
+            sb.append( roles[i]).append(",");
         }
         sb.append(")]");
         return sb.toString();
     }
 
 
-    @Override
+    /**
+     * Calls logout, if necessary, on any associated JAASLoginContext. May in
+     * the future be extended to cover other logout requirements.
+     *
+     * @throws Exception If something goes wrong with the logout. Uses Exception
+     *                   to allow for future expansion of this method to cover
+     *                   other logout mechanisms that might throw a different
+     *                   exception to LoginContext
+     */
     public void logout() throws Exception {
         if (loginContext != null) {
             loginContext.logout();
@@ -239,34 +258,5 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
     }
 
 
-    // ----------------------------------------------------------- Serialization
 
-    private Object writeReplace() {
-        return new SerializablePrincipal(name, password, roles, userPrincipal);
-    }
-
-    private static class SerializablePrincipal implements Serializable {
-        private static final long serialVersionUID = 1L;
-
-        private final String name;
-        private final String password;
-        private final String[] roles;
-        private final Principal principal;
-
-        public SerializablePrincipal(String name, String password, String[] roles,
-                Principal principal) {
-            this.name = name;
-            this.password = password;
-            this.roles = roles;
-            if (principal instanceof Serializable) {
-                this.principal = principal;
-            } else {
-                this.principal = null;
-            }
-        }
-
-        private Object readResolve() {
-            return new GenericPrincipal(name, password, Arrays.asList(roles), principal);
-        }
-    }
 }

@@ -48,7 +48,7 @@ public final class ConstantLong extends Constant {
     /**
      * @return data, i.e., 8 bytes.
      */
-    public long getBytes() {
+    public final long getBytes() {
         return bytes;
     }
 }

@@ -21,11 +21,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Properties;
 
 public class Import {
+
+    private static final String LINE_SEP = System.getProperty("line.separator");
+
 
     public static void main(String... args) throws IOException {
         File root = new File(Constants.STORAGE_DIR);
@@ -55,11 +57,6 @@ public class Import {
 
         for (Object objKey : objKeys) {
             String key = (String) objKey;
-            String value = props.getProperty(key);
-            // Skip untranslated values
-            if (value.trim().length() == 0) {
-                continue;
-            }
             CompositeKey cKey = new CompositeKey(key);
 
             if (!cKey.pkg.equals(currentPkg)) {
@@ -69,17 +66,17 @@ public class Import {
                 }
                 File outFile = new File(currentPkg.replace('.', File.separatorChar), Constants.L10N_PREFIX + language + Constants.L10N_SUFFIX);
                 FileOutputStream fos = new FileOutputStream(outFile);
-                w = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
-                org.apache.tomcat.buildutil.Utils.insertLicense(w);
+                w = new OutputStreamWriter(fos, "UTF-8");
+                insertLicense(w);
             }
 
             if (!currentGroup.equals(cKey.group)) {
                 currentGroup = cKey.group;
-                w.write(System.lineSeparator());
+                w.write(LINE_SEP);
             }
 
-            w.write(cKey.key + "=" + Utils.formatValue(value));
-            w.write(System.lineSeparator());
+            w.write(cKey.key + "=" + Utils.formatValue(props.getProperty(key)));
+            w.write(LINE_SEP);
         }
         if (w != null) {
             w.close();
@@ -87,6 +84,36 @@ public class Import {
     }
 
 
+    private static void insertLicense(Writer w) throws IOException {
+        w.write("# Licensed to the Apache Software Foundation (ASF) under one or more");
+        w.write(LINE_SEP);
+        w.write("# contributor license agreements.  See the NOTICE file distributed with");
+        w.write(LINE_SEP);
+        w.write("# this work for additional information regarding copyright ownership.");
+        w.write(LINE_SEP);
+        w.write("# The ASF licenses this file to You under the Apache License, Version 2.0");
+        w.write(LINE_SEP);
+        w.write("# (the \"License\"); you may not use this file except in compliance with");
+        w.write(LINE_SEP);
+        w.write("# the License.  You may obtain a copy of the License at");
+        w.write(LINE_SEP);
+        w.write("#");
+        w.write(LINE_SEP);
+        w.write("#     http://www.apache.org/licenses/LICENSE-2.0");
+        w.write(LINE_SEP);
+        w.write("#");
+        w.write(LINE_SEP);
+        w.write("# Unless required by applicable law or agreed to in writing, software");
+        w.write(LINE_SEP);
+        w.write("# distributed under the License is distributed on an \"AS IS\" BASIS,");
+        w.write(LINE_SEP);
+        w.write("# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.");
+        w.write(LINE_SEP);
+        w.write("# See the License for the specific language governing permissions and");
+        w.write(LINE_SEP);
+        w.write("# limitations under the License.");
+        w.write(LINE_SEP);
+    }
     private static class CompositeKey {
 
         public final String pkg;

@@ -116,7 +116,7 @@ public class DiskFileItemFactory implements FileItemFactory {
      *
      * @return The directory in which temporary files will be located.
      *
-     * @see #setRepository(java.io.File)
+     * @see #setRepository(File)
      *
      */
     public File getRepository() {

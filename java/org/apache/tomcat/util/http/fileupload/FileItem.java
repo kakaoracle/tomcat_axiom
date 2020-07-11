@@ -31,7 +31,7 @@ import java.io.UnsupportedEncodingException;
  * {@link org.apache.tomcat.util.http.fileupload.FileUpload
  * #parseRequest(RequestContext)}), you may
  * either request all contents of the file at once using {@link #get()} or
- * request an {@link java.io.InputStream InputStream} with
+ * request an {@link InputStream InputStream} with
  * {@link #getInputStream()} and process the file without attempting to load
  * it into memory, which may come handy with large files.
  *
@@ -49,10 +49,10 @@ public interface FileItem extends FileItemHeadersSupport {
     // ------------------------------- Methods from javax.activation.DataSource
 
     /**
-     * Returns an {@link java.io.InputStream InputStream} that can be
+     * Returns an {@link InputStream InputStream} that can be
      * used to retrieve the contents of the file.
      *
-     * @return An {@link java.io.InputStream InputStream} that can be
+     * @return An {@link InputStream InputStream} that can be
      *         used to retrieve the contents of the file.
      *
      * @throws IOException if an error occurs.
@@ -191,10 +191,10 @@ public interface FileItem extends FileItemHeadersSupport {
     void setFormField(boolean state);
 
     /**
-     * Returns an {@link java.io.OutputStream OutputStream} that can
+     * Returns an {@link OutputStream OutputStream} that can
      * be used for storing the contents of the file.
      *
-     * @return An {@link java.io.OutputStream OutputStream} that can be used
+     * @return An {@link OutputStream OutputStream} that can be used
      *         for storing the contensts of the file.
      *
      * @throws IOException if an error occurs.

@@ -29,10 +29,21 @@ import org.apache.catalina.tribes.MembershipListener;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+
+/**
+ * <p>Title: </p>
+ *
+ * <p>Description: </p>
+ *
+ * <p>Company: </p>
+ *
+ * @author not attributable
+ * @version 1.0
+ */
 public class LoadTest implements MembershipListener,ChannelListener, Runnable {
     private static final Log log = LogFactory.getLog(LoadTest.class);
     public static int size = 24000;
-    public static final Object mutex = new Object();
+    public static Object mutex = new Object();
     public boolean doRun = true;
 
     public long bytesReceived = 0;
@@ -136,7 +147,7 @@ public class LoadTest implements MembershipListener,ChannelListener, Runnable {
                         if ( debug ) log.error("Unable to send message:"+x.getMessage(),x);
                         log.error("Unable to send message:"+x.getMessage());
                         ChannelException.FaultyMember[] faulty = x.getFaultyMembers();
-                        for (ChannelException.FaultyMember faultyMember : faulty) log.error("Faulty: " + faultyMember);
+                        for (int i=0; i<faulty.length; i++ ) log.error("Faulty: "+faulty[i]);
                         --counter;
                         if ( this.breakonChannelException ) throw x;
                     }
@@ -230,8 +241,8 @@ public class LoadTest implements MembershipListener,ChannelListener, Runnable {
 
     public static void printArray(byte[] data) {
         System.out.print("{");
-        for (byte datum : data) {
-            System.out.print(datum);
+        for (int i=0; i<data.length; i++ ) {
+            System.out.print(data[i]);
             System.out.print(",");
         }
         System.out.println("} size:"+data.length);
@@ -241,7 +252,7 @@ public class LoadTest implements MembershipListener,ChannelListener, Runnable {
     public static class LoadMessage extends ByteMessage {
 
         public static byte[] outdata = new byte[size];
-        public static final Random r = new Random();
+        public static Random r = new Random();
         public static int getMessageSize (LoadMessage msg) {
             return msg.getMessage().length;
         }

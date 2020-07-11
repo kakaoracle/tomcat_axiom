@@ -160,7 +160,7 @@ public final class NetMask {
     /**
      * Test if a given address matches this netmask.
      *
-     * @param addr The {@link java.net.InetAddress} to test
+     * @param addr The {@link InetAddress} to test
      * @return true on match, false otherwise
      */
     public boolean matches(final InetAddress addr) {

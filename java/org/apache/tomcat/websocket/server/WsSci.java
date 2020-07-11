@@ -16,6 +16,7 @@
  */
 package org.apache.tomcat.websocket.server;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.Set;
@@ -31,7 +32,9 @@ import javax.websocket.server.ServerApplicationConfig;
 import javax.websocket.server.ServerEndpoint;
 import javax.websocket.server.ServerEndpointConfig;
 
-import org.apache.tomcat.util.compat.JreCompat;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Registers an interest in any class that is annotated with
@@ -42,9 +45,24 @@ import org.apache.tomcat.util.compat.JreCompat;
         Endpoint.class})
 public class WsSci implements ServletContainerInitializer {
 
+    private static boolean logMessageWritten = false;
+
+    private final Log log = LogFactory.getLog(WsSci.class); // must not be static
+    private static final StringManager sm = StringManager.getManager(WsSci.class);
+
     @Override
     public void onStartup(Set<Class<?>> clazzes, ServletContext ctx)
             throws ServletException {
+
+        if (!isJava7OrLater()) {
+            // The WebSocket implementation requires Java 7 so don't initialise
+            // it if Java 7 is not available.
+            if (!logMessageWritten) {
+                logMessageWritten = true;
+                log.info(sm.getString("sci.noWebSocketSupport"));
+            }
+            return;
+        }
 
         WsServerContainer sc = init(ctx, true);
 
@@ -53,23 +71,19 @@ public class WsSci implements ServletContainerInitializer {
         }
 
         // Group the discovered classes by type
-        Set<ServerApplicationConfig> serverApplicationConfigs = new HashSet<>();
-        Set<Class<? extends Endpoint>> scannedEndpointClazzes = new HashSet<>();
-        Set<Class<?>> scannedPojoEndpoints = new HashSet<>();
+        Set<ServerApplicationConfig> serverApplicationConfigs = new HashSet<ServerApplicationConfig>();
+        Set<Class<? extends Endpoint>> scannedEndpointClazzes = new HashSet<Class<? extends Endpoint>>();
+        Set<Class<?>> scannedPojoEndpoints = new HashSet<Class<?>>();
 
         try {
             // wsPackage is "javax.websocket."
             String wsPackage = ContainerProvider.class.getName();
             wsPackage = wsPackage.substring(0, wsPackage.lastIndexOf('.') + 1);
             for (Class<?> clazz : clazzes) {
-                JreCompat jreCompat = JreCompat.getInstance();
                 int modifiers = clazz.getModifiers();
                 if (!Modifier.isPublic(modifiers) ||
-                        Modifier.isAbstract(modifiers) ||
-                        Modifier.isInterface(modifiers) ||
-                        !jreCompat.isExported(clazz)) {
-                    // Non-public, abstract, interface or not in an exported
-                    // package (Java 9+) - skip it.
+                        Modifier.isAbstract(modifiers)) {
+                    // Non-public or abstract - skip it.
                     continue;
                 }
                 // Protect against scanning the WebSocket API JARs
@@ -90,13 +104,23 @@ public class WsSci implements ServletContainerInitializer {
                     scannedPojoEndpoints.add(clazz);
                 }
             }
-        } catch (ReflectiveOperationException e) {
+        } catch (InstantiationException e) {
+            throw new ServletException(e);
+        } catch (IllegalArgumentException e) {
+            throw new ServletException(e);
+        } catch (SecurityException e) {
+            throw new ServletException(e);
+        } catch (IllegalAccessException e) {
+            throw new ServletException(e);
+        } catch (InvocationTargetException e) {
+            throw new ServletException(e);
+        } catch (NoSuchMethodException e) {
             throw new ServletException(e);
         }
 
         // Filter the results
-        Set<ServerEndpointConfig> filteredEndpointConfigs = new HashSet<>();
-        Set<Class<?>> filteredPojoEndpoints = new HashSet<>();
+        Set<ServerEndpointConfig> filteredEndpointConfigs = new HashSet<ServerEndpointConfig>();
+        Set<Class<?>> filteredPojoEndpoints = new HashSet<Class<?>>();
 
         if (serverApplicationConfigs.isEmpty()) {
             filteredPojoEndpoints.addAll(scannedPojoEndpoints);
@@ -147,5 +171,15 @@ public class WsSci implements ServletContainerInitializer {
         }
 
         return sc;
+    }
+
+
+    private static boolean isJava7OrLater() {
+        try {
+            Class.forName("java.nio.channels.AsynchronousSocketChannel");
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+        return true;
     }
 }

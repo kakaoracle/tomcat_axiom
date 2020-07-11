@@ -19,7 +19,6 @@ package org.apache.catalina.util;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.nio.charset.Charset;
 import java.util.BitSet;
 
 /**
@@ -34,9 +33,9 @@ import java.util.BitSet;
  * @author Craig R. McClanahan
  * @author Remy Maucherat
  */
-public final class URLEncoder implements Cloneable {
+public class URLEncoder implements Cloneable {
 
-    private static final char[] hexadecimal =
+    protected static final char[] hexadecimal =
             {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
     public static final URLEncoder DEFAULT = new URLEncoder();
@@ -98,8 +97,8 @@ public final class URLEncoder implements Cloneable {
         QUERY.addSafeCharacter('&');
     }
 
-    //Array containing the safe characters set.
-    private final BitSet safeCharacters;
+    // Array containing the safe characters set.
+    protected BitSet safeCharacters;
 
     private boolean encodeSpaceAsPlus = false;
 
@@ -140,19 +139,39 @@ public final class URLEncoder implements Cloneable {
 
 
     /**
-     * URL encodes the provided path using the given character set.
+     * URL encodes the provided path using UTF-8.
+     *
+     * @param path The path to encode
+     *
+     * @return The encoded path
+     *
+     * @deprecated Use {@link #encode(String, String)}
+     */
+    @Deprecated
+    public String encode(String path) {
+        return encode(path, "UTF-8");
+    }
+
+
+    /**
+     * URL encodes the provided path using the given encoding.
      *
      * @param path      The path to encode
-     * @param charset   The character set to use to convert the path to bytes
+     * @param encoding  The encoding to use to convert the path to bytes
      *
      * @return The encoded path
      */
-    public String encode(String path, Charset charset) {
-
+    public String encode(String path, String encoding) {
         int maxBytesPerChar = 10;
         StringBuilder rewrittenPath = new StringBuilder(path.length());
         ByteArrayOutputStream buf = new ByteArrayOutputStream(maxBytesPerChar);
-        OutputStreamWriter writer = new OutputStreamWriter(buf, charset);
+        OutputStreamWriter writer = null;
+        try {
+            writer = new OutputStreamWriter(buf, encoding);
+        } catch (Exception e) {
+            e.printStackTrace();
+            writer = new OutputStreamWriter(buf);
+        }
 
         for (int i = 0; i < path.length(); i++) {
             int c = path.charAt(i);
@@ -170,8 +189,9 @@ public final class URLEncoder implements Cloneable {
                     continue;
                 }
                 byte[] ba = buf.toByteArray();
-                for (byte toEncode : ba) {
+                for (int j = 0; j < ba.length; j++) {
                     // Converting each byte in the buffer
+                    byte toEncode = ba[j];
                     rewrittenPath.append('%');
                     int low = toEncode & 0x0f;
                     int high = (toEncode & 0xf0) >> 4;

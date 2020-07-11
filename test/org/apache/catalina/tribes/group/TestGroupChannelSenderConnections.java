@@ -51,8 +51,8 @@ public class TestGroupChannelSenderConnections extends LoggingBaseTest {
             channels[i].addChannelListener(listeners[i]);
         }
         TesterUtil.addRandomDomain(channels);
-        for (ManagedChannel channel : channels) {
-            channel.start(Channel.SND_RX_SEQ | Channel.SND_TX_SEQ);
+        for (int i = 0; i < channels.length; i++) {
+            channels[i].start(Channel.SND_RX_SEQ|Channel.SND_TX_SEQ);
         }
     }
 
@@ -116,8 +116,8 @@ public class TestGroupChannelSenderConnections extends LoggingBaseTest {
     @Override
     public void tearDown() throws Exception {
         try {
-            for (ManagedChannel channel : channels) {
-                channel.stop(Channel.DEFAULT);
+            for (int i = 0; i < channels.length; i++) {
+                channels[i].stop(Channel.DEFAULT);
             }
         } finally {
             super.tearDown();
@@ -142,12 +142,13 @@ public class TestGroupChannelSenderConnections extends LoggingBaseTest {
     public static class TestMsg implements Serializable {
         private static final long serialVersionUID = 1L;
         private static Random r = new Random();
-        private HashMap<Integer, ArrayList<Object>> map = new HashMap<>();
+        private HashMap<Integer, ArrayList<Object>> map =
+            new HashMap<Integer, ArrayList<Object>>();
         public TestMsg() {
             int size = Math.abs(r.nextInt() % 200);
             for (int i=0; i<size; i++ ) {
                 int length = Math.abs(r.nextInt() %65000);
-                ArrayList<Object> list = new ArrayList<>(length);
+                ArrayList<Object> list = new ArrayList<Object>(length);
                 map.put(Integer.valueOf(i),list);
             }
         }

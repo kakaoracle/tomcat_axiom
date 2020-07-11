@@ -18,12 +18,11 @@ package org.apache.tomcat.util.http.parser;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.Locale;
 import java.util.Set;
 
-/**
- * @deprecated  Use {@link TokenList}.
- */
-@Deprecated
+import org.apache.tomcat.util.http.parser.HttpParser.SkipResult;
+
 public class Vary {
 
     private Vary() {
@@ -32,6 +31,33 @@ public class Vary {
 
 
     public static void parseVary(StringReader input, Set<String> result) throws IOException {
-        TokenList.parseTokenList(input, result);
+
+        do {
+            String fieldName = HttpParser.readToken(input);
+            if (fieldName == null) {
+                // Invalid field-name, skip to the next one
+                HttpParser.skipUntil(input, 0, ',');
+                continue;
+            }
+
+            if (fieldName.length() == 0) {
+                // No more data to read
+                break;
+            }
+
+            SkipResult skipResult = HttpParser.skipConstant(input, ",");
+            if (skipResult == SkipResult.EOF) {
+                // EOF
+                result.add(fieldName.toLowerCase(Locale.ENGLISH));
+                break;
+            } else if (skipResult == SkipResult.FOUND) {
+                result.add(fieldName.toLowerCase(Locale.ENGLISH));
+                continue;
+            } else {
+                // Not a token - ignore it
+                HttpParser.skipUntil(input, 0, ',');
+                continue;
+            }
+        } while (true);
     }
 }

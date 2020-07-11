@@ -17,27 +17,32 @@
 package org.apache.tomcat.websocket.server;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import javax.servlet.ServletContextEvent;
 import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCode;
 import javax.websocket.CloseReason.CloseCodes;
+import javax.websocket.DeploymentException;
 import javax.websocket.OnClose;
 import javax.websocket.OnError;
 import javax.websocket.OnMessage;
 import javax.websocket.OnOpen;
 import javax.websocket.Session;
+import javax.websocket.server.ServerContainer;
 import javax.websocket.server.ServerEndpointConfig;
 
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
+import org.apache.catalina.Context;
+import org.apache.catalina.LifecycleException;
+import org.apache.catalina.servlets.DefaultServlet;
+import org.apache.catalina.startup.Tomcat;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.websocket.WebSocketBaseTest;
@@ -86,7 +91,10 @@ public class TestClose extends WebSocketBaseTest {
 
 
     public static void awaitOnClose(CloseCode... codes) {
-        Set<CloseCode> set = new HashSet<>(Arrays.asList(codes));
+        Set<CloseCode> set = new HashSet<CloseCode>();
+        for (CloseCode code : codes) {
+            set.add(code);
+        }
         awaitOnClose(set);
     }
 
@@ -115,13 +123,9 @@ public class TestClose extends WebSocketBaseTest {
 
     @Test
     public void testTcpClose() throws Exception {
-        // TODO
-        Assume.assumeFalse("This test currently fails for APR",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Apr"));
-
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
         client.closeSocket();
 
@@ -133,7 +137,7 @@ public class TestClose extends WebSocketBaseTest {
     public void testTcpReset() throws Exception {
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
         client.forceCloseSocket();
 
@@ -147,7 +151,7 @@ public class TestClose extends WebSocketBaseTest {
     public void testWsCloseThenTcpClose() throws Exception {
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
         client.sendCloseFrame(CloseCodes.GOING_AWAY);
         client.closeSocket();
@@ -160,7 +164,7 @@ public class TestClose extends WebSocketBaseTest {
     public void testWsCloseThenTcpReset() throws Exception {
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
         client.sendCloseFrame(CloseCodes.GOING_AWAY);
         client.forceCloseSocket();
@@ -178,15 +182,11 @@ public class TestClose extends WebSocketBaseTest {
 
     @Test
     public void testTcpCloseInOnMessage() throws Exception {
-        // TODO
-        Assume.assumeFalse("This test currently fails for APR",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Apr"));
-
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
-        client.sendTextMessage("Test");
+        client.sendMessage("Test");
         awaitLatch(events.onMessageCalled, "onMessage not called");
 
         client.closeSocket();
@@ -200,9 +200,9 @@ public class TestClose extends WebSocketBaseTest {
     public void testTcpResetInOnMessage() throws Exception {
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
-        client.sendTextMessage("Test");
+        client.sendMessage("Test");
         awaitLatch(events.onMessageCalled, "onMessage not called");
 
         client.forceCloseSocket();
@@ -233,16 +233,17 @@ public class TestClose extends WebSocketBaseTest {
 
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
-        client.sendTextMessage("Test");
+        client.sendMessage("Test");
         awaitLatch(events.onMessageCalled, "onMessage not called");
 
         client.sendCloseFrame(CloseCodes.NORMAL_CLOSURE);
         client.closeSocket();
         events.onMessageWait.countDown();
 
-        awaitOnClose(CloseCodes.CLOSED_ABNORMALLY);
+        // BIO will see close from client before it sees the TCP close
+        awaitOnClose(CloseCodes.CLOSED_ABNORMALLY, CloseCodes.NORMAL_CLOSURE);
     }
 
 
@@ -252,16 +253,17 @@ public class TestClose extends WebSocketBaseTest {
 
         startServer(TestEndpointConfig.class);
 
-        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        TesterWsCloseClient client = new TesterWsCloseClient("localhost", getPort());
         client.httpUpgrade(BaseEndpointConfig.PATH);
-        client.sendTextMessage("Test");
+        client.sendMessage("Test");
         awaitLatch(events.onMessageCalled, "onMessage not called");
 
         client.sendCloseFrame(CloseCodes.NORMAL_CLOSURE);
         client.forceCloseSocket();
         events.onMessageWait.countDown();
 
-        awaitOnClose(CloseCodes.CLOSED_ABNORMALLY);
+        // APR will see close from client before it sees the TCP reset
+        awaitOnClose(CloseCodes.CLOSED_ABNORMALLY, CloseCodes.NORMAL_CLOSURE);
     }
 
 
@@ -293,7 +295,9 @@ public class TestClose extends WebSocketBaseTest {
                         session.getBasicRemote().sendText("Test reply");
                         Thread.sleep(500);
                     }
-                } catch (IOException | InterruptedException e) {
+                } catch (IOException e) {
+                    // Expected to fail
+                } catch (InterruptedException e) {
                     // Expected to fail
                 }
             }
@@ -325,13 +329,45 @@ public class TestClose extends WebSocketBaseTest {
     }
 
 
-    public abstract static class BaseEndpointConfig extends TesterEndpointConfig {
+    private Tomcat startServer(
+            final Class<? extends WsContextListener> configClass)
+            throws LifecycleException {
+
+        Tomcat tomcat = getTomcatInstance();
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+        ctx.addApplicationListener(configClass.getName());
+        Tomcat.addServlet(ctx, "default", new DefaultServlet());
+        ctx.addServletMapping("/", "default");
+
+        tomcat.start();
+        return tomcat;
+    }
+
+
+    public abstract static class BaseEndpointConfig extends WsContextListener {
 
         public static final String PATH = "/test";
 
+        protected abstract Class<?> getEndpointClass();
+
         @Override
-        protected ServerEndpointConfig getServerEndpointConfig() {
-            return ServerEndpointConfig.Builder.create(getEndpointClass(), PATH).build();
+        public void contextInitialized(ServletContextEvent sce) {
+            super.contextInitialized(sce);
+
+            ServerContainer sc = (ServerContainer) sce
+                    .getServletContext()
+                    .getAttribute(
+                            Constants.SERVER_CONTAINER_SERVLET_CONTEXT_ATTRIBUTE);
+
+            ServerEndpointConfig sec = ServerEndpointConfig.Builder.create(
+                    getEndpointClass(), PATH).build();
+
+            try {
+                sc.addEndpoint(sec);
+            } catch (DeploymentException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

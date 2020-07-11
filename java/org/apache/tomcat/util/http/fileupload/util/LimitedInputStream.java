@@ -92,7 +92,7 @@ public abstract class LimitedInputStream extends FilterInputStream implements Cl
      * @return     the next byte of data, or <code>-1</code> if the end of the
      *             stream is reached.
      * @throws  IOException  if an I/O error occurs.
-     * @see        java.io.FilterInputStream#in
+     * @see        FilterInputStream#in
      */
     @Override
     public int read() throws IOException {
@@ -125,7 +125,7 @@ public abstract class LimitedInputStream extends FilterInputStream implements Cl
      * <code>len</code> is negative, or <code>len</code> is greater than
      * <code>b.length - off</code>
      * @throws  IOException  if an I/O error occurs.
-     * @see        java.io.FilterInputStream#in
+     * @see        FilterInputStream#in
      */
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
@@ -155,7 +155,7 @@ public abstract class LimitedInputStream extends FilterInputStream implements Cl
      * method simply performs <code>in.close()</code>.
      *
      * @throws  IOException  if an I/O error occurs.
-     * @see        java.io.FilterInputStream#in
+     * @see        FilterInputStream#in
      */
     @Override
     public void close() throws IOException {

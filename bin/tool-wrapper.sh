@@ -119,7 +119,7 @@ fi
 if [ ! -z "$CLASSPATH" ] ; then
   CLASSPATH="$CLASSPATH":
 fi
-CLASSPATH="$CLASSPATH""$CATALINA_HOME"/bin/bootstrap.jar:"$CATALINA_HOME"/bin/tomcat-juli.jar:"$CATALINA_HOME"/lib/servlet-api.jar:"$CATALINA_HOME"/lib/tomcat-util.jar
+CLASSPATH="$CLASSPATH""$CATALINA_HOME"/bin/bootstrap.jar:"$CATALINA_HOME"/bin/tomcat-juli.jar:"$CATALINA_HOME"/lib/servlet-api.jar:"$CATALINA_HOME"/lib/tomcat-coyote.jar
 
 # For Cygwin, switch paths to Windows format before running java
 if $cygwin; then
@@ -146,8 +146,8 @@ JAVA_OPTS="$JAVA_OPTS -Djava.util.logging.manager=org.apache.juli.ClassLoaderLog
 
 # ----- Execute The Requested Command -----------------------------------------
 
-eval exec "\"$_RUNJAVA\"" "$JAVA_OPTS" "$TOOL_OPTS" \
-  -D$ENDORSED_PROP="\"$JAVA_ENDORSED_DIRS\"" \
-  -classpath "\"$CLASSPATH\"" \
-  -Dcatalina.home="\"$CATALINA_HOME\"" \
+exec "$_RUNJAVA" $JAVA_OPTS $TOOL_OPTS \
+  -D$ENDORSED_PROP="$JAVA_ENDORSED_DIRS" \
+  -classpath "$CLASSPATH" \
+  -Dcatalina.home="$CATALINA_HOME" \
   org.apache.catalina.startup.Tool "$@"

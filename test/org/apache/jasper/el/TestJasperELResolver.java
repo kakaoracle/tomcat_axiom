@@ -19,15 +19,12 @@ package org.apache.jasper.el;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.el.ELResolver;
 import javax.servlet.jsp.el.ImplicitObjectELResolver;
 
 import org.junit.Assert;
 import org.junit.Test;
-
-import org.apache.el.stream.StreamELResolverImpl;
 
 public class TestJasperELResolver {
 
@@ -48,21 +45,20 @@ public class TestJasperELResolver {
 
     private void doTestConstructor(int count) throws Exception {
 
-        List<ELResolver> list = new ArrayList<>();
+        List<ELResolver> list = new ArrayList<ELResolver>();
         for (int i = 0; i < count; i++) {
             list.add(new ImplicitObjectELResolver());
         }
 
-        JasperELResolver resolver =
-                new JasperELResolver(list, new StreamELResolverImpl());
+        JasperELResolver resolver = new JasperELResolver(list);
 
 
         Assert.assertEquals(Integer.valueOf(count),
                 getField("appResolversSize", resolver));
-        Assert.assertEquals(9 + count,
+        Assert.assertEquals(7 + count,
                 ((ELResolver[])getField("resolvers", resolver)).length);
-        Assert.assertEquals(Integer.valueOf(9 + count),
-                Integer.valueOf(((AtomicInteger) getField("resolversSize", resolver)).get()));
+        Assert.assertEquals(Integer.valueOf(7 + count),
+                getField("size", resolver));
     }
 
     private static final Object getField(String name, Object target)

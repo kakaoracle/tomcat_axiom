@@ -17,6 +17,7 @@
 package org.apache.catalina.realm;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.KeyManagementException;
@@ -62,7 +63,6 @@ import javax.net.ssl.SSLSocketFactory;
 
 import org.apache.catalina.LifecycleException;
 import org.ietf.jgss.GSSCredential;
-import org.ietf.jgss.GSSName;
 
 /**
  * <p>Implementation of <strong>Realm</strong> that works with a directory
@@ -232,6 +232,18 @@ public class JNDIRealm extends RealmBase {
      * the manner in which aliases should be dereferenced.
      */
     public static final String DEREF_ALIASES = "java.naming.ldap.derefAliases";
+
+    /**
+     * Descriptive information about this Realm implementation.
+     */
+    protected static final String info =
+        "org.apache.catalina.realm.JNDIRealm/1.0";
+
+
+    /**
+     * Descriptive information about this Realm implementation.
+     */
+    protected static final String name = "JNDIRealm";
 
 
     /**
@@ -620,7 +632,7 @@ public class JNDIRealm extends RealmBase {
     /**
      * @return the derefAliases setting to be used.
      */
-    public java.lang.String getDerefAliases() {
+    public String getDerefAliases() {
         return derefAliases;
     }
 
@@ -629,7 +641,7 @@ public class JNDIRealm extends RealmBase {
      *
      * @param derefAliases New value of property derefAliases.
      */
-    public void setDerefAliases(java.lang.String derefAliases) {
+    public void setDerefAliases(String derefAliases) {
       this.derefAliases = derefAliases;
     }
 
@@ -1115,6 +1127,17 @@ public class JNDIRealm extends RealmBase {
 
 
     /**
+     * Return descriptive information about this Realm implementation and
+     * the corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    @Override
+    public String getInfo() {
+        return info;
+    }
+
+
+    /**
      * @return flag whether to use StartTLS for connections to the ldap server
      */
     public boolean getUseStartTls() {
@@ -1212,7 +1235,31 @@ public class JNDIRealm extends RealmBase {
                         "jndiRealm.invalidHostnameVerifier",
                         hostNameVerifierClassName));
             }
-        } catch (ReflectiveOperationException | SecurityException e) {
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidHostnameVerifier",
+                    hostNameVerifierClassName), e);
+        } catch (SecurityException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidHostnameVerifier",
+                    hostNameVerifierClassName), e);
+        } catch (InstantiationException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidHostnameVerifier",
+                    hostNameVerifierClassName), e);
+        } catch (IllegalAccessException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidHostnameVerifier",
+                    hostNameVerifierClassName), e);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidHostnameVerifier",
+                    hostNameVerifierClassName), e);
+        } catch (InvocationTargetException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidHostnameVerifier",
+                    hostNameVerifierClassName), e);
+        } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException(sm.getString(
                     "jndiRealm.invalidHostnameVerifier",
                     hostNameVerifierClassName), e);
@@ -1256,7 +1303,8 @@ public class JNDIRealm extends RealmBase {
     }
 
     private Object constructInstance(String className)
-            throws ReflectiveOperationException {
+            throws ClassNotFoundException, InstantiationException,
+            IllegalAccessException, IllegalArgumentException, SecurityException, InvocationTargetException, NoSuchMethodException {
         Class<?> clazz = Class.forName(className);
         return clazz.getConstructor().newInstance();
     }
@@ -1295,7 +1343,26 @@ public class JNDIRealm extends RealmBase {
                 // Authenticate the specified username if possible
                 principal = authenticate(context, username, credentials);
 
-            } catch (NullPointerException | NamingException e) {
+            } catch (NullPointerException e) {
+                /*
+                 * BZ 42449
+                 * Catch NPE - Kludge Sun's LDAP provider with broken SSL.
+                 */
+
+                // log the exception so we know it's there.
+                containerLog.info(sm.getString("jndiRealm.exception.retry"), e);
+
+                // close the connection so we know it will be reopened.
+                if (context != null)
+                    close(context);
+
+                // open a new directory context.
+                context = open();
+
+                // Try the authentication again.
+                principal = authenticate(context, username, credentials);
+
+            } catch (NamingException e) {
                 /*
                  * BZ 61313
                  * NamingException may or may not indicate an error that is
@@ -1304,11 +1371,6 @@ public class JNDIRealm extends RealmBase {
                  * fail over when it is not appropriate is better than not
                  * failing over when it is appropriate so the code always
                  * attempts to fail over for NamingExceptions.
-                 */
-
-                /*
-                 * BZ 42449
-                 * Catch NPE - Kludge Sun's LDAP provider with broken SSL.
                  */
 
                 // log the exception so we know it's there.
@@ -1495,7 +1557,7 @@ public class JNDIRealm extends RealmBase {
         User user = null;
 
         // Get attributes to retrieve from user entry
-        List<String> list = new ArrayList<>();
+        ArrayList<String> list = new ArrayList<String>();
         if (userPassword != null)
             list.add(userPassword);
         if (userRoleName != null)
@@ -1528,6 +1590,7 @@ public class JNDIRealm extends RealmBase {
                 containerLog.debug("Found user by search [" + user + "]");
             }
         }
+
         if (userPassword == null && credentials != null && user != null) {
             // The password is available. Insert it since it may be required for
             // role searches.
@@ -1668,7 +1731,8 @@ public class JNDIRealm extends RealmBase {
 
         if (userSubtree) {
             constraints.setSearchScope(SearchControls.SUBTREE_SCOPE);
-        } else {
+        }
+        else {
             constraints.setSearchScope(SearchControls.ONELEVEL_SCOPE);
         }
 
@@ -1810,7 +1874,7 @@ public class JNDIRealm extends RealmBase {
 
         String password = info.getPassword();
 
-        return getCredentialHandler().matches(credentials, password);
+        return compareCredentials(credentials, password);
     }
 
 
@@ -1899,7 +1963,8 @@ public class JNDIRealm extends RealmBase {
         if (connectionPassword != null) {
             context.addToEnvironment(Context.SECURITY_CREDENTIALS,
                                      connectionPassword);
-        } else {
+        }
+        else {
             context.removeFromEnvironment(Context.SECURITY_CREDENTIALS);
         }
     }
@@ -1932,7 +1997,7 @@ public class JNDIRealm extends RealmBase {
             containerLog.trace("  getRoles(" + dn + ")");
 
         // Start with roles retrieved from the user entry
-        List<String> list = new ArrayList<>();
+        List<String> list = new ArrayList<String>();
         List<String> userRoles = user.getRoles();
         if (userRoles != null) {
             list.addAll(userRoles);
@@ -1978,7 +2043,7 @@ public class JNDIRealm extends RealmBase {
         if (results == null)
             return list;  // Should never happen, but just in case ...
 
-        Map<String, String> groupMap = new HashMap<>();
+        HashMap<String, String> groupMap = new HashMap<String, String>();
         try {
             while (results.hasMore()) {
                 SearchResult result = results.next();
@@ -2013,9 +2078,9 @@ public class JNDIRealm extends RealmBase {
             // Directory Groups". It avoids group slurping and handles cyclic group memberships as well.
             // See http://middleware.internet2.edu/dir/ for details
 
-            Map<String, String> newGroups = new HashMap<>(groupMap);
+            Map<String, String> newGroups = new HashMap<String,String>(groupMap);
             while (!newGroups.isEmpty()) {
-                Map<String, String> newThisRound = new HashMap<>(); // Stores the groups we find in this iteration
+                Map<String, String> newThisRound = new HashMap<String, String>(); // Stores the groups we find in this iteration
 
                 for (Entry<String, String> group : newGroups.entrySet()) {
                     filter = roleFormat.format(new String[] { doRFC2254Encoding(group.getKey()),
@@ -2154,7 +2219,7 @@ public class JNDIRealm extends RealmBase {
         if (attrId == null || attrs == null)
             return values;
         if (values == null)
-            values = new ArrayList<>();
+            values = new ArrayList<String>();
         Attribute attr = attrs.get(attrId);
         if (attr == null)
             return values;
@@ -2206,6 +2271,12 @@ public class JNDIRealm extends RealmBase {
     }
 
 
+    @Override
+    protected String getName() {
+        return name;
+    }
+
+
     /**
      * Get the password for the specified user.
      * @param username The user name
@@ -2220,7 +2291,7 @@ public class JNDIRealm extends RealmBase {
 
         try {
             User user = getUser(open(), username, null);
-            if (user == null) {
+             if (user == null) {
                 // User should be found...
                 return null;
             } else {
@@ -2244,22 +2315,6 @@ public class JNDIRealm extends RealmBase {
     }
 
     @Override
-    protected Principal getPrincipal(GSSName gssName,
-            GSSCredential gssCredential) {
-        String name = gssName.toString();
-
-        if (isStripRealmForGss()) {
-            int i = name.indexOf('@');
-            if (i > 0) {
-                // Zero so we don't leave a zero length name
-                name = name.substring(0, i);
-            }
-        }
-
-        return getPrincipal(name, gssCredential);
-    }
-
-    @Override
     protected Principal getPrincipal(String username,
             GSSCredential gssCredential) {
 
@@ -2278,7 +2333,22 @@ public class JNDIRealm extends RealmBase {
                 // Authenticate the specified username if possible
                 principal = getPrincipal(context, username, gssCredential);
 
-            } catch (CommunicationException | ServiceUnavailableException e) {
+            } catch (CommunicationException e) {
+
+                // log the exception so we know it's there.
+                containerLog.info(sm.getString("jndiRealm.exception.retry"), e);
+
+                // close the connection so we know it will be reopened.
+                if (context != null)
+                    close(context);
+
+                // open a new directory context.
+                context = open();
+
+                // Try the authentication again.
+                principal = getPrincipal(context, username, gssCredential);
+
+            } catch (ServiceUnavailableException e) {
 
                 // log the exception so we know it's there.
                 containerLog.info(sm.getString("jndiRealm.exception.retry"), e);
@@ -2355,14 +2425,12 @@ public class JNDIRealm extends RealmBase {
                 roles = getRoles(context, user);
             }
         } finally {
-            if (gssCredential != null && isUseDelegatedCredential()) {
-                restoreEnvironmentParameter(context,
-                        Context.SECURITY_AUTHENTICATION, preservedEnvironment);
-                restoreEnvironmentParameter(context,
-                        "javax.security.sasl.server.authentication", preservedEnvironment);
-                restoreEnvironmentParameter(context, "javax.security.sasl.qop",
-                        preservedEnvironment);
-            }
+            restoreEnvironmentParameter(context,
+                    Context.SECURITY_AUTHENTICATION, preservedEnvironment);
+            restoreEnvironmentParameter(context,
+                    "javax.security.sasl.server.authentication", preservedEnvironment);
+            restoreEnvironmentParameter(context, "javax.security.sasl.qop",
+                    preservedEnvironment);
         }
 
         if (user != null) {
@@ -2406,7 +2474,13 @@ public class JNDIRealm extends RealmBase {
         } catch (Exception e) {
             if (alternateURL == null || alternateURL.length() == 0) {
                 // No alternate URL. Re-throw the exception.
-                throw e;
+                if (e instanceof NamingException) {
+                    throw (NamingException) e;
+                } else if (e instanceof RuntimeException) {
+                    throw (RuntimeException) e;
+                }
+                // Not possible to reach this point and not throw an exception.
+                // Later versions of Java allow us to simply use "throw e" here.
             }
 
             connectionAttempt = 1;
@@ -2427,12 +2501,6 @@ public class JNDIRealm extends RealmBase {
 
         return context;
 
-    }
-
-    @Override
-    public boolean isAvailable() {
-        // Simple best effort check
-        return (context != null);
     }
 
     private DirContext createDirContext(Hashtable<String, String> env) throws NamingException {
@@ -2468,7 +2536,31 @@ public class JNDIRealm extends RealmBase {
                         "jndiRealm.invalidSslSocketFactory",
                         className));
             }
-        } catch (ReflectiveOperationException | SecurityException e) {
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidSslSocketFactory",
+                    className), e);
+        } catch (SecurityException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidSslSocketFactory",
+                    className), e);
+        } catch (InstantiationException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidSslSocketFactory",
+                    className), e);
+        } catch (IllegalAccessException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidSslSocketFactory",
+                    className), e);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidSslSocketFactory",
+                    className), e);
+        } catch (InvocationTargetException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidSslSocketFactory",
+                    className), e);
+        } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException(sm.getString(
                     "jndiRealm.invalidSslSocketFactory",
                     className), e);
@@ -2485,7 +2577,13 @@ public class JNDIRealm extends RealmBase {
                 sslContext = SSLContext.getDefault();
             }
             return sslContext.getSocketFactory();
-        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+        } catch (NoSuchAlgorithmException e) {
+            List<String> allowedProtocols = Arrays
+                    .asList(getSupportedSslProtocols());
+            throw new IllegalArgumentException(
+                    sm.getString("jndiRealm.invalidSslProtocol", protocol,
+                            allowedProtocols), e);
+        } catch (KeyManagementException e) {
             List<String> allowedProtocols = Arrays
                     .asList(getSupportedSslProtocols());
             throw new IllegalArgumentException(
@@ -2506,7 +2604,7 @@ public class JNDIRealm extends RealmBase {
      */
     private DirContext createTlsDirContext(
             Hashtable<String, String> env) throws NamingException {
-        Map<String, Object> savedEnv = new HashMap<>();
+        Map<String, Object> savedEnv = new HashMap<String, Object>();
         for (String key : Arrays.asList(Context.SECURITY_AUTHENTICATION,
                 Context.SECURITY_CREDENTIALS, Context.SECURITY_PRINCIPAL,
                 Context.SECURITY_PROTOCOL)) {
@@ -2535,7 +2633,7 @@ public class JNDIRealm extends RealmBase {
             }
         } finally {
             if (result != null) {
-                for (Map.Entry<String, Object> savedEntry : savedEnv.entrySet()) {
+                for (Entry<String, Object> savedEntry : savedEnv.entrySet()) {
                     result.addToEnvironment(savedEntry.getKey(),
                             savedEntry.getValue());
                 }
@@ -2551,7 +2649,7 @@ public class JNDIRealm extends RealmBase {
      */
     protected Hashtable<String,String> getDirectoryContextEnvironment() {
 
-        Hashtable<String,String> env = new Hashtable<>();
+        Hashtable<String,String> env = new Hashtable<String,String>();
 
         // Configure our directory context environment.
         if (containerLog.isDebugEnabled() && connectionAttempt == 0)
@@ -2657,7 +2755,7 @@ public class JNDIRealm extends RealmBase {
     protected String[] parseUserPatternString(String userPatternString) {
 
         if (userPatternString != null) {
-            List<String> pathList = new ArrayList<>();
+            ArrayList<String> pathList = new ArrayList<String>();
             int startParenLoc = userPatternString.indexOf('(');
             if (startParenLoc == -1) {
                 // no parens here; return whole thing
@@ -2748,41 +2846,43 @@ public class JNDIRealm extends RealmBase {
         // Get the entry's distinguished name.  For relative results, this means
         // we need to composite a name with the base name, the context name, and
         // the result name.  For non-relative names, use the returned name.
-        String resultName = result.getName();
         Name name;
         if (result.isRelative()) {
            if (containerLog.isTraceEnabled()) {
-               containerLog.trace("  search returned relative name: " + resultName);
+               containerLog.trace("  search returned relative name: " +
+                       result.getName());
            }
            NameParser parser = context.getNameParser("");
            Name contextName = parser.parse(context.getNameInNamespace());
            Name baseName = parser.parse(base);
 
            // Bugzilla 32269
-           Name entryName = parser.parse(new CompositeName(resultName).get(0));
+           Name entryName =
+               parser.parse(new CompositeName(result.getName()).get(0));
 
            name = contextName.addAll(baseName);
            name = name.addAll(entryName);
         } else {
-           if (containerLog.isTraceEnabled()) {
-               containerLog.trace("  search returned absolute name: " + resultName);
-           }
+           String absoluteName = result.getName();
+           if (containerLog.isTraceEnabled())
+               containerLog.trace("  search returned absolute name: " +
+                       result.getName());
            try {
                // Normalize the name by running it through the name parser.
                NameParser parser = context.getNameParser("");
-               URI userNameUri = new URI(resultName);
+               URI userNameUri = new URI(absoluteName);
                String pathComponent = userNameUri.getPath();
                // Should not ever have an empty path component, since that is /{DN}
                if (pathComponent.length() < 1 ) {
                    throw new InvalidNameException(
                            "Search returned unparseable absolute name: " +
-                           resultName );
+                           absoluteName );
                }
                name = parser.parse(pathComponent.substring(1));
            } catch ( URISyntaxException e ) {
                throw new InvalidNameException(
                        "Search returned unparseable absolute name: " +
-                       resultName );
+                       absoluteName );
            }
         }
 

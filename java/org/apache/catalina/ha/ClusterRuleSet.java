@@ -14,18 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina.ha;
 
+
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSet;
+import org.apache.tomcat.util.digester.RuleSetBase;
+
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a
  * Cluster definition element.  </p>
  *
+ * @author Filip Hanik
  * @author Peter Rossbach
  */
-public class ClusterRuleSet implements RuleSet {
+public class ClusterRuleSet extends RuleSetBase {
 
 
     // ----------------------------------------------------- Instance Variables
@@ -34,7 +39,7 @@ public class ClusterRuleSet implements RuleSet {
     /**
      * The matching pattern prefix to use for recognizing our elements.
      */
-    protected final String prefix;
+    protected String prefix = null;
 
 
     // ------------------------------------------------------------ Constructor
@@ -45,7 +50,9 @@ public class ClusterRuleSet implements RuleSet {
      * matching pattern prefix.
      */
     public ClusterRuleSet() {
+
         this("");
+
     }
 
 
@@ -57,6 +64,8 @@ public class ClusterRuleSet implements RuleSet {
      *  trailing slash character)
      */
     public ClusterRuleSet(String prefix) {
+        super();
+        this.namespaceURI = null;
         this.prefix = prefix;
     }
 
@@ -110,23 +119,6 @@ public class ClusterRuleSet implements RuleSet {
         digester.addSetNext(channelPrefix + "Membership",
                             "setMembershipService",
                             "org.apache.catalina.tribes.MembershipService");
-
-        // add
-        digester.addObjectCreate(channelPrefix + "Membership/LocalMember",
-                                 null, // MUST be specified in the element
-                                 "className");
-        digester.addSetProperties(channelPrefix + "Membership/LocalMember");
-        digester.addSetNext(channelPrefix + "Membership/LocalMember",
-                            "setLocalMember",
-                            "org.apache.catalina.tribes.membership.StaticMember");
-        digester.addObjectCreate(channelPrefix + "Membership/Member",
-                                 null, // MUST be specified in the element
-                                 "className");
-        digester.addSetProperties(channelPrefix + "Membership/Member");
-        digester.addSetNext(channelPrefix + "Membership/Member",
-                            "addStaticMember",
-                            "org.apache.catalina.tribes.membership.StaticMember");
-        //add end
 
         digester.addObjectCreate(channelPrefix + "MembershipListener",
                                  null, // MUST be specified in the element

@@ -28,7 +28,6 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.IntrospectionUtils;
 import org.apache.tomcat.util.digester.Rule;
-import org.apache.tomcat.util.res.StringManager;
 import org.xml.sax.Attributes;
 
 
@@ -39,7 +38,6 @@ import org.xml.sax.Attributes;
 public class ConnectorCreateRule extends Rule {
 
     private static final Log log = LogFactory.getLog(ConnectorCreateRule.class);
-    protected static final StringManager sm = StringManager.getManager(ConnectorCreateRule.class);
     // --------------------------------------------------------- Public Methods
 
 
@@ -56,39 +54,33 @@ public class ConnectorCreateRule extends Rule {
     @Override
     public void begin(String namespace, String name, Attributes attributes)
             throws Exception {
+        // 先获取上层父节点Service
+        // 判断Connector节点是否配置了executor属性，如果配置了，则根据executor名字从父节点service中获取到Executor对象。
+        // 根据Connector节点上配置的protocol协议名来初始化Connector
+        // Connector初始化完成之后，获取对应的ProtocolHandler对象，将executor对象设置进去
+
+        // 从这里可以看出来，如果有多个Connector节点，每个节点可以使用不同的executor，也就是线程池，也可以公用，根据名字来。
+
         Service svc = (Service)digester.peek();
         Executor ex = null;
         if ( attributes.getValue("executor")!=null ) {
             ex = svc.getExecutor(attributes.getValue("executor"));
         }
         Connector con = new Connector(attributes.getValue("protocol"));
-        if (ex != null) {
-            setExecutor(con, ex);
-        }
-        String sslImplementationName = attributes.getValue("sslImplementationName");
-        if (sslImplementationName != null) {
-            setSSLImplementationName(con, sslImplementationName);
-        }
+        if ( ex != null )  _setExecutor(con,ex);
+
         digester.push(con);
     }
 
-    private static void setExecutor(Connector con, Executor ex) throws Exception {
+    public void _setExecutor(Connector con, Executor ex) throws Exception {
         Method m = IntrospectionUtils.findMethod(con.getProtocolHandler().getClass(),"setExecutor",new Class[] {java.util.concurrent.Executor.class});
         if (m!=null) {
             m.invoke(con.getProtocolHandler(), new Object[] {ex});
         }else {
-            log.warn(sm.getString("connector.noSetExecutor", con));
+            log.warn("Connector ["+con+"] does not support external executors. Method setExecutor(java.util.concurrent.Executor) not found.");
         }
     }
 
-    private static void setSSLImplementationName(Connector con, String sslImplementationName) throws Exception {
-        Method m = IntrospectionUtils.findMethod(con.getProtocolHandler().getClass(),"setSslImplementationName",new Class[] {String.class});
-        if (m != null) {
-            m.invoke(con.getProtocolHandler(), new Object[] {sslImplementationName});
-        } else {
-            log.warn(sm.getString("connector.noSetSSLImplementationName", con));
-        }
-    }
 
     /**
      * Process the end of this element.

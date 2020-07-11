@@ -19,6 +19,8 @@ package javax.el;
 import org.junit.Assert;
 import org.junit.Test;
 
+import org.apache.jasper.el.ELContextImpl;
+
 public class TestArrayELResolver {
 
     /**
@@ -45,8 +47,7 @@ public class TestArrayELResolver {
     @Test
     public void testGetType03() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         Class<?> result = resolver.getType(context, base, Integer.valueOf(0));
@@ -61,8 +62,7 @@ public class TestArrayELResolver {
     @Test(expected = PropertyNotFoundException.class)
     public void testGetType04() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         resolver.getType(context, base, Integer.valueOf(1));
@@ -74,29 +74,13 @@ public class TestArrayELResolver {
     @Test
     public void testGetType05() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         Class<?> result = resolver.getType(context, base, "index");
 
         Assert.assertEquals(base.getClass().getComponentType(), result);
         Assert.assertTrue(context.isPropertyResolved());
-    }
-
-    /**
-     * Tests that a null result is returned when the base is null.
-     */
-    @Test
-    public void testGetType06() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        Class<?> result = resolver.getType(context, null, "index");
-
-        Assert.assertNull(result);
-        Assert.assertFalse(context.isPropertyResolved());
     }
 
     /**
@@ -123,8 +107,7 @@ public class TestArrayELResolver {
     @Test
     public void testGetValue03() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         Object result = resolver.getValue(context, base, Integer.valueOf(0));
@@ -133,99 +116,25 @@ public class TestArrayELResolver {
         Assert.assertTrue(context.isPropertyResolved());
     }
 
-    @Test
-    public void testGetValueCoercion01() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        String[] base = new String[] { "element" };
-        Object result = resolver.getValue(context, base, Character.valueOf((char) 0));
-
-        Assert.assertEquals("element", result);
-        Assert.assertTrue(context.isPropertyResolved());
-    }
-
-    @Test
-    public void testGetValueCoercion02a() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        String[] base = new String[] { "element" };
-        Object result = resolver.getValue(context, base, Boolean.FALSE);
-
-        Assert.assertEquals("element", result);
-        Assert.assertTrue(context.isPropertyResolved());
-    }
-
-    @Test
-    public void testGetValueCoercion02b() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        String[] base = new String[] { "element" };
-        Object result = resolver.getValue(context, base, Boolean.TRUE);
-
-        Assert.assertNull(result);
-        Assert.assertTrue(context.isPropertyResolved());
-    }
-
-    @Test
-    public void testGetValueCoercion03() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        String[] base = new String[] { "element" };
-        Object result = resolver.getValue(context, base, "0");
-
-        Assert.assertEquals("element", result);
-        Assert.assertTrue(context.isPropertyResolved());
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void testGetValueCoercion04() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        String[] base = new String[] { "element" };
-        resolver.getValue(context, base, new Object());
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void testGetValueCoercion05() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        String[] base = new String[] { "element" };
-        resolver.getValue(context, base, null);
-    }
-
     /**
      * Tests a coercion cannot be performed as the key is not integer.
      */
     @Test(expected = IllegalArgumentException.class)
-    public void testGetValueCoercion06() {
+    public void testGetValue04() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         resolver.getValue(context, base, "key");
     }
 
     /**
-     * Tests that if the key is out of bounds null will be returned.
+     * Tests that the key is out of bounds and null will be returned.
      */
     @Test
     public void testGetValue05() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         Object result = resolver.getValue(context, base, Integer.valueOf(1));
@@ -263,8 +172,7 @@ public class TestArrayELResolver {
     @Test(expected = PropertyNotWritableException.class)
     public void testSetValue03() {
         ArrayELResolver resolver = new ArrayELResolver(true);
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         resolver.setValue(context, new String[] {}, new Object(), new Object());
     }
@@ -275,8 +183,7 @@ public class TestArrayELResolver {
     @Test
     public void testSetValue04() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         resolver.setValue(context, base, Integer.valueOf(0), "new-element");
@@ -298,8 +205,7 @@ public class TestArrayELResolver {
     @Test(expected = IllegalArgumentException.class)
     public void testSetValue05() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         resolver.setValue(context, base, "key", "new-element");
@@ -311,8 +217,7 @@ public class TestArrayELResolver {
     @Test(expected = PropertyNotFoundException.class)
     public void testSetValue06() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         resolver.setValue(context, base, Integer.valueOf(1), "new-element");
@@ -325,8 +230,7 @@ public class TestArrayELResolver {
     @Test(expected = ClassCastException.class)
     public void testSetValue07() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         resolver.setValue(context, base, Integer.valueOf(0), Integer.valueOf(1));
@@ -339,26 +243,12 @@ public class TestArrayELResolver {
     @Test
     public void testSetValue08() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         int[] base = new int[] { 1, 2, 3 };
         resolver.setValue(context, base, Integer.valueOf(1), Integer.valueOf(4));
 
         Assert.assertEquals(Integer.valueOf(base[1]), Integer.valueOf(4));
-    }
-
-    /*
-     * Null base should be a NO-OP rather than an exception
-     */
-    @Test
-    public void testSetValue09() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        resolver.setValue(context, null, Integer.valueOf(1), Integer.valueOf(4));
-        Assert.assertFalse(context.isPropertyResolved());
     }
 
     /**
@@ -376,8 +266,7 @@ public class TestArrayELResolver {
     @Test
     public void testIsReadOnly02() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         boolean result = resolver.isReadOnly(context, new Object(),
                 new Object());
@@ -400,8 +289,7 @@ public class TestArrayELResolver {
     @Test
     public void testIsReadOnly03() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         boolean result = resolver.isReadOnly(context, base, Integer.valueOf(0));
@@ -422,32 +310,20 @@ public class TestArrayELResolver {
      */
     @Test(expected = PropertyNotFoundException.class)
     public void testIsReadOnly04() {
-        doTestIsReadOutOfBounds(1);
-    }
-
-    @Test(expected = PropertyNotFoundException.class)
-    public void testIsReadOnly05() {
-        doTestIsReadOutOfBounds(-1);
-    }
-
-    private void doTestIsReadOutOfBounds(int index) {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
-        resolver.isReadOnly(context, base, Integer.valueOf(index));
-        Assert.assertTrue(context.isPropertyResolved());
+        resolver.isReadOnly(context, base, Integer.valueOf(1));
     }
 
     /**
      * Tests that a result is returned even when a coercion cannot be performed.
      */
     @Test
-    public void testIsReadOnly06() {
+    public void testIsReadOnly05() {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         String[] base = new String[] { "element" };
         boolean result = resolver.isReadOnly(context, base, "key");
@@ -463,30 +339,10 @@ public class TestArrayELResolver {
         Assert.assertTrue(context.isPropertyResolved());
     }
 
-    @Test
-    public void testIsReadOnly07() {
-        ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
-
-        boolean result = resolver.isReadOnly(context, null, null);
-
-        Assert.assertFalse(result);
-        Assert.assertFalse(context.isPropertyResolved());
-
-        resolver = new ArrayELResolver(true);
-
-        result = resolver.isReadOnly(context, null, null);
-
-        Assert.assertTrue(result);
-        Assert.assertFalse(context.isPropertyResolved());
-    }
-
     private void doNegativeTest(Object base, Object trigger,
             MethodUnderTest method, boolean checkResult) {
         ArrayELResolver resolver = new ArrayELResolver();
-        ELContext context = new StandardELContext(
-                ELManager.getExpressionFactory());
+        ELContext context = new ELContextImpl();
 
         Object result = null;
         switch (method) {
@@ -514,41 +370,8 @@ public class TestArrayELResolver {
         Assert.assertFalse(context.isPropertyResolved());
     }
 
-    private enum MethodUnderTest {
+    private static enum MethodUnderTest {
         GET_VALUE, SET_VALUE, GET_TYPE
     }
 
-
-    @Test
-    public void testGetFeatureDescriptiors() {
-        // Should always return null
-        ArrayELResolver resolver = new ArrayELResolver();
-        Assert.assertNull(resolver.getFeatureDescriptors(null, null));
-    }
-
-
-    @Test
-    public void testGetCommonPropertyType01() {
-        // null base, null response
-        ArrayELResolver resolver = new ArrayELResolver();
-        Assert.assertNull(resolver.getCommonPropertyType(null, null));
-    }
-
-
-    @Test
-    public void testGetCommonPropertyType02() {
-        // non-array base, null response
-        ArrayELResolver resolver = new ArrayELResolver();
-        Assert.assertNull(resolver.getCommonPropertyType(null, new Object()));
-    }
-
-
-    @Test
-    public void testGetCommonPropertyType03() {
-        // array base, Integer response
-        ArrayELResolver resolver = new ArrayELResolver();
-        Class<?> clazz = resolver.getCommonPropertyType(null, new Object[]{});
-        Assert.assertNotNull(clazz);
-        Assert.assertEquals(clazz, Integer.class);
-    }
 }

@@ -27,10 +27,6 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.catalina.tribes.util.StringManager;
-import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
-
 /**
  * The XByteBuffer provides a dual functionality.
  * One, it stores message bytes and automatically extends the byte buffer if needed.<BR>
@@ -46,13 +42,12 @@ import org.apache.juli.logging.LogFactory;
  * <li><b>DATA</b>      - should be as many bytes as the prev SIZE</li>
  * <li><b>END_DATA</b>  - 7 bytes - <i>TLF2003</i></li>
  * </ul>
+ * @author Filip Hanik
  */
-public class XByteBuffer implements Serializable {
+public class XByteBuffer {
 
-    private static final long serialVersionUID = 1L;
-
-    private static final Log log = LogFactory.getLog(XByteBuffer.class);
-    protected static final StringManager sm = StringManager.getManager(XByteBuffer.class);
+    private static final org.apache.juli.logging.Log log =
+        org.apache.juli.logging.LogFactory.getLog( XByteBuffer.class );
 
     /**
      * This is a package header, 7 bytes (FLT2002)
@@ -111,14 +106,13 @@ public class XByteBuffer implements Serializable {
     }
 
     public void setLength(int size) {
-        if ( size > buf.length ) throw new ArrayIndexOutOfBoundsException(sm.getString("xByteBuffer.size.larger.buffer"));
+        if ( size > buf.length ) throw new ArrayIndexOutOfBoundsException("Size is larger than existing buffer.");
         bufSize = size;
     }
 
     public void trim(int length) {
         if ( (bufSize - length) < 0 )
-            throw new ArrayIndexOutOfBoundsException(sm.getString("xByteBuffer.unableTrim",
-                    Integer.toString(bufSize), Integer.toString(length)));
+            throw new ArrayIndexOutOfBoundsException("Can't trim more bytes than are available. length:"+bufSize+" trim:"+length);
         bufSize -= length;
     }
 
@@ -165,7 +159,7 @@ public class XByteBuffer implements Serializable {
         if ( discard ) {
             if (bufSize > START_DATA.length && (firstIndexOf(buf, 0, START_DATA) == -1)) {
                 bufSize = 0;
-                log.error(sm.getString("xByteBuffer.discarded.invalidHeader"));
+                log.error("Discarded the package, invalid header");
                 return false;
             }
         }
@@ -232,7 +226,7 @@ public class XByteBuffer implements Serializable {
         if ( discard ) {
             if (bufSize > START_DATA.length && (firstIndexOf(buf, 0, START_DATA) == -1)) {
                 bufSize = 0;
-                log.error(sm.getString("xByteBuffer.discarded.invalidHeader"));
+                log.error("Discarded the package, invalid header");
                 return false;
             }
         }
@@ -311,7 +305,7 @@ public class XByteBuffer implements Serializable {
     public XByteBuffer extractDataPackage(boolean clearFromBuffer) {
         int psize = countPackages(true);
         if (psize == 0) {
-            throw new java.lang.IllegalStateException(sm.getString("xByteBuffer.no.package"));
+            throw new IllegalStateException("No package exists in XByteBuffer");
         }
         int size = toInt(buf, START_DATA.length);
         XByteBuffer xbuf = BufferPool.getBufferPool().getBuffer(size,false);
@@ -326,7 +320,7 @@ public class XByteBuffer implements Serializable {
 
     }
 
-    public ChannelData extractPackage(boolean clearFromBuffer) {
+    public ChannelData extractPackage(boolean clearFromBuffer) throws IOException {
         XByteBuffer xbuf = extractDataPackage(clearFromBuffer);
         ChannelData cdata = ChannelData.getDataFromPackage(xbuf);
         return cdata;
@@ -357,7 +351,7 @@ public class XByteBuffer implements Serializable {
 
     public static byte[] createDataPackage(byte[] data, int doff, int dlength, byte[] buffer, int bufoff) {
         if ( (buffer.length-bufoff) > getDataPackageLength(dlength) ) {
-            throw new ArrayIndexOutOfBoundsException(sm.getString("xByteBuffer.unableCreate"));
+            throw new ArrayIndexOutOfBoundsException("Unable to create data package, buffer is too small.");
         }
         System.arraycopy(START_DATA, 0, buffer, bufoff, START_DATA.length);
         toBytes(data.length,buffer, bufoff+START_DATA.length);
@@ -422,12 +416,18 @@ public class XByteBuffer implements Serializable {
 
 
     /**
-     * Converts a boolean and put it in a byte array.
-     * @param bool the integer
-     * @param data the byte buffer in which the boolean will be placed
-     * @param offset the offset in the byte array
-     * @return the byte array
+     * Converts a boolean to a 1-byte array
+     * @param bool - the integer
+     * @return - 1-byte array
+     * @deprecated use toBytes(boolean,byte[],int)
      */
+    @Deprecated
+    public static byte[] toBytes(boolean bool) {
+        byte[] b = new byte[1] ;
+        return toBytes(bool,b,0);
+
+    }
+
     public static byte[] toBytes(boolean bool, byte[] data, int offset) {
         data[offset] = (byte)(bool?1:0);
         return data;
@@ -445,13 +445,17 @@ public class XByteBuffer implements Serializable {
 
 
     /**
-     * Converts an integer to four bytes.
-     * @param n the integer
-     * @param b the byte buffer in which the integer will be placed
-     * @param offset the offset in the byte array
-     * @return four bytes in an array
+     * Converts an integer to four bytes
+     * @param n - the integer
+     * @return - four bytes in an array
+     * @deprecated use toBytes(int,byte[],int)
      */
-    public static byte[] toBytes(int n, byte[] b, int offset) {
+    @Deprecated
+    public static byte[] toBytes(int n) {
+        return toBytes(n,new byte[4],0);
+    }
+
+    public static byte[] toBytes(int n,byte[] b, int offset) {
         b[offset+3] = (byte) (n);
         n >>>= 8;
         b[offset+2] = (byte) (n);
@@ -463,12 +467,15 @@ public class XByteBuffer implements Serializable {
     }
 
     /**
-     * Converts a long to eight bytes.
-     * @param n the long
-     * @param b the byte buffer in which the integer will be placed
-     * @param offset the offset in the byte array
-     * @return eight bytes in an array
+     * Converts an long to eight bytes
+     * @param n - the long
+     * @return - eight bytes in an array
+     * @deprecated use toBytes(long,byte[],int)
      */
+    @Deprecated
+    public static byte[] toBytes(long n) {
+        return toBytes(n,new byte[8],0);
+    }
     public static byte[] toBytes(long n, byte[] b, int offset) {
         b[offset+7] = (byte) (n);
         n >>>= 8;
@@ -499,7 +506,7 @@ public class XByteBuffer implements Serializable {
         int result = -1;
         if (find.length > src.length) return result;
         if (find.length == 0 || src.length == 0) return result;
-        if (srcOff >= src.length ) throw new java.lang.ArrayIndexOutOfBoundsException();
+        if (srcOff >= src.length ) throw new ArrayIndexOutOfBoundsException();
         boolean found = false;
         int srclen = src.length;
         int findlen = find.length;
@@ -546,7 +553,7 @@ public class XByteBuffer implements Serializable {
         return deserialize(data,offset,length,null);
     }
 
-    private static final AtomicInteger invokecount = new AtomicInteger(0);
+    private static AtomicInteger invokecount = new AtomicInteger(0);
 
     public static Serializable deserialize(byte[] data, int offset, int length, ClassLoader[] cls)
         throws IOException, ClassNotFoundException, ClassCastException {
@@ -566,7 +573,7 @@ public class XByteBuffer implements Serializable {
         } else if (message instanceof Serializable)
             return (Serializable) message;
         else {
-            throw new ClassCastException(sm.getString("xByteBuffer.wrong.class", message.getClass().getName()));
+            throw new ClassCastException("Message has the wrong class. It should implement Serializable, instead it is:"+message.getClass().getName());
         }
     }
 

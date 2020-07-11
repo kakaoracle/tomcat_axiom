@@ -33,14 +33,15 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.jsp.tagext.TagInfo;
 
+import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
 import org.apache.jasper.Options;
+import org.apache.jasper.compiler.ErrorDispatcher;
+import org.apache.jasper.compiler.JarResource;
 import org.apache.jasper.compiler.JavacErrorDetail;
 import org.apache.jasper.compiler.JspRuntimeContext;
 import org.apache.jasper.compiler.Localizer;
-import org.apache.jasper.compiler.SmapInput;
-import org.apache.jasper.compiler.SmapStratum;
 import org.apache.jasper.runtime.ExceptionUtils;
 import org.apache.jasper.runtime.InstanceManagerFactory;
 import org.apache.jasper.runtime.JspSourceDependent;
@@ -48,7 +49,6 @@ import org.apache.jasper.util.FastRemovalDequeue;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.InstanceManager;
-import org.apache.tomcat.Jar;
 
 /**
  * The JSP engine (a.k.a Jasper).
@@ -72,7 +72,7 @@ import org.apache.tomcat.Jar;
 public class JspServletWrapper {
 
     private static final Map<String,Long> ALWAYS_OUTDATED_DEPENDENCIES =
-            new HashMap<>();
+        new HashMap<String,Long>();
 
     static {
         // If this is missing,
@@ -82,13 +82,13 @@ public class JspServletWrapper {
     // Logger
     private final Log log = LogFactory.getLog(JspServletWrapper.class); // must not be static
 
-    private volatile Servlet theServlet;
-    private final String jspUri;
-    private volatile Class<?> tagHandlerClass;
-    private final JspCompilationContext ctxt;
+    private Servlet theServlet;
+    private String jspUri;
+    private Class<?> tagHandlerClass;
+    private JspCompilationContext ctxt;
     private long available = 0L;
-    private final ServletConfig config;
-    private final Options options;
+    private ServletConfig config;
+    private Options options;
     /*
      * The servlet / tag file needs a compilation check on first access. Use a
      * separate flag (rather then theServlet == null / tagHandlerClass == null
@@ -99,7 +99,7 @@ public class JspServletWrapper {
     private volatile boolean mustCompile = true;
     /* Whether the servlet/tag file needs reloading on next access */
     private volatile boolean reload = true;
-    private final boolean isTagFile;
+    private boolean isTagFile;
     private int tripCount;
     private JasperException compileException;
     /* Timestamp of last time servlet resource was modified */
@@ -137,7 +137,7 @@ public class JspServletWrapper {
                              String tagFilePath,
                              TagInfo tagInfo,
                              JspRuntimeContext rctxt,
-                             Jar tagJar) {
+                             JarResource tagJarResource) {
 
         this.isTagFile = true;
         this.config = null;        // not used
@@ -149,7 +149,7 @@ public class JspServletWrapper {
         unloadAllowed = unloadByCount || unloadByIdle ? true : false;
         ctxt = new JspCompilationContext(jspUri, tagInfo, options,
                                          servletContext, this, rctxt,
-                                         tagJar);
+                                         tagJarResource);
     }
 
     public JspCompilationContext getJspEngineContext() {
@@ -254,9 +254,7 @@ public class JspServletWrapper {
     }
 
     /**
-     * Compile (if needed) and load a tag file.
-     * @return the loaded class
-     * @throws JasperException Error compiling or loading tag file
+     * Compile (if needed) and load a tag file
      */
     public Class<?> loadTagFile() throws JasperException {
 
@@ -298,8 +296,6 @@ public class JspServletWrapper {
      * when compiling tag files with circular dependencies.  A prototype
      * (skeleton) with no dependencies on other other tag files is
      * generated and compiled.
-     * @return the loaded class
-     * @throws JasperException Error compiling or loading tag file
      */
     public Class<?> loadTagFilePrototype() throws JasperException {
 
@@ -313,9 +309,8 @@ public class JspServletWrapper {
 
     /**
      * Get a list of files that the current page has source dependency on.
-     * @return the map of dependent resources
      */
-    public java.util.Map<String,Long> getDependants() {
+    public Map<String,Long> getDependants() {
         try {
             Object target;
             if (isTagFile) {
@@ -327,11 +322,11 @@ public class JspServletWrapper {
                         }
                     }
                 }
-                target = tagHandlerClass.getConstructor().newInstance();
+                target = tagHandlerClass.newInstance();
             } else {
                 target = getServlet();
             }
-            if (target instanceof JspSourceDependent) {
+            if (target != null && target instanceof JspSourceDependent) {
                 return ((JspSourceDependent) target).getDependants();
             }
         } catch (AbstractMethodError ame) {
@@ -392,6 +387,7 @@ public class JspServletWrapper {
 
             /*
              * (1) Compile
+             *  将jsp文件编译成servlet
              */
             if (options.getDevelopment() || mustCompile) {
                 synchronized (this) {
@@ -410,10 +406,12 @@ public class JspServletWrapper {
 
             /*
              * (2) (Re)load servlet class file
+             * 生成Servlet文件对应的对象实例
              */
             servlet = getServlet();
 
             // If a page is to be precompiled only, return.
+            // 一个页面仅仅只需要编译
             if (precompile) {
                 return;
             }
@@ -444,26 +442,46 @@ public class JspServletWrapper {
         }
 
         try {
+
             /*
              * (3) Handle limitation of number of loaded Jsps
              */
-            if (unloadAllowed) {
+            if (unloadAllowed) {  // 是否要卸载jsp-servlet
                 synchronized(this) {
                     if (unloadByCount) {
+                        // 如果配置了限制的数量,则表示ctxt.getRuntimeContext()中只能容纳固定的jsw
+                        // 那么如果超过了限制则将队尾jsw移除掉
+                        // 当然，就算没有配置限制的数量，background线程会定时执行，将超过jspIdleTimeout时间的移除掉
                         if (unloadHandle == null) {
                             unloadHandle = ctxt.getRuntimeContext().push(this);
                         } else if (lastUsageTime < ctxt.getRuntimeContext().getLastJspQueueUpdate()) {
-                            ctxt.getRuntimeContext().makeYoungest(unloadHandle);
+                            // lastUsageTime表示当前jsw上次使用时间
+                            // ctxt.getRuntimeContext().getLastJspQueueUpdate()这个时间会由background线程定时更新一次
+                            // 如果lastUsageTime 大于 ctxt.getRuntimeContext().getLastJspQueueUpdate()不需要做什么操作
+
+                            // 第一种情况
+                            // 1. jsw被访问
+                            // 2. background线程执行
+                            // 3. jsw再次被访问
+                            // 4. 符合当前条件，jsw被移动至队首
+
+                            // 第二种情况
+                            // 1. background线程执行
+                            // 2. jsw第一次被访问
+                            // 3. 不符合条件，而此时应该符合unloadHandle == null
+
+                            // 将最近访问的jsw移动至队首
+                            ctxt.getRuntimeContext().makeYoungest(unloadHandle); // 将unloadHandle移到队首
                             lastUsageTime = System.currentTimeMillis();
                         }
                     } else {
+                        // 更新最近使用的时间
                         if (lastUsageTime < ctxt.getRuntimeContext().getLastJspQueueUpdate()) {
                             lastUsageTime = System.currentTimeMillis();
                         }
                     }
                 }
             }
-
             /*
              * (4) Service request
              */
@@ -579,58 +597,54 @@ public class JspServletWrapper {
                 realException = ((ServletException) ex).getRootCause();
             }
 
-            // Find the first stack frame that represents code generated by
-            // Jasper
+            // First identify the stack frame in the trace that represents the JSP
             StackTraceElement[] frames = realException.getStackTrace();
             StackTraceElement jspFrame = null;
 
-            String servletPackageName = ctxt.getBasePackageName();
-            for (StackTraceElement frame : frames) {
-                if (frame.getClassName().startsWith(servletPackageName)) {
-                    jspFrame = frame;
+            for (int i=0; i<frames.length; ++i) {
+                if ( frames[i].getClassName().equals(this.getServlet().getClass().getName()) ) {
+                    jspFrame = frames[i];
                     break;
                 }
             }
 
-            SmapStratum smap = null;
 
-            if (jspFrame != null) {
-                smap = ctxt.getCompiler().getSmap(jspFrame.getClassName());
-            }
-
-            if (smap == null) {
+            if (jspFrame == null ||
+                    this.ctxt.getCompiler().getPageNodes() == null) {
                 // If we couldn't find a frame in the stack trace corresponding
                 // to the generated servlet class or we don't have a copy of the
-                // smap to hand, we can't really add anything
+                // parsed JSP to hand, we can't really add anything
                 return new JasperException(ex);
             }
 
-            @SuppressWarnings("null")
             int javaLineNumber = jspFrame.getLineNumber();
-            SmapInput source = smap.getInputLineNumber(javaLineNumber);
+            JavacErrorDetail detail = ErrorDispatcher.createJavacError(
+                    jspFrame.getMethodName(),
+                    this.ctxt.getCompiler().getPageNodes(),
+                    null,
+                    javaLineNumber,
+                    ctxt);
 
             // If the line number is less than one we couldn't find out
             // where in the JSP things went wrong
-            if (source.getLineNumber() < 1) {
+            int jspLineNumber = detail.getJspBeginLineNumber();
+            if (jspLineNumber < 1) {
                 throw new JasperException(ex);
             }
-
-            JavacErrorDetail detail = new JavacErrorDetail(jspFrame.getMethodName(), javaLineNumber,
-                    source.getFileName(), source.getLineNumber(), null, ctxt);
 
             if (options.getDisplaySourceFragment()) {
                 return new JasperException(Localizer.getMessage
                         ("jsp.exception", detail.getJspFileName(),
-                                "" + source.getLineNumber()) + System.lineSeparator() +
-                                System.lineSeparator() + detail.getJspExtract() +
-                                System.lineSeparator() + System.lineSeparator() +
+                                "" + jspLineNumber) + Constants.NEWLINE +
+                                Constants.NEWLINE + detail.getJspExtract() +
+                                Constants.NEWLINE + Constants.NEWLINE +
                                 "Stacktrace:", ex);
 
             }
 
             return new JasperException(Localizer.getMessage
                     ("jsp.exception", detail.getJspFileName(),
-                            "" + source.getLineNumber()), ex);
+                            "" + jspLineNumber), ex);
         } catch (Exception je) {
             // If anything goes wrong, just revert to the original behaviour
             if (ex instanceof JasperException) {
@@ -639,4 +653,5 @@ public class JspServletWrapper {
             return new JasperException(ex);
         }
     }
+
 }

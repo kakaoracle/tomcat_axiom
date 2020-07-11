@@ -43,7 +43,6 @@ import org.apache.jasper.security.SecurityUtil;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.PeriodicEventListener;
-import org.apache.tomcat.util.security.Escape;
 
 /**
  * The JSP engine (a.k.a Jasper).
@@ -108,7 +107,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                 e = ExceptionUtils.unwrapInvocationTargetException(e);
                 ExceptionUtils.handleThrowable(e);
                 // Need to localize this.
-                log.warn(Localizer.getMessage("jsp.warning.engineOptionsClass", engineOptionsName), e);
+                log.warn("Failed to load engineOptionsClass", e);
                 // Use the default Options implementation
                 options = new EmbeddedServletOptions(config, context);
             }
@@ -121,10 +120,10 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
             jspFile = config.getInitParameter("jspFile");
             try {
                 if (null == context.getResource(jspFile)) {
-                    return;
+                    throw new ServletException("missing jspFile: [" + jspFile + "]");
                 }
             } catch (MalformedURLException e) {
-                throw new ServletException(Localizer.getMessage("jsp.error.no.jsp", jspFile), e);
+                throw new ServletException("Can not locate jsp file", e);
             }
             try {
                 if (SecurityUtil.isPackageProtectionEnabled()){
@@ -139,11 +138,11 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                     serviceJspFile(null, null, jspFile, true);
                 }
             } catch (IOException e) {
-                throw new ServletException(Localizer.getMessage("jsp.error.precompilation", jspFile), e);
+                throw new ServletException("Could not precompile jsp: " + jspFile, e);
             } catch (PrivilegedActionException e) {
                 Throwable t = e.getCause();
                 if (t instanceof ServletException) throw (ServletException)t;
-                throw new ServletException(Localizer.getMessage("jsp.error.precompilation", jspFile), e);
+                throw new ServletException("Could not precompile jsp: " + jspFile, e);
             }
         }
 
@@ -236,22 +235,22 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
 
         String queryString = request.getQueryString();
         if (queryString == null) {
-            return false;
+            return (false);
         }
         int start = queryString.indexOf(Constants.PRECOMPILE);
         if (start < 0) {
-            return false;
+            return (false);
         }
         queryString =
             queryString.substring(start + Constants.PRECOMPILE.length());
         if (queryString.length() == 0) {
-            return true;             // ?jsp_precompile
+            return (true);             // ?jsp_precompile
         }
         if (queryString.startsWith("&")) {
-            return true;             // ?jsp_precompile&foo=bar...
+            return (true);             // ?jsp_precompile&foo=bar...
         }
         if (!queryString.startsWith("=")) {
-            return false;            // part of some other name or value
+            return (false);            // part of some other name or value
         }
         int limit = queryString.length();
         int ampersand = queryString.indexOf('&');
@@ -260,29 +259,40 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
         }
         String value = queryString.substring(1, limit);
         if (value.equals("true")) {
-            return true;             // ?jsp_precompile=true
+            return (true);             // ?jsp_precompile=true
         } else if (value.equals("false")) {
             // Spec says if jsp_precompile=false, the request should not
             // be delivered to the JSP page; the easiest way to implement
             // this is to set the flag to true, and precompile the page anyway.
             // This still conforms to the spec, since it says the
             // precompilation request can be ignored.
-            return true;             // ?jsp_precompile=false
+            return (true);             // ?jsp_precompile=false
         } else {
-            throw new ServletException(Localizer.getMessage("jsp.error.precompilation.parameter",
-                    Constants.PRECOMPILE, value));
+            throw new ServletException("Cannot have request parameter " +
+                                       Constants.PRECOMPILE + " set to " +
+                                       value);
         }
 
     }
 
 
+    @SuppressWarnings("deprecation") // Use of JSP_FILE to be removed in 9.0.x
     @Override
-    public void service (HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-
-        // jspFile may be configured as an init-param for this servlet instance
+    public void service (HttpServletRequest request,
+                             HttpServletResponse response)
+                throws ServletException, IOException {
+        //jspFile may be configured as an init-param for this servlet instance
         String jspUri = jspFile;
 
+        if (jspUri == null) {
+            // JSP specified via <jsp-file> in <servlet> declaration and
+            // supplied through custom servlet container code
+            String jspFile = (String) request.getAttribute(Constants.JSP_FILE);
+            if (jspFile != null) {
+                jspUri = jspFile;
+                request.removeAttribute(Constants.JSP_FILE);
+            }
+        }
         if (jspUri == null) {
             /*
              * Check to see if the requested JSP has been the target of a
@@ -363,6 +373,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                                 boolean precompile)
         throws ServletException, IOException {
 
+        // 做一个并发的控制，当有两个请求并发访问同一个jsp页面时，只生成唯一的一个JspServletWrapper，并缓存
         JspServletWrapper wrapper = rctxt.getWrapper(jspUri);
         if (wrapper == null) {
             synchronized(this) {
@@ -376,12 +387,14 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                     }
                     wrapper = new JspServletWrapper(config, options, jspUri,
                                                     rctxt);
+                    // 将jsw存入JspRuntimeContext的jsps中, 一个jsp页面对应一个jsw
                     rctxt.addWrapper(jspUri,wrapper);
                 }
             }
         }
 
         try {
+            // JspServletWrapper来处理请求
             wrapper.service(request, response, precompile);
         } catch (FileNotFoundException fnfe) {
             handleMissingResource(request, response, jspUri);
@@ -397,20 +410,24 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
         String includeRequestUri =
             (String)request.getAttribute(RequestDispatcher.INCLUDE_REQUEST_URI);
 
-        String msg = Localizer.getMessage("jsp.error.file.not.found",jspUri);
         if (includeRequestUri != null) {
             // This file was included. Throw an exception as
             // a response.sendError() will be ignored
+            String msg =
+                Localizer.getMessage("jsp.error.file.not.found",jspUri);
             // Strictly, filtering this is an application
             // responsibility but just in case...
-            throw new ServletException(Escape.htmlElementContent(msg));
+            throw new ServletException(SecurityUtil.filter(msg));
         } else {
             try {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND, msg);
+                response.sendError(HttpServletResponse.SC_NOT_FOUND,
+                        request.getRequestURI());
             } catch (IllegalStateException ise) {
-                log.error(msg);
+                log.error(Localizer.getMessage("jsp.error.file.not.found",
+                        jspUri));
             }
         }
+        return;
     }
 
 

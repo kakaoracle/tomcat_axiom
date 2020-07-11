@@ -22,7 +22,6 @@ package org.apache.catalina.startup;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.List;
 
 import org.apache.catalina.Globals;
 import org.apache.juli.logging.Log;
@@ -88,8 +87,7 @@ public final class Tool {
     /**
      * The pathname of our installation base directory.
      */
-    private static final String catalinaHome =
-            System.getProperty(Globals.CATALINA_HOME_PROP);
+    private static String catalinaHome = System.getProperty(Globals.CATALINA_HOME_PROP);
 
 
     /**
@@ -158,8 +156,8 @@ public final class Tool {
         // Construct the class loader we will be using
         ClassLoader classLoader = null;
         try {
-            List<File> packed = new ArrayList<>();
-            List<File> unpacked = new ArrayList<>();
+            ArrayList<File> packed = new ArrayList<File>();
+            ArrayList<File> unpacked = new ArrayList<File>();
             unpacked.add(new File(catalinaHome, "classes"));
             packed.add(new File(catalinaHome, "lib"));
             if (common) {

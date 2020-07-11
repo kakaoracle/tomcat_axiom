@@ -32,14 +32,14 @@ public final class Library {
      */
     private static Library _instance = null;
 
-    private Library() throws Exception {
+    private Library() throws Throwable {
         boolean loaded = false;
+        String path = System.getProperty("java.library.path");
+        String [] paths = path.split(File.pathSeparator);
         StringBuilder err = new StringBuilder();
-        File binLib = new File(System.getProperty("catalina.home"), "bin");
         for (int i = 0; i < NAMES.length; i++) {
-            File library = new File(binLib, System.mapLibraryName(NAMES[i]));
             try {
-                System.load(library.getAbsolutePath());
+                System.loadLibrary(NAMES[i]);
                 loaded = true;
             } catch (ThreadDeath t) {
                 throw t;
@@ -48,9 +48,13 @@ public final class Library {
                 // the JNI code identical between Tomcat 6/7/8/9
                 throw t;
             } catch (Throwable t) {
-                if (library.exists()) {
-                    // File exists but failed to load
-                    throw t;
+                String name = System.mapLibraryName(NAMES[i]);
+                for (int j = 0; j < paths.length; j++) {
+                    File fd = new File(paths[j] , name);
+                    if (fd.exists()) {
+                        // File exists but failed to load
+                        throw t;
+                    }
                 }
                 if (i > 0) {
                     err.append(", ");
@@ -59,38 +63,6 @@ public final class Library {
             }
             if (loaded) {
                 break;
-            }
-        }
-        if (!loaded) {
-            String path = System.getProperty("java.library.path");
-            String [] paths = path.split(File.pathSeparator);
-            for (String value : NAMES) {
-                try {
-                    System.loadLibrary(value);
-                    loaded = true;
-                } catch (ThreadDeath t) {
-                    throw t;
-                } catch (VirtualMachineError t) {
-                    // Don't use a Java 7 multiple exception catch so we can keep
-                    // the JNI code identical between Tomcat 6/7/8/9
-                    throw t;
-                } catch (Throwable t) {
-                    String name = System.mapLibraryName(value);
-                    for (String s : paths) {
-                        File fd = new File(s, name);
-                        if (fd.exists()) {
-                            // File exists but failed to load
-                            throw t;
-                        }
-                    }
-                    if (err.length() > 0) {
-                        err.append(", ");
-                    }
-                    err.append(t.getMessage());
-                }
-                if (loaded) {
-                    break;
-                }
             }
         }
         if (!loaded) {
@@ -198,9 +170,9 @@ public final class Library {
      * @return {@code true} if the native code was initialized successfully
      *         otherwise {@code false}
      *
-     * @throws Exception if a problem occurred during initialization
+     * @throws Throwable if a problem occurred during initialization
      */
-    public static synchronized boolean initialize(String libraryName) throws Exception {
+    public static synchronized boolean initialize(String libraryName) throws Throwable {
         if (_instance == null) {
             if (libraryName == null)
                 _instance = new Library();
@@ -249,7 +221,7 @@ public final class Library {
                                                aprVersionString() + ")");
             }
             if (!APR_HAS_THREADS) {
-                throw new UnsatisfiedLinkError("Missing threading support from APR");
+                throw new UnsatisfiedLinkError("Missing APR_HAS_THREADS");
             }
         }
         return initialize();

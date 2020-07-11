@@ -26,7 +26,7 @@ import javax.servlet.http.HttpServletResponse;
 import org.junit.Assert;
 import org.junit.Test;
 
-import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.Context;
 import org.apache.catalina.startup.SimpleHttpClient;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
@@ -44,12 +44,12 @@ public class TestMaxConnections extends TomcatBaseTest {
             t[i] = new ConnectThread();
             t[i].setName("ConnectThread["+i+"]");
         }
-        for (ConnectThread thread : t) {
-            thread.start();
+        for (int i=0; i<t.length; i++) {
+            t[i].start();
             Thread.sleep(50);
         }
-        for (ConnectThread connectThread : t) {
-            connectThread.join();
+        for (int i=0; i<t.length; i++) {
+            t[i].join();
         }
 
         Assert.assertEquals(MAX_CONNECTIONS, SimpleServlet.getMaxConnections());
@@ -70,16 +70,17 @@ public class TestMaxConnections extends TomcatBaseTest {
 
     private synchronized void init() throws Exception {
         Tomcat tomcat = getTomcatInstance();
-        StandardContext root = (StandardContext) tomcat.addContext("", SimpleHttpClient.TEMP_DIR);
-        root.setUnloadDelay(soTimeout);
+        // No file system docBase required
+        Context root = tomcat.addContext("", null);
         Tomcat.addServlet(root, "Simple", new SimpleServlet());
-        root.addServletMappingDecoded("/test", "Simple");
-        Assert.assertTrue(tomcat.getConnector().setProperty("maxKeepAliveRequests", "1"));
-        Assert.assertTrue(tomcat.getConnector().setProperty("maxThreads", "10"));
-        Assert.assertTrue(tomcat.getConnector().setProperty("connectionTimeout", "20000"));
-        Assert.assertTrue(tomcat.getConnector().setProperty("keepAliveTimeout", "50000"));
-        Assert.assertTrue(tomcat.getConnector().setProperty("maxConnections", Integer.toString(MAX_CONNECTIONS)));
-        Assert.assertTrue(tomcat.getConnector().setProperty("acceptCount", "1"));
+        root.addServletMapping("/test", "Simple");
+        tomcat.getConnector().setProperty("maxKeepAliveRequests", "1");
+        tomcat.getConnector().setProperty("maxThreads", "10");
+        tomcat.getConnector().setProperty("soTimeout", "20000");
+        tomcat.getConnector().setProperty("keepAliveTimeout", "50000");
+        tomcat.getConnector().setProperty(
+                "maxConnections", Integer.toString(MAX_CONNECTIONS));
+        tomcat.getConnector().setProperty("acceptCount", "1");
         tomcat.start();
     }
 
@@ -128,10 +129,9 @@ public class TestMaxConnections extends TomcatBaseTest {
 
             increment();
 
-            System.out.println("Processing thread: " + Thread.currentThread().getName());
             try {
                 Thread.sleep(TestMaxConnections.soTimeout*4/5);
-            } catch (InterruptedException x) {
+            }catch (InterruptedException x) {
 
             }
             resp.setContentLength(0);

@@ -141,9 +141,9 @@ public abstract class TagLibraryInfo {
             return null;
         }
 
-        for (TagInfo tag : tags) {
-            if (shortname.equals(tag.getTagName())) {
-                return tag;
+        for (int i = 0; i < tags.length; i++) {
+            if (shortname.equals(tags[i].getTagName())) {
+                return tags[i];
             }
         }
         return null;
@@ -166,9 +166,9 @@ public abstract class TagLibraryInfo {
             return null;
         }
 
-        for (TagFileInfo tagFile : tagFiles) {
-            if (tagFile.getName().equals(shortname)) {
-                return tagFile;
+        for (int i = 0; i < tagFiles.length; i++) {
+            if (tagFiles[i].getName().equals(shortname)) {
+                return tagFiles[i];
             }
         }
         return null;
@@ -201,9 +201,9 @@ public abstract class TagLibraryInfo {
             return null;
         }
 
-        for (FunctionInfo function : functions) {
-            if (function.getName().equals(name)) {
-                return function;
+        for (int i = 0; i < functions.length; i++) {
+            if (functions[i].getName().equals(name)) {
+                return functions[i];
             }
         }
         return null;
@@ -223,7 +223,7 @@ public abstract class TagLibraryInfo {
      *         TagLibraryInfo.
      * @since 2.1
      */
-    public abstract javax.servlet.jsp.tagext.TagLibraryInfo[] getTagLibraryInfos();
+    public abstract TagLibraryInfo[] getTagLibraryInfos();
 
     // Protected fields
 

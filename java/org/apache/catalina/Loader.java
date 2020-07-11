@@ -14,9 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina;
 
+
 import java.beans.PropertyChangeListener;
+
 
 /**
  * A <b>Loader</b> represents a Java ClassLoader implementation that can
@@ -46,8 +50,20 @@ import java.beans.PropertyChangeListener;
  * </ul>
  *
  * @author Craig R. McClanahan
+ *
+ * 一个Loader代表一个类加载器实现，容器可以使用它来加载类文件（这些文件在与Loader关联的的仓库中），这些文件可以根据请求来重新加载，Loader也提供了一种可以监控仓库中的文件是否发生改变的机制
+ * 为了让Loader成功的实现Context的热部署功能，它必遵守一下约束：
+ * 1.一个Loader必须实现Lifecycle接口，以便Context能够告诉需要一个新的类加载器
+ * 2. start()方法必须无条件创建一个新的类加载器实现
+ * 3. stop()方法必须丢弃该类加载器之前所用到的引用，以便所有被加载的类和对象能被垃圾回收掉
+ * 4. 必须允许在同一个Loader实例上先调用start()，然后调用stop()。
+ * 5. 检测到对此类加载器加载的一个或多个类文件进行更改时，必须在Loader所属的Context上调用Context.reload（）方法。
  */
+
 public interface Loader {
+
+
+    // ------------------------------------------------------------- Properties
 
 
     /**
@@ -59,27 +75,27 @@ public interface Loader {
 
 
     /**
-     * @return the Java class loader to be used by this Container.
+     * Return the Java class loader to be used by this Container.
      */
     public ClassLoader getClassLoader();
 
 
     /**
-     * @return the Context with which this Loader has been associated.
+     * Return the Container with which this Loader has been associated.
      */
-    public Context getContext();
+    public Container getContainer();
 
 
     /**
-     * Set the Context with which this Loader has been associated.
+     * Set the Container with which this Loader has been associated.
      *
-     * @param context The associated Context
+     * @param container The associated Container
      */
-    public void setContext(Context context);
+    public void setContainer(Container container);
 
 
     /**
-     * @return the "follow standard delegation model" flag used to configure
+     * Return the "follow standard delegation model" flag used to configure
      * our ClassLoader.
      */
     public boolean getDelegate();
@@ -95,12 +111,16 @@ public interface Loader {
 
 
     /**
-     * @return the reloadable flag for this Loader.
-     *
-     * @deprecated Use {@link Context#getReloadable()}. This method will be
-     *             removed in Tomcat 10.
+     * Return descriptive information about this Loader implementation and
+     * the corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
      */
-    @Deprecated
+    public String getInfo();
+
+
+    /**
+     * Return the reloadable flag for this Loader.
+     */
     public boolean getReloadable();
 
 
@@ -108,12 +128,11 @@ public interface Loader {
      * Set the reloadable flag for this Loader.
      *
      * @param reloadable The new reloadable flag
-     *
-     * @deprecated Use {@link Context#setReloadable(boolean)}. This method will
-     *             be removed in Tomcat 10.
      */
-    @Deprecated
     public void setReloadable(boolean reloadable);
+
+
+    // --------------------------------------------------------- Public Methods
 
 
     /**
@@ -125,11 +144,23 @@ public interface Loader {
 
 
     /**
+     * Add a new repository to the set of repositories for this class loader.
+     *
+     * @param repository Repository to be added
+     */
+    public void addRepository(String repository);
+
+
+    /**
+     * Return the set of repositories defined for this class loader.
+     * If none are defined, a zero-length array is returned.
+     */
+    public String[] findRepositories();
+
+
+    /**
      * Has the internal repository associated with this Loader been modified,
      * such that the loaded classes should be reloaded?
-     *
-     * @return <code>true</code> when the repository has been modified,
-     *         <code>false</code> otherwise
      */
     public boolean modified();
 
@@ -140,4 +171,6 @@ public interface Loader {
      * @param listener The listener to remove
      */
     public void removePropertyChangeListener(PropertyChangeListener listener);
+
+
 }

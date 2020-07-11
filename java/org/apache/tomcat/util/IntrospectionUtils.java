@@ -16,15 +16,21 @@
  */
 package org.apache.tomcat.util;
 
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.net.UnknownHostException;
 import java.util.Hashtable;
+import java.util.StringTokenizer;
+import java.util.Vector;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.util.security.PermissionCheck;
 
 /**
@@ -33,7 +39,240 @@ import org.apache.tomcat.util.security.PermissionCheck;
 public final class IntrospectionUtils {
 
     private static final Log log = LogFactory.getLog(IntrospectionUtils.class);
-    private static final StringManager sm = StringManager.getManager(IntrospectionUtils.class);
+
+    /**
+     * Call execute() - any ant-like task should work
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static void execute(Object proxy, String method) throws Exception {
+        Method executeM = null;
+        Class<?> c = proxy.getClass();
+        Class<?> params[] = new Class[0];
+        // params[0]=args.getClass();
+        executeM = findMethod(c, method, params);
+        if (executeM == null) {
+            throw new RuntimeException("No execute in " + proxy.getClass());
+        }
+        executeM.invoke(proxy, (Object[]) null);//new Object[] { args });
+    }
+
+    /**
+     * Call void setAttribute( String ,Object )
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static void setAttribute(Object proxy, String n, Object v)
+            throws Exception {
+        if (proxy instanceof AttributeHolder) {
+            ((AttributeHolder) proxy).setAttribute(n, v);
+            return;
+        }
+
+        Method executeM = null;
+        Class<?> c = proxy.getClass();
+        Class<?> params[] = new Class[2];
+        params[0] = String.class;
+        params[1] = Object.class;
+        executeM = findMethod(c, "setAttribute", params);
+        if (executeM == null) {
+            if (log.isDebugEnabled())
+                log.debug("No setAttribute in " + proxy.getClass());
+            return;
+        }
+        if (log.isDebugEnabled())
+            log.debug("Setting " + n + "=" + v + "  in " + proxy);
+        executeM.invoke(proxy, new Object[] { n, v });
+        return;
+    }
+
+    /**
+     * Call void getAttribute( String )
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static Object getAttribute(Object proxy, String n) throws Exception {
+        Method executeM = null;
+        Class<?> c = proxy.getClass();
+        Class<?> params[] = new Class[1];
+        params[0] = String.class;
+        executeM = findMethod(c, "getAttribute", params);
+        if (executeM == null) {
+            if (log.isDebugEnabled())
+                log.debug("No getAttribute in " + proxy.getClass());
+            return null;
+        }
+        return executeM.invoke(proxy, new Object[] { n });
+    }
+
+    /**
+     * Construct a URLClassLoader. Will compile and work in JDK1.1 too.
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static ClassLoader getURLClassLoader(URL urls[], ClassLoader parent) {
+        try {
+            Class<?> urlCL = Class.forName("java.net.URLClassLoader");
+            Class<?> paramT[] = new Class[2];
+            paramT[0] = urls.getClass();
+            paramT[1] = ClassLoader.class;
+            Method m = findMethod(urlCL, "newInstance", paramT);
+            if (m == null)
+                return null;
+
+            ClassLoader cl = (ClassLoader) m.invoke(urlCL, new Object[] { urls,
+                    parent });
+            return cl;
+        } catch (ClassNotFoundException ex) {
+            // jdk1.1
+            return null;
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * @deprecated  No longer required. Will be removed in Tomcat 8.0.x.
+     */
+    @Deprecated
+    public static String guessInstall(String installSysProp,
+            String homeSysProp, String jarName) {
+        return guessInstall(installSysProp, homeSysProp, jarName, null);
+    }
+
+    /**
+     * Guess a product install/home by analyzing the class path. It works for
+     * product using the pattern: lib/executable.jar or if executable.jar is
+     * included in classpath by a shell script. ( java -jar also works )
+     *
+     * Insures both "install" and "home" System properties are set. If either or
+     * both System properties are unset, "install" and "home" will be set to the
+     * same value. This value will be the other System property that is set, or
+     * the guessed value if neither is set.
+     *
+     * @deprecated  No longer required. Will be removed in Tomcat 8.0.x.
+     */
+    @Deprecated
+    public static String guessInstall(String installSysProp,
+            String homeSysProp, String jarName, String classFile) {
+        String install = null;
+        String home = null;
+
+        if (installSysProp != null)
+            install = System.getProperty(installSysProp);
+
+        if (homeSysProp != null)
+            home = System.getProperty(homeSysProp);
+
+        if (install != null) {
+            if (home == null)
+                System.getProperties().put(homeSysProp, install);
+            return install;
+        }
+
+        // Find the directory where jarName.jar is located
+
+        String cpath = System.getProperty("java.class.path");
+        String pathSep = File.pathSeparator;
+        StringTokenizer st = new StringTokenizer(cpath, pathSep);
+        while (st.hasMoreTokens()) {
+            String path = st.nextToken();
+            // log( "path " + path );
+            if (path.endsWith(jarName)) {
+                home = path.substring(0, path.length() - jarName.length());
+                try {
+                    if ("".equals(home)) {
+                        home = new File("./").getCanonicalPath();
+                    } else if (home.endsWith(File.separator)) {
+                        home = home.substring(0, home.length() - 1);
+                    }
+                    File f = new File(home);
+                    String parentDir = f.getParent();
+                    if (parentDir == null)
+                        parentDir = home; // unix style
+                    File f1 = new File(parentDir);
+                    install = f1.getCanonicalPath();
+                    if (installSysProp != null)
+                        System.getProperties().put(installSysProp, install);
+                    if (homeSysProp != null)
+                        System.getProperties().put(homeSysProp, install);
+                    return install;
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            } else {
+                String fname = path + (path.endsWith("/") ? "" : "/")
+                        + classFile;
+                if (new File(fname).exists()) {
+                    try {
+                        File f = new File(path);
+                        String parentDir = f.getParent();
+                        if (parentDir == null)
+                            parentDir = path; // unix style
+                        File f1 = new File(parentDir);
+                        install = f1.getCanonicalPath();
+                        if (installSysProp != null)
+                            System.getProperties().put(installSysProp, install);
+                        if (home == null && homeSysProp != null)
+                            System.getProperties().put(homeSysProp, install);
+                        return install;
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+            }
+        }
+
+        // if install directory can't be found, use home as the default
+        if (home != null) {
+            System.getProperties().put(installSysProp, home);
+            return home;
+        }
+
+        return null;
+    }
+
+    /**
+     * Debug method, display the classpath
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static void displayClassPath(String msg, URL[] cp) {
+        if (log.isDebugEnabled()) {
+            log.debug(msg);
+            for (int i = 0; i < cp.length; i++) {
+                log.debug(cp[i].getFile());
+            }
+        }
+    }
+
+    /**
+     * @deprecated Used only by deprecated method
+     */
+    @Deprecated
+    public static final String PATH_SEPARATOR = File.pathSeparator;
+
+    /**
+     * Adds classpath entries from a vector of URL's to the "tc_path_add" System
+     * property. This System property lists the classpath entries common to web
+     * applications. This System property is currently used by Jasper when its
+     * JSP servlet compiles the Java file for a JSP.
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static String classPathAdd(URL urls[], String cp) {
+        if (urls == null)
+            return cp;
+
+        for (int i = 0; i < urls.length; i++) {
+            if (cp != null)
+                cp += PATH_SEPARATOR + urls[i].getFile();
+            else
+                cp = urls[i].getFile();
+        }
+        return cp;
+    }
 
     /**
      * Find a method with the right name If found, call the method ( if param is
@@ -63,24 +302,24 @@ public final class IntrospectionUtils {
             Method setPropertyMethodBool = null;
 
             // First, the ideal case - a setFoo( String ) method
-            for (Method item : methods) {
-                Class<?> paramT[] = item.getParameterTypes();
-                if (setter.equals(item.getName()) && paramT.length == 1
+            for (int i = 0; i < methods.length; i++) {
+                Class<?> paramT[] = methods[i].getParameterTypes();
+                if (setter.equals(methods[i].getName()) && paramT.length == 1
                         && "java.lang.String".equals(paramT[0].getName())) {
 
-                    item.invoke(o, new Object[]{value});
+                    methods[i].invoke(o, new Object[] { value });
                     return true;
                 }
             }
 
             // Try a setFoo ( int ) or ( boolean )
-            for (Method method : methods) {
+            for (int i = 0; i < methods.length; i++) {
                 boolean ok = true;
-                if (setter.equals(method.getName())
-                        && method.getParameterTypes().length == 1) {
+                if (setter.equals(methods[i].getName())
+                        && methods[i].getParameterTypes().length == 1) {
 
                     // match - find the type and invoke it
-                    Class<?> paramType = method.getParameterTypes()[0];
+                    Class<?> paramType = methods[i].getParameterTypes()[0];
                     Object params[] = new Object[1];
 
                     // Try a setFoo ( int )
@@ -91,14 +330,14 @@ public final class IntrospectionUtils {
                         } catch (NumberFormatException ex) {
                             ok = false;
                         }
-                        // Try a setFoo ( long )
-                    } else if ("java.lang.Long".equals(paramType.getName())
-                            || "long".equals(paramType.getName())) {
-                        try {
-                            params[0] = Long.valueOf(value);
-                        } catch (NumberFormatException ex) {
-                            ok = false;
-                        }
+                    // Try a setFoo ( long )
+                    }else if ("java.lang.Long".equals(paramType.getName())
+                                || "long".equals(paramType.getName())) {
+                            try {
+                                params[0] = Long.valueOf(value);
+                            } catch (NumberFormatException ex) {
+                                ok = false;
+                            }
 
                         // Try a setFoo ( boolean )
                     } else if ("java.lang.Boolean".equals(paramType.getName())
@@ -124,17 +363,17 @@ public final class IntrospectionUtils {
                     }
 
                     if (ok) {
-                        method.invoke(o, params);
+                        methods[i].invoke(o, params);
                         return true;
                     }
                 }
 
                 // save "setProperty" for later
-                if ("setProperty".equals(method.getName())) {
-                    if (method.getReturnType() == Boolean.TYPE) {
-                        setPropertyMethodBool = method;
-                    } else {
-                        setPropertyMethodVoid = method;
+                if ("setProperty".equals(methods[i].getName())) {
+                    if (methods[i].getReturnType()==Boolean.TYPE){
+                        setPropertyMethodBool = methods[i];
+                    }else {
+                        setPropertyMethodVoid = methods[i];
                     }
 
                 }
@@ -166,11 +405,18 @@ public final class IntrospectionUtils {
                 }
             }
 
-        } catch (IllegalArgumentException | SecurityException | IllegalAccessException e) {
-            log.warn(sm.getString("introspectionUtils.setPropertyError", name, value, o.getClass()), e);
-        } catch (InvocationTargetException e) {
-            ExceptionUtils.handleThrowable(e.getCause());
-            log.warn(sm.getString("introspectionUtils.setPropertyError", name, value, o.getClass()), e);
+        } catch (IllegalArgumentException ex2) {
+            log.warn("IAE " + o + " " + name + " " + value, ex2);
+        } catch (SecurityException ex1) {
+            log.warn("IntrospectionUtils: SecurityException for " +
+                    o.getClass() + " " + name + "=" + value + ")", ex1);
+        } catch (IllegalAccessException iae) {
+            log.warn("IntrospectionUtils: IllegalAccessException for " +
+                    o.getClass() + " " + name + "=" + value + ")", iae);
+        } catch (InvocationTargetException ie) {
+            ExceptionUtils.handleThrowable(ie.getCause());
+            log.warn("IntrospectionUtils: InvocationTargetException for " +
+                    o.getClass() + " " + name + "=" + value + ")", ie);
         }
         return false;
     }
@@ -184,17 +430,17 @@ public final class IntrospectionUtils {
             Method getPropertyMethod = null;
 
             // First, the ideal case - a getFoo() method
-            for (Method method : methods) {
-                Class<?> paramT[] = method.getParameterTypes();
-                if (getter.equals(method.getName()) && paramT.length == 0) {
-                    return method.invoke(o, (Object[]) null);
+            for (int i = 0; i < methods.length; i++) {
+                Class<?> paramT[] = methods[i].getParameterTypes();
+                if (getter.equals(methods[i].getName()) && paramT.length == 0) {
+                    return methods[i].invoke(o, (Object[]) null);
                 }
-                if (isGetter.equals(method.getName()) && paramT.length == 0) {
-                    return method.invoke(o, (Object[]) null);
+                if (isGetter.equals(methods[i].getName()) && paramT.length == 0) {
+                    return methods[i].invoke(o, (Object[]) null);
                 }
 
-                if ("getProperty".equals(method.getName())) {
-                    getPropertyMethod = method;
+                if ("getProperty".equals(methods[i].getName())) {
+                    getPropertyMethod = methods[i];
                 }
             }
 
@@ -205,29 +451,47 @@ public final class IntrospectionUtils {
                 return getPropertyMethod.invoke(o, params);
             }
 
-        } catch (IllegalArgumentException | SecurityException | IllegalAccessException e) {
-            log.warn(sm.getString("introspectionUtils.getPropertyError", name, o.getClass()), e);
-        } catch (InvocationTargetException e) {
-            if (e.getCause() instanceof NullPointerException) {
-                // Assume the underlying object uses a storage to represent an unset property
-                return null;
-            }
-            ExceptionUtils.handleThrowable(e.getCause());
-            log.warn(sm.getString("introspectionUtils.getPropertyError", name, o.getClass()), e);
+        } catch (IllegalArgumentException ex2) {
+            log.warn("IAE " + o + " " + name, ex2);
+        } catch (SecurityException ex1) {
+            log.warn("IntrospectionUtils: SecurityException for " +
+                    o.getClass() + " " + name + ")", ex1);
+        } catch (IllegalAccessException iae) {
+            log.warn("IntrospectionUtils: IllegalAccessException for " +
+                    o.getClass() + " " + name + ")", iae);
+        } catch (InvocationTargetException ie) {
+            ExceptionUtils.handleThrowable(ie.getCause());
+            log.warn("IntrospectionUtils: InvocationTargetException for " +
+                    o.getClass() + " " + name + ")", ie);
         }
         return null;
     }
 
     /**
-     * Replaces ${NAME} in the value with the value of the property 'NAME'.
-     * Replaces ${NAME:DEFAULT} with the value of the property 'NAME:DEFAULT',
-     * if the property 'NAME:DEFAULT' is not set,
-     * the expression is replaced with the value of the property 'NAME',
-     * if the property 'NAME' is not set,
-     * the expression is replaced with 'DEFAULT'.
-     * If the property is not set and there is no default the value will be
-     * returned unmodified.
-     *
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static void setProperty(Object o, String name) {
+        String setter = "set" + capitalize(name);
+        try {
+            Method methods[] = findMethods(o.getClass());
+            // find setFoo() method
+            for (int i = 0; i < methods.length; i++) {
+                Class<?> paramT[] = methods[i].getParameterTypes();
+                if (setter.equals(methods[i].getName()) && paramT.length == 0) {
+                    methods[i].invoke(o, new Object[] {});
+                    return;
+                }
+            }
+        } catch (Exception ex1) {
+            if (log.isDebugEnabled())
+                log.debug("IntrospectionUtils: Exception for " +
+                        o.getClass() + " " + name, ex1);
+        }
+    }
+
+    /**
+     * Replace ${NAME} with the property value.
      * @param value The value
      * @param staticProp Replacement properties
      * @param dynamicProp Replacement properties
@@ -247,7 +511,6 @@ public final class IntrospectionUtils {
      * @param dynamicProp Replacement properties
      * @param classLoader Class loader associated with the code requesting the
      *                    property
-     *
      * @return the replacement value
      */
     public static String replaceProperties(String value,
@@ -279,21 +542,25 @@ public final class IntrospectionUtils {
                     continue;
                 }
                 String n = value.substring(pos + 2, endName);
-                String v = getProperty(n, staticProp, dynamicProp, classLoader);
-                if (v == null) {
-                    // {name:default}
-                    int col = n.indexOf(":-");
-                    if (col != -1) {
-                        String dV = n.substring(col + 2);
-                        n = n.substring(0, col);
-                        v = getProperty(n, staticProp, dynamicProp, classLoader);
-                        if (v == null) {
-                            v = dV;
+                String v = null;
+                if (staticProp != null) {
+                    v = (String) staticProp.get(n);
+                }
+                if (v == null && dynamicProp != null) {
+                    for (PropertySource propertySource : dynamicProp) {
+                        if (propertySource instanceof SecurePropertySource) {
+                            v = ((SecurePropertySource) propertySource).getProperty(n, classLoader);
+                        } else {
+                            v = propertySource.getProperty(n);
                         }
-                    } else {
-                        v = "${" + n + "}";
+                        if (v != null) {
+                            break;
+                        }
                     }
                 }
+                if (v == null)
+                    v = "${" + n + "}";
+
                 sb.append(v);
                 prev = endName + 1;
             }
@@ -301,27 +568,6 @@ public final class IntrospectionUtils {
         if (prev < value.length())
             sb.append(value.substring(prev));
         return sb.toString();
-    }
-
-    private static String getProperty(String name, Hashtable<Object, Object> staticProp,
-            PropertySource[] dynamicProp, ClassLoader classLoader) {
-        String v = null;
-        if (staticProp != null) {
-            v = (String) staticProp.get(name);
-        }
-        if (v == null && dynamicProp != null) {
-            for (PropertySource propertySource : dynamicProp) {
-                if (propertySource instanceof SecurePropertySource) {
-                    v = ((SecurePropertySource) propertySource).getProperty(name, classLoader);
-                } else {
-                    v = propertySource.getProperty(name);
-                }
-                if (v != null) {
-                    break;
-                }
-            }
-        }
-        return v;
     }
 
     /**
@@ -338,12 +584,202 @@ public final class IntrospectionUtils {
         return new String(chars);
     }
 
+    /**
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static String unCapitalize(String name) {
+        if (name == null || name.length() == 0) {
+            return name;
+        }
+        char chars[] = name.toCharArray();
+        chars[0] = Character.toLowerCase(chars[0]);
+        return new String(chars);
+    }
+
+    // -------------------- Class path tools --------------------
+
+    /**
+     * Add all the jar files in a dir to the classpath, represented as a Vector
+     * of URLs.
+     * @deprecated Is used only by deprecated method
+     */
+    @Deprecated
+    public static void addToClassPath(Vector<URL> cpV, String dir) {
+        try {
+            String cpComp[] = getFilesByExt(dir, ".jar");
+            if (cpComp != null) {
+                int jarCount = cpComp.length;
+                for (int i = 0; i < jarCount; i++) {
+                    URL url = getURL(dir, cpComp[i]);
+                    if (url != null)
+                        cpV.addElement(url);
+                }
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    /**
+     * @deprecated Is used only by deprecated method
+     */
+    @Deprecated
+    public static void addToolsJar(Vector<URL> v) {
+        try {
+            // Add tools.jar in any case
+            File f = new File(System.getProperty("java.home")
+                    + "/../lib/tools.jar");
+
+            if (!f.exists()) {
+                // On some systems java.home gets set to the root of jdk.
+                // That's a bug, but we can work around and be nice.
+                f = new File(System.getProperty("java.home") + "/lib/tools.jar");
+                if (f.exists()) {
+                    if (log.isDebugEnabled())
+                        log.debug("Detected strange java.home value "
+                            + System.getProperty("java.home")
+                            + ", it should point to jre");
+                }
+            }
+            URL url = new URL("file", "", f.getAbsolutePath());
+
+            v.addElement(url);
+        } catch (MalformedURLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    /**
+     * Return all files with a given extension in a dir
+     * @deprecated Is used only by deprecated method
+     */
+    @Deprecated
+    public static String[] getFilesByExt(String ld, String ext) {
+        File dir = new File(ld);
+        String[] names = null;
+        final String lext = ext;
+        if (dir.isDirectory()) {
+            names = dir.list(new FilenameFilter() {
+                @Override
+                public boolean accept(File d, String name) {
+                    if (name.endsWith(lext)) {
+                        return true;
+                    }
+                    return false;
+                }
+            });
+        }
+        return names;
+    }
+
+    /**
+     * Construct a file url from a file, using a base dir
+     * @deprecated Is used only by deprecated method
+     */
+    @Deprecated
+    public static URL getURL(String base, String file) {
+        try {
+            File baseF = new File(base);
+            File f = new File(baseF, file);
+            String path = f.getCanonicalPath();
+            if (f.isDirectory()) {
+                path += "/";
+            }
+            if (!f.exists())
+                return null;
+            return new URL("file", "", path);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Add elements from the classpath <i>cp </i> to a Vector <i>jars </i> as
+     * file URLs (We use Vector for JDK 1.1 compat).
+     * <p>
+     *
+     * @param jars The jar list
+     * @param cp a String classpath of directory or jar file elements
+     *   separated by path.separator delimiters.
+     * @throws IOException If an I/O error occurs
+     * @throws MalformedURLException Doh ;)
+     * @deprecated Is used only by deprecated method
+     */
+    @Deprecated
+    public static void addJarsFromClassPath(Vector<URL> jars, String cp)
+            throws IOException, MalformedURLException {
+        String sep = File.pathSeparator;
+        StringTokenizer st;
+        if (cp != null) {
+            st = new StringTokenizer(cp, sep);
+            while (st.hasMoreTokens()) {
+                File f = new File(st.nextToken());
+                String path = f.getCanonicalPath();
+                if (f.isDirectory()) {
+                    path += "/";
+                }
+                URL url = new URL("file", "", path);
+                if (!jars.contains(url)) {
+                    jars.addElement(url);
+                }
+            }
+        }
+    }
+
+    /**
+     * Return a URL[] that can be used to construct a class loader
+     * @deprecated Is used only by deprecated method
+     */
+    @Deprecated
+    public static URL[] getClassPath(Vector<URL> v) {
+        URL[] urls = new URL[v.size()];
+        for (int i = 0; i < v.size(); i++) {
+            urls[i] = v.elementAt(i);
+        }
+        return urls;
+    }
+
+    /**
+     * Construct a URL classpath from files in a directory, a cpath property,
+     * and tools.jar.
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static URL[] getClassPath(String dir, String cpath,
+            String cpathProp, boolean addTools) throws IOException,
+            MalformedURLException {
+        Vector<URL> jarsV = new Vector<URL>();
+        if (dir != null) {
+            // Add dir/classes first, if it exists
+            URL url = getURL(dir, "classes");
+            if (url != null)
+                jarsV.addElement(url);
+            addToClassPath(jarsV, dir);
+        }
+
+        if (cpath != null)
+            addJarsFromClassPath(jarsV, cpath);
+
+        if (cpathProp != null) {
+            String cpath1 = System.getProperty(cpathProp);
+            addJarsFromClassPath(jarsV, cpath1);
+        }
+
+        if (addTools)
+            addToolsJar(jarsV);
+
+        return getClassPath(jarsV);
+    }
+
     // -------------------- other utils --------------------
     public static void clear() {
         objectMethods.clear();
     }
 
-    private static final Hashtable<Class<?>,Method[]> objectMethods = new Hashtable<>();
+    static Hashtable<Class<?>,Method[]> objectMethods =
+        new Hashtable<Class<?>,Method[]>();
 
     public static Method[] findMethods(Class<?> c) {
         Method methods[] = objectMethods.get(c);
@@ -359,11 +795,11 @@ public final class IntrospectionUtils {
     public static Method findMethod(Class<?> c, String name,
             Class<?> params[]) {
         Method methods[] = findMethods(c);
-        for (Method method : methods) {
-            if (method.getName().equals(name)) {
-                Class<?> methodParams[] = method.getParameterTypes();
+        for (int i = 0; i < methods.length; i++) {
+            if (methods[i].getName().equals(name)) {
+                Class<?> methodParams[] = methods[i].getParameterTypes();
                 if (params == null && methodParams.length == 0) {
-                    return method;
+                    return methods[i];
                 }
                 if (params.length != methodParams.length) {
                     continue;
@@ -376,17 +812,60 @@ public final class IntrospectionUtils {
                     }
                 }
                 if (found) {
-                    return method;
+                    return methods[i];
                 }
             }
         }
         return null;
     }
 
+    /** Test if the object implements a particular
+     *  method
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static boolean hasHook(Object obj, String methodN) {
+        try {
+            Method myMethods[] = findMethods(obj.getClass());
+            for (int i = 0; i < myMethods.length; i++) {
+                if (methodN.equals(myMethods[i].getName())) {
+                    // check if it's overridden
+                    Class<?> declaring = myMethods[i].getDeclaringClass();
+                    Class<?> parentOfDeclaring = declaring.getSuperclass();
+                    // this works only if the base class doesn't extend
+                    // another class.
+
+                    // if the method is declared in a top level class
+                    // like BaseInterceptor parent is Object, otherwise
+                    // parent is BaseInterceptor or an intermediate class
+                    if (!"java.lang.Object".equals(parentOfDeclaring.getName())) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return false;
+    }
+
+    /**
+     * @deprecated Not used
+     */
+    @Deprecated
+    public static void callMain(Class<?> c, String args[]) throws Exception {
+        Class<?> p[] = new Class[1];
+        p[0] = args.getClass();
+        Method m = c.getMethod("main", p);
+        m.invoke(c, new Object[] { args });
+    }
+
     public static Object callMethod1(Object target, String methodN,
             Object param1, String typeParam1, ClassLoader cl) throws Exception {
-        if (target == null || methodN == null || param1 == null) {
-            throw new IllegalArgumentException(sm.getString("introspectionUtils.nullParameter"));
+        if (target == null || param1 == null) {
+            throw new IllegalArgumentException(
+                    "IntrospectionUtils: Assert: Illegal params " +
+                    target + " " + param1);
         }
         if (log.isDebugEnabled())
             log.debug("IntrospectionUtils: callMethod1 " +
@@ -409,6 +888,41 @@ public final class IntrospectionUtils {
             throw ie;
         }
     }
+
+    /**
+     * @deprecated Not used, though compliments callMethod1 and callMethodN here
+     */
+    @Deprecated
+    public static Object callMethod0(Object target, String methodN)
+            throws Exception {
+        if (target == null) {
+            if (log.isDebugEnabled())
+                log.debug("IntrospectionUtils: Assert: Illegal params " +
+                        target);
+            return null;
+        }
+        if (log.isDebugEnabled())
+            log.debug("IntrospectionUtils: callMethod0 " +
+                    target.getClass().getName() + "." + methodN);
+
+        Class<?> params[] = new Class[0];
+        Method m = findMethod(target.getClass(), methodN, params);
+        if (m == null)
+            throw new NoSuchMethodException(target.getClass().getName() + " "
+                    + methodN);
+        try {
+            return m.invoke(target, emptyArray);
+        } catch (InvocationTargetException ie) {
+            ExceptionUtils.handleThrowable(ie.getCause());
+            throw ie;
+        }
+    }
+
+    /**
+     * @deprecated Used only by deprecated method
+     */
+    @Deprecated
+    private static final Object[] emptyArray = new Object[] {};
 
     public static Object callMethodN(Object target, String methodN,
             Object params[], Class<?> typeParams[]) throws Exception {
@@ -476,7 +990,7 @@ public final class IntrospectionUtils {
                         paramType.getName());
         }
         if (result == null) {
-            throw new IllegalArgumentException(sm.getString("introspectionUtils.conversionError", object, paramType.getName()));
+            throw new IllegalArgumentException("Can't convert argument: " + object);
         }
         return result;
     }
@@ -546,5 +1060,14 @@ public final class IntrospectionUtils {
          *         fails
          */
         public String getProperty(String key, ClassLoader classLoader);
+    }
+
+
+    /**
+     * @deprecated Is used only by deprecated method
+     */
+    @Deprecated
+    public static interface AttributeHolder {
+        public void setAttribute(String key, Object o);
     }
 }

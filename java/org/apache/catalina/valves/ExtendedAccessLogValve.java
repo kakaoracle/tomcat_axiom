@@ -16,7 +16,7 @@
  */
 package org.apache.catalina.valves;
 
-import java.io.CharArrayWriter;
+
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
@@ -39,6 +39,8 @@ import org.apache.catalina.util.ServerInfo;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
+
+
 
 /**
  * An implementation of the W3c Extended Log File Format. See
@@ -122,6 +124,8 @@ import org.apache.tomcat.util.ExceptionUtils;
  * control characters.
  * </p>
  *
+ *
+ * @author Tim Funk
  * @author Peter Rossbach
  */
 public class ExtendedAccessLogValve extends AccessLogValve {
@@ -136,6 +140,21 @@ public class ExtendedAccessLogValve extends AccessLogValve {
      */
     protected static final String extendedAccessLogInfo =
         "org.apache.catalina.valves.ExtendedAccessLogValve/2.1";
+
+
+    // ------------------------------------------------------------- Properties
+
+
+    /**
+     * Return descriptive information about this implementation.
+     */
+    @Override
+    public String getInfo() {
+        return (extendedAccessLogInfo);
+    }
+
+
+    // --------------------------------------------------------- Public Methods
 
 
     // -------------------------------------------------------- Private Methods
@@ -215,7 +234,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         };
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             ElementTimestampStruct eds = currentDate.get();
             long millis = eds.currentTimestamp.getTime();
@@ -243,7 +262,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         };
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             ElementTimestampStruct eds = currentTime.get();
             long millis = eds.currentTimestamp.getTime();
@@ -265,7 +284,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             this.header = header;
         }
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             buf.append(wrap(request.getHeader(header)));
         }
@@ -279,7 +298,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             buf.append(wrap(response.getHeader(header)));
         }
@@ -292,7 +311,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             this.attribute = attribute;
         }
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             buf.append(wrap(request.getContext().getServletContext()
                     .getAttribute(attribute)));
@@ -306,7 +325,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             this.name = name;
         }
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             Cookie[] c = request.getCookies();
             for (int i = 0; c != null && i < c.length; i++) {
@@ -328,7 +347,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             if (null != response) {
                 Iterator<String> iter = response.getHeaders(header).iterator();
@@ -359,7 +378,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             buf.append(wrap(request.getAttribute(attribute)));
         }
@@ -372,7 +391,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             this.attribute = attribute;
         }
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             HttpSession session = null;
             if (request != null) {
@@ -406,14 +425,14 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
+        public void addElement(StringBuilder buf, Date date, Request request,
                 Response response, long time) {
             buf.append(wrap(urlEncode(request.getParameter(parameter))));
         }
     }
 
     protected static class PatternTokenizer {
-        private final StringReader sr;
+        private StringReader sr = null;
         private StringBuilder buf = new StringBuilder();
         private boolean ended = false;
         private boolean subToken;
@@ -535,7 +554,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         if (log.isDebugEnabled()) {
             log.debug("decodePattern, pattern =" + pattern);
         }
-        List<AccessLogElement> list = new ArrayList<>();
+        List<AccessLogElement> list = new ArrayList<AccessLogElement>();
 
         PatternTokenizer tokenizer = new PatternTokenizer(pattern);
         try {
@@ -544,7 +563,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             tokenizer.getWhiteSpaces();
 
             if (tokenizer.isEnded()) {
-                log.info(sm.getString("extendedAccessLogValve.emptyPattern"));
+                log.info("pattern was just empty or whitespace");
                 return null;
             }
 
@@ -572,7 +591,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             }
             return list.toArray(new AccessLogElement[0]);
         } catch (IOException e) {
-            log.error(sm.getString("extendedAccessLogValve.patternParseError", pattern), e);
+            log.error("parse error", e);
             return null;
         }
     }
@@ -604,11 +623,11 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("s".equals(token)) {
             String nextToken = tokenizer.getToken();
             if ("ip".equals(nextToken)) {
-                return new LocalAddrElement(getIpv6Canonical());
+                return new LocalAddrElement();
             } else if ("dns".equals(nextToken)) {
                 return new AccessLogElement() {
                     @Override
-                    public void addElement(CharArrayWriter buf, Date date,
+                    public void addElement(StringBuilder buf, Date date,
                             Request request, Response response, long time) {
                         String value;
                         try {
@@ -630,7 +649,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("x".equals(token)) {
             return getXParameterElement(tokenizer);
         }
-        log.error(sm.getString("extendedAccessLogValve.decodeError", token));
+        log.error("unable to decode with rest of chars starting: " + token);
         return null;
     }
 
@@ -648,9 +667,9 @@ public class ExtendedAccessLogValve extends AccessLogValve {
                     } else if ("query".equals(token)) {
                         return new AccessLogElement() {
                             @Override
-                            public void addElement(CharArrayWriter buf,
-                                    Date date, Request request,
-                                    Response response, long time) {
+                            public void addElement(StringBuilder buf, Date date,
+                                    Request request, Response response,
+                                    long time) {
                                 String query = request.getQueryString();
                                 if (query != null) {
                                     buf.append(query);
@@ -663,7 +682,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
                 } else {
                     return new AccessLogElement() {
                         @Override
-                        public void addElement(CharArrayWriter buf, Date date,
+                        public void addElement(StringBuilder buf, Date date,
                                 Request request, Response response, long time) {
                             String query = request.getQueryString();
                             if (query == null) {
@@ -680,12 +699,13 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if (tokenizer.hasParameter()) {
             String parameter = tokenizer.getParameter();
             if (parameter == null) {
-                log.error(sm.getString("extendedAccessLogValve.noClosing"));
+                log.error("No closing ) found for in decode");
                 return null;
             }
             return new RequestHeaderElement(parameter);
         }
-        log.error(sm.getString("extendedAccessLogValve.decodeError", tokenizer.getRemains()));
+        log.error("The next characters couldn't be decoded: "
+                + tokenizer.getRemains());
         return null;
     }
 
@@ -701,12 +721,13 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if (tokenizer.hasParameter()) {
             String parameter = tokenizer.getParameter();
             if (parameter == null) {
-                log.error(sm.getString("extendedAccessLogValve.noClosing"));
+                log.error("No closing ) found for in decode");
                 return null;
             }
             return new ResponseHeaderElement(parameter);
         }
-        log.error(sm.getString("extendedAccessLogValve.decodeError", tokenizer.getRemains()));
+        log.error("The next characters couldn't be decoded: "
+                + tokenizer.getRemains());
         return null;
     }
 
@@ -720,14 +741,14 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             tokenizer.getParameter();
             return new StringElement("-");
         }
-        log.error(sm.getString("extendedAccessLogValve.decodeError", token));
+        log.error("The next characters couldn't be decoded: " + token);
         return null;
     }
 
     protected AccessLogElement getXParameterElement(PatternTokenizer tokenizer)
             throws IOException {
         if (!tokenizer.hasSubToken()) {
-            log.error(sm.getString("extendedAccessLogValve.badXParam"));
+            log.error("x param in wrong format. Needs to be 'x-#(...)' read the docs!");
             return null;
         }
         String token = tokenizer.getToken();
@@ -736,12 +757,12 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         }
 
         if (!tokenizer.hasParameter()) {
-            log.error(sm.getString("extendedAccessLogValve.badXParam"));
+            log.error("x param in wrong format. Needs to be 'x-#(...)' read the docs!");
             return null;
         }
         String parameter = tokenizer.getParameter();
         if (parameter == null) {
-            log.error(sm.getString("extendedAccessLogValve.noClosing"));
+            log.error("No closing ) found for in decode");
             return null;
         }
         if ("A".equals(token)) {
@@ -759,7 +780,8 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("O".equals(token)) {
             return new ResponseAllHeaderElement(parameter);
         }
-        log.error(sm.getString("extendedAccessLogValve.badXParamValue", token));
+        log.error("x param for servlet request, couldn't decode value: "
+                + token);
         return null;
     }
 
@@ -767,7 +789,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         if ("authType".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap(request.getAuthType()));
                 }
@@ -775,7 +797,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("remoteUser".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap(request.getRemoteUser()));
                 }
@@ -783,7 +805,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("requestedSessionId".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap(request.getRequestedSessionId()));
                 }
@@ -791,7 +813,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("requestedSessionIdFromCookie".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap(""
                             + request.isRequestedSessionIdFromCookie()));
@@ -800,7 +822,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("requestedSessionIdValid".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap("" + request.isRequestedSessionIdValid()));
                 }
@@ -808,15 +830,15 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("contentLength".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
-                    buf.append(wrap("" + request.getContentLengthLong()));
+                    buf.append(wrap("" + request.getContentLength()));
                 }
             };
         } else if ("characterEncoding".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap(request.getCharacterEncoding()));
                 }
@@ -824,7 +846,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("locale".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap(request.getLocale()));
                 }
@@ -832,7 +854,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("protocol".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap(request.getProtocol()));
                 }
@@ -840,7 +862,7 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("scheme".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(request.getScheme());
                 }
@@ -848,13 +870,14 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         } else if ("secure".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
+                public void addElement(StringBuilder buf, Date date,
                         Request request, Response response, long time) {
                     buf.append(wrap("" + request.isSecure()));
                 }
             };
         }
-        log.error(sm.getString("extendedAccessLogValve.badXParamValue", parameter));
+        log.error("x param for servlet request, couldn't decode value: "
+                + parameter);
         return null;
     }
 

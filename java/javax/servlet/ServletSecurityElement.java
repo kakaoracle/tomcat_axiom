@@ -34,7 +34,7 @@ import javax.servlet.annotation.ServletSecurity;
 public class ServletSecurityElement extends HttpConstraintElement {
 
     private final Map<String,HttpMethodConstraintElement> methodConstraints =
-        new HashMap<>();
+        new HashMap<String,HttpMethodConstraintElement>();
 
     /**
      * Use default HttpConstraint.
@@ -90,16 +90,17 @@ public class ServletSecurityElement extends HttpConstraintElement {
                 annotation.value().transportGuarantee(),
                 annotation.value().rolesAllowed()));
 
-        List<HttpMethodConstraintElement> l = new ArrayList<>();
+        List<HttpMethodConstraintElement> l =
+            new ArrayList<HttpMethodConstraintElement>();
         HttpMethodConstraint[] constraints = annotation.httpMethodConstraints();
         if (constraints != null) {
-            for (HttpMethodConstraint constraint : constraints) {
+            for (int i = 0; i < constraints.length; i++) {
                 HttpMethodConstraintElement e =
-                        new HttpMethodConstraintElement(constraint.value(),
-                                new HttpConstraintElement(
-                                        constraint.emptyRoleSemantic(),
-                                        constraint.transportGuarantee(),
-                                        constraint.rolesAllowed()));
+                    new HttpMethodConstraintElement(constraints[i].value(),
+                            new HttpConstraintElement(
+                                    constraints[i].emptyRoleSemantic(),
+                                    constraints[i].transportGuarantee(),
+                                    constraints[i].rolesAllowed()));
                 l.add(e);
             }
         }
@@ -107,12 +108,15 @@ public class ServletSecurityElement extends HttpConstraintElement {
     }
 
     public Collection<HttpMethodConstraintElement> getHttpMethodConstraints() {
-        Collection<HttpMethodConstraintElement> result = new HashSet<>(methodConstraints.values());
+        Collection<HttpMethodConstraintElement> result =
+                new HashSet<HttpMethodConstraintElement>();
+        result.addAll(methodConstraints.values());
         return result;
     }
 
     public Collection<String> getMethodNames() {
-        Collection<String> result = new HashSet<>(methodConstraints.keySet());
+        Collection<String> result = new HashSet<String>();
+        result.addAll(methodConstraints.keySet());
         return result;
     }
 

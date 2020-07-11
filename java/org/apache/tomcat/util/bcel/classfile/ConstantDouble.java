@@ -48,7 +48,7 @@ public final class ConstantDouble extends Constant {
     /**
      * @return data, i.e., 8 bytes.
      */
-    public double getBytes() {
+    public final double getBytes() {
         return bytes;
     }
 }

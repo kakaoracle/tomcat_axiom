@@ -38,7 +38,7 @@ public abstract class SimpleNode extends ELSupport implements Node {
 
     protected Node[] children;
 
-    protected final int id;
+    protected int id;
 
     protected String image;
 
@@ -104,6 +104,10 @@ public abstract class SimpleNode extends ELSupport implements Node {
         return ELParserTreeConstants.jjtNodeName[id];
     }
 
+    public String toString(String prefix) {
+        return prefix + toString();
+    }
+
     @Override
     public String getImage() {
         return image;
@@ -141,8 +145,8 @@ public abstract class SimpleNode extends ELSupport implements Node {
     public void accept(NodeVisitor visitor) throws Exception {
         visitor.visit(this);
         if (this.children != null && this.children.length > 0) {
-            for (Node child : this.children) {
-                child.accept(visitor);
+            for (int i = 0; i < this.children.length; i++) {
+                this.children[i].accept(visitor);
             }
         }
     }
@@ -179,6 +183,9 @@ public abstract class SimpleNode extends ELSupport implements Node {
             return false;
         }
         SimpleNode other = (SimpleNode) obj;
+        if (!Arrays.equals(children, other.children)) {
+            return false;
+        }
         if (id != other.id) {
             return false;
         }
@@ -187,9 +194,6 @@ public abstract class SimpleNode extends ELSupport implements Node {
                 return false;
             }
         } else if (!image.equals(other.image)) {
-            return false;
-        }
-        if (!Arrays.equals(children, other.children)) {
             return false;
         }
         return true;

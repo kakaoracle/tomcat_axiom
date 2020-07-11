@@ -180,12 +180,12 @@ public abstract class GenericServlet implements Servlet, ServletConfig,
      * Writes the specified message to a servlet log file, prepended by the
      * servlet's name. See {@link ServletContext#log(String)}.
      *
-     * @param message
+     * @param msg
      *            a <code>String</code> specifying the message to be written to
      *            the log file
      */
-    public void log(String message) {
-        getServletContext().log(getServletName() + ": " + message);
+    public void log(String msg) {
+        getServletContext().log(getServletName() + ": " + msg);
     }
 
     /**

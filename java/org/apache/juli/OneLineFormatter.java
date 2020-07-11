@@ -39,6 +39,7 @@ import java.util.logging.LogRecord;
  */
 public class OneLineFormatter extends Formatter {
 
+    private static final String LINE_SEP = System.getProperty("line.separator");
     private static final String UNKNOWN_THREAD_NAME = "Unknown thread with ID ";
     private static final Object threadMxBeanLock = new Object();
     private static volatile ThreadMXBean threadMxBean = null;
@@ -51,7 +52,7 @@ public class OneLineFormatter extends Formatter {
     };
 
     /* Timestamp format */
-    private static final String DEFAULT_TIME_FORMAT = "dd-MMM-yyyy HH:mm:ss.SSS";
+    private static final String DEFAULT_TIME_FORMAT = "dd-MMM-yyyy HH:mm:ss";
 
     /**
      * The size of our global date format cache
@@ -67,8 +68,6 @@ public class OneLineFormatter extends Formatter {
      * Thread local date format cache.
      */
     private ThreadLocal<DateFormatCache> localDateCache;
-
-    private volatile MillisHandling millisHandling = MillisHandling.APPEND;
 
 
     public OneLineFormatter() {
@@ -88,31 +87,12 @@ public class OneLineFormatter extends Formatter {
      *                   {@link java.text.SimpleDateFormat} syntax
      */
     public void setTimeFormat(final String timeFormat) {
-        final String cachedTimeFormat;
-
-        if (timeFormat.endsWith(".SSS")) {
-            cachedTimeFormat = timeFormat.substring(0,  timeFormat.length() - 4);
-            millisHandling = MillisHandling.APPEND;
-        } else if (timeFormat.contains("SSS")) {
-            millisHandling = MillisHandling.REPLACE_SSS;
-            cachedTimeFormat = timeFormat;
-        } else if (timeFormat.contains("SS")) {
-            millisHandling = MillisHandling.REPLACE_SS;
-            cachedTimeFormat = timeFormat;
-        } else if (timeFormat.contains("S")) {
-            millisHandling = MillisHandling.REPLACE_S;
-            cachedTimeFormat = timeFormat;
-        } else {
-            millisHandling = MillisHandling.NONE;
-            cachedTimeFormat = timeFormat;
-        }
-
         final DateFormatCache globalDateCache =
-                new DateFormatCache(globalCacheSize, cachedTimeFormat, null);
+                new DateFormatCache(globalCacheSize, timeFormat, null);
         localDateCache = new ThreadLocal<DateFormatCache>() {
             @Override
             protected DateFormatCache initialValue() {
-                return new DateFormatCache(localCacheSize, cachedTimeFormat, globalDateCache);
+                return new DateFormatCache(localCacheSize, timeFormat, globalDateCache);
             }
         };
     }
@@ -162,7 +142,7 @@ public class OneLineFormatter extends Formatter {
         sb.append(formatMessage(record));
 
         // New line for next record
-        sb.append(System.lineSeparator());
+        sb.append(LINE_SEP);
 
         // Stack trace
         if (record.getThrown() != null) {
@@ -177,45 +157,18 @@ public class OneLineFormatter extends Formatter {
     }
 
     protected void addTimestamp(StringBuilder buf, long timestamp) {
-        String cachedTimeStamp = localDateCache.get().getFormat(timestamp);
-        if (millisHandling == MillisHandling.NONE) {
-            buf.append(cachedTimeStamp);
-        } else if (millisHandling == MillisHandling.APPEND) {
-            buf.append(cachedTimeStamp);
-            long frac = timestamp % 1000;
-            buf.append('.');
-            if (frac < 100) {
-                if (frac < 10) {
-                    buf.append('0');
-                    buf.append('0');
-                } else {
-                    buf.append('0');
-                }
-            }
-            buf.append(frac);
-        } else {
-            // Some version of replace
-            long frac = timestamp % 1000;
-            // Formatted string may vary in length so the insert point may vary
-            int insertStart = cachedTimeStamp.indexOf(DateFormatCache.MSEC_PATTERN);
-            buf.append(cachedTimeStamp.subSequence(0, insertStart));
-            if (frac < 100 && millisHandling == MillisHandling.REPLACE_SSS) {
+        buf.append(localDateCache.get().getFormat(timestamp));
+        long frac = timestamp % 1000;
+        buf.append('.');
+        if (frac < 100) {
+            if (frac < 10) {
                 buf.append('0');
-                if (frac < 10) {
-                    buf.append('0');
-                }
-            } else if (frac < 10 && millisHandling == MillisHandling.REPLACE_SS) {
                 buf.append('0');
-            }
-            buf.append(frac);
-            if (millisHandling == MillisHandling.REPLACE_SSS) {
-                buf.append(cachedTimeStamp.substring(insertStart + 3));
-            } else if (millisHandling == MillisHandling.REPLACE_SS) {
-                buf.append(cachedTimeStamp.substring(insertStart + 2));
             } else {
-                buf.append(cachedTimeStamp.substring(insertStart + 1));
+                buf.append('0');
             }
         }
+        buf.append(frac);
     }
 
 
@@ -297,14 +250,5 @@ public class OneLineFormatter extends Formatter {
             super.print('\t');
             super.println(x);
         }
-    }
-
-
-    private static enum MillisHandling {
-        NONE,
-        APPEND,
-        REPLACE_S,
-        REPLACE_SS,
-        REPLACE_SSS,
     }
 }

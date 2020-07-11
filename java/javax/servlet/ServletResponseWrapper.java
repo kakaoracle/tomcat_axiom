@@ -19,7 +19,6 @@ package javax.servlet;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Locale;
-import java.util.ResourceBundle;
 
 /**
  * Provides a convenient implementation of the ServletResponse interface that
@@ -28,13 +27,9 @@ import java.util.ResourceBundle;
  * calling through to the wrapped response object.
  *
  * @since v 2.3
- * @see javax.servlet.ServletResponse
+ * @see ServletResponse
  */
 public class ServletResponseWrapper implements ServletResponse {
-    private static final String LSTRING_FILE = "javax.servlet.LocalStrings";
-    private static final ResourceBundle lStrings =
-        ResourceBundle.getBundle(LSTRING_FILE);
-
     private ServletResponse response;
 
     /**
@@ -42,12 +37,12 @@ public class ServletResponseWrapper implements ServletResponse {
      *
      * @param response The response to wrap
      *
-     * @throws java.lang.IllegalArgumentException
+     * @throws IllegalArgumentException
      *             if the response is null.
      */
     public ServletResponseWrapper(ServletResponse response) {
         if (response == null) {
-            throw new IllegalArgumentException(lStrings.getString("wrapper.nullResponse"));
+            throw new IllegalArgumentException("Response cannot be null");
         }
         this.response = response;
     }
@@ -66,12 +61,12 @@ public class ServletResponseWrapper implements ServletResponse {
      *
      * @param response The new response to wrap
      *
-     * @throws java.lang.IllegalArgumentException
+     * @throws IllegalArgumentException
      *             if the response is null.
      */
     public void setResponse(ServletResponse response) {
         if (response == null) {
-            throw new IllegalArgumentException(lStrings.getString("wrapper.nullResponse"));
+            throw new IllegalArgumentException("Response cannot be null");
         }
         this.response = response;
     }
@@ -121,17 +116,6 @@ public class ServletResponseWrapper implements ServletResponse {
     @Override
     public void setContentLength(int len) {
         this.response.setContentLength(len);
-    }
-
-    /**
-     * The default behavior of this method is to call setContentLengthLong(long len)
-     * on the wrapped response object.
-     *
-     * @since Servlet 3.1
-     */
-    @Override
-    public void setContentLengthLong(long length) {
-        this.response.setContentLengthLong(length);
     }
 
     /**
@@ -253,7 +237,9 @@ public class ServletResponseWrapper implements ServletResponse {
      *         otherwise <code>false</code>
      * @since Servlet 3.0
      */
-    public boolean isWrapperFor(Class<?> wrappedType) {
+    @SuppressWarnings("unchecked")
+    // Spec API does not use generics
+    public boolean isWrapperFor(@SuppressWarnings("rawtypes") Class wrappedType) {
         if (wrappedType.isAssignableFrom(response.getClass())) {
             return true;
         }

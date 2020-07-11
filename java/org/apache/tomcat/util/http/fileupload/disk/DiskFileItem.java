@@ -47,7 +47,7 @@ import org.apache.tomcat.util.http.fileupload.util.Streams;
  * {@link org.apache.tomcat.util.http.fileupload.FileUpload
  * #parseRequest(org.apache.tomcat.util.http.fileupload.RequestContext)}), you
  * may either request all contents of file at once using {@link #get()} or
- * request an {@link java.io.InputStream InputStream} with
+ * request an {@link InputStream InputStream} with
  * {@link #getInputStream()} and process the file without attempting to load
  * it into memory, which may come handy with large files.
  *
@@ -179,10 +179,10 @@ public class DiskFileItem
     // ------------------------------- Methods from javax.activation.DataSource
 
     /**
-     * Returns an {@link java.io.InputStream InputStream} that can be
+     * Returns an {@link InputStream InputStream} that can be
      * used to retrieve the contents of the file.
      *
-     * @return An {@link java.io.InputStream InputStream} that can be
+     * @return An {@link InputStream InputStream} that can be
      *         used to retrieve the contents of the file.
      *
      * @throws IOException if an error occurs.
@@ -223,7 +223,7 @@ public class DiskFileItem
         ParameterParser parser = new ParameterParser();
         parser.setLowerCaseNames(true);
         // Parameter parser can handle null input
-        Map<String, String> params = parser.parse(getContentType(), ';');
+        Map<String,String> params = parser.parse(getContentType(), ';');
         return params.get("charset");
     }
 
@@ -391,12 +391,6 @@ public class DiskFileItem
                  * in a temporary location so move it to the
                  * desired file.
                  */
-                if (file.exists()) {
-                    if (!file.delete()) {
-                        throw new FileUploadException(
-                                "Cannot write uploaded file to disk!");
-                    }
-                }
                 if (!outputFile.renameTo(file)) {
                     BufferedInputStream in = null;
                     BufferedOutputStream out = null;
@@ -445,7 +439,7 @@ public class DiskFileItem
      *
      * @return The name of the form field.
      *
-     * @see #setFieldName(java.lang.String)
+     * @see #setFieldName(String)
      *
      */
     @Override
@@ -497,10 +491,10 @@ public class DiskFileItem
     }
 
     /**
-     * Returns an {@link java.io.OutputStream OutputStream} that can
+     * Returns an {@link OutputStream OutputStream} that can
      * be used for storing the contents of the file.
      *
-     * @return An {@link java.io.OutputStream OutputStream} that can be used
+     * @return An {@link OutputStream OutputStream} that can be used
      *         for storing the contents of the file.
      *
      * @throws IOException if an error occurs.
@@ -518,11 +512,11 @@ public class DiskFileItem
     // --------------------------------------------------------- Public methods
 
     /**
-     * Returns the {@link java.io.File} object for the <code>FileItem</code>'s
+     * Returns the {@link File} object for the <code>FileItem</code>'s
      * data's temporary location on the disk. Note that for
      * <code>FileItem</code>s that have their data stored in memory,
      * this method will return <code>null</code>. When handling large
-     * files, you can use {@link java.io.File#renameTo(java.io.File)} to
+     * files, you can use {@link File#renameTo(File)} to
      * move the file to new location without copying the data, if the
      * source and destination locations reside within the same logical
      * volume.
@@ -546,7 +540,7 @@ public class DiskFileItem
      * Removes the file contents from the temporary storage.
      */
     @Override
-    protected void finalize() throws Throwable {
+    protected void finalize() {
         if (dfos == null || dfos.isInMemory()) {
             return;
         }
@@ -555,11 +549,10 @@ public class DiskFileItem
         if (outputFile != null && outputFile.exists()) {
             outputFile.delete();
         }
-        super.finalize();
     }
 
     /**
-     * Creates and returns a {@link java.io.File File} representing a uniquely
+     * Creates and returns a {@link File File} representing a uniquely
      * named temporary file in the configured repository path. The lifetime of
      * the file is tied to the lifetime of the <code>FileItem</code> instance;
      * the file will be deleted when the instance is garbage collected.
@@ -567,7 +560,7 @@ public class DiskFileItem
      * <b>Note: Subclasses that override this method must ensure that they return the
      * same File each time.</b>
      *
-     * @return The {@link java.io.File File} to be used for temporary storage.
+     * @return The {@link File File} to be used for temporary storage.
      */
     protected File getTempFile() {
         if (tempFile == null) {
@@ -576,7 +569,8 @@ public class DiskFileItem
                 tempDir = new File(System.getProperty("java.io.tmpdir"));
             }
 
-            String tempFileName = String.format("upload_%s_%s.tmp", UID, getUniqueId());
+            String tempFileName =
+                    String.format("upload_%s_%s.tmp", UID, getUniqueId());
 
             tempFile = new File(tempDir, tempFileName);
         }

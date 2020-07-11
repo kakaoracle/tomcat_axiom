@@ -106,17 +106,17 @@ public class AddDefaultCharsetFilter extends FilterBase {
         }
 
         @Override
-        public void setContentType(String contentType) {
+        public void setContentType(String ct) {
 
-            if (contentType != null && contentType.startsWith("text/")) {
-                if (!contentType.contains("charset=")) {
-                    super.setContentType(contentType + ";charset=" + encoding);
+            if (ct != null && ct.startsWith("text/")) {
+                if (!ct.contains("charset=")) {
+                    super.setContentType(ct + ";charset=" + encoding);
                 } else {
-                    super.setContentType(contentType);
+                    super.setContentType(ct);
                     encoding = getCharacterEncoding();
                 }
             } else {
-                super.setContentType(contentType);
+                super.setContentType(ct);
             }
 
         }

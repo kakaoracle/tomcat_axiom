@@ -42,7 +42,7 @@ class ScriptingVariabler {
      * to help identify, for every custom tag, the scripting variables that it
      * needs to declare.
      */
-    private static class CustomTagCounter extends Node.Visitor {
+    static class CustomTagCounter extends Node.Visitor {
 
         private int count;
         private Node.CustomTag parent;
@@ -62,14 +62,14 @@ class ScriptingVariabler {
      * For every custom tag, determines the scripting variables it needs to
      * declare.
      */
-    private static class ScriptingVariableVisitor extends Node.Visitor {
+    static class ScriptingVariableVisitor extends Node.Visitor {
 
-        private final ErrorDispatcher err;
-        private final Map<String, Integer> scriptVars;
+        private ErrorDispatcher err;
+        private Map<String, Integer> scriptVars;
 
         public ScriptingVariableVisitor(ErrorDispatcher err) {
             this.err = err;
-            scriptVars = new HashMap<>();
+            scriptVars = new HashMap<String,Integer>();
         }
 
         @Override
@@ -89,7 +89,7 @@ class ScriptingVariabler {
                 return;
             }
 
-            List<Object> vec = new ArrayList<>();
+            List<Object> vec = new ArrayList<Object>();
 
             Integer ownRange = null;
             Node.CustomTag parent = n.getCustomTagParent();
@@ -105,34 +105,34 @@ class ScriptingVariabler {
             }
 
             if (varInfos.length > 0) {
-                for (VariableInfo varInfo : varInfos) {
-                    if (varInfo.getScope() != scope
-                            || !varInfo.getDeclare()) {
+                for (int i=0; i<varInfos.length; i++) {
+                    if (varInfos[i].getScope() != scope
+                            || !varInfos[i].getDeclare()) {
                         continue;
                     }
-                    String varName = varInfo.getVarName();
+                    String varName = varInfos[i].getVarName();
 
                     Integer currentRange = scriptVars.get(varName);
                     if (currentRange == null ||
                             ownRange.compareTo(currentRange) > 0) {
                         scriptVars.put(varName, ownRange);
-                        vec.add(varInfo);
+                        vec.add(varInfos[i]);
                     }
                 }
             } else {
-                for (TagVariableInfo tagVarInfo : tagVarInfos) {
-                    if (tagVarInfo.getScope() != scope
-                            || !tagVarInfo.getDeclare()) {
+                for (int i=0; i<tagVarInfos.length; i++) {
+                    if (tagVarInfos[i].getScope() != scope
+                            || !tagVarInfos[i].getDeclare()) {
                         continue;
                     }
-                    String varName = tagVarInfo.getNameGiven();
+                    String varName = tagVarInfos[i].getNameGiven();
                     if (varName == null) {
                         varName = n.getTagData().getAttributeString(
-                                tagVarInfo.getNameFromAttribute());
+                                        tagVarInfos[i].getNameFromAttribute());
                         if (varName == null) {
                             err.jspError(n,
                                     "jsp.error.scripting.variable.missing_name",
-                                    tagVarInfo.getNameFromAttribute());
+                                    tagVarInfos[i].getNameFromAttribute());
                         }
                     }
 
@@ -140,7 +140,7 @@ class ScriptingVariabler {
                     if (currentRange == null ||
                             ownRange.compareTo(currentRange) > 0) {
                         scriptVars.put(varName, ownRange);
-                        vec.add(tagVarInfo);
+                        vec.add(tagVarInfos[i]);
                     }
                 }
             }

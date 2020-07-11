@@ -76,7 +76,7 @@ public class ServiceRefFactory implements ObjectFactory {
                 tcl = this.getClass().getClassLoader();
             }
             ServiceFactory factory = ServiceFactory.newInstance();
-            javax.xml.rpc.Service service = null;
+            Service service = null;
 
             // Service Interface
             RefAddr tmp = ref.get(ServiceRef.SERVICE_INTERFACE);
@@ -93,7 +93,7 @@ public class ServiceRefFactory implements ObjectFactory {
             }
 
             // PortComponent
-            Hashtable<String,QName> portComponentRef = new Hashtable<>();
+            Hashtable<String,QName> portComponentRef = new Hashtable<String,QName>();
 
             // Create QName object
             QName serviceQname = null;
@@ -176,7 +176,7 @@ public class ServiceRefFactory implements ObjectFactory {
                     @SuppressWarnings("unchecked") // Can't change the API
                     Map<String,?> ports = wsdlservice.getPorts();
                     Method m = serviceInterfaceClass.getMethod("setEndpointAddress",
-                            new Class[] { java.lang.String.class, java.lang.String.class });
+                            new Class[] { String.class, String.class });
                     for (String portName : ports.keySet()) {
                         Port port = wsdlservice.getPort(portName);
                         String endpoint = getSOAPLocation(port);
@@ -221,7 +221,7 @@ public class ServiceRefFactory implements ObjectFactory {
             Class<?>[] serviceInterfaces = serviceInterfaceClass.getInterfaces();
 
             Class<?>[] interfaces = Arrays.copyOf(serviceInterfaces, serviceInterfaces.length + 1);
-            interfaces[interfaces.length - 1] = javax.xml.rpc.Service.class;
+            interfaces[interfaces.length - 1] = Service.class;
 
             Object proxyInstance = null;
             try {
@@ -234,7 +234,7 @@ public class ServiceRefFactory implements ObjectFactory {
             if (ref.getHandlersSize() > 0) {
 
                 HandlerRegistry handlerRegistry = service.getHandlerRegistry();
-                List<String> soaproles = new ArrayList<>();
+                List<String> soaproles = new ArrayList<String>();
 
                 while (ref.getHandlersSize() > 0) {
                     HandlerRef handlerRef = ref.getHandler();
@@ -254,9 +254,9 @@ public class ServiceRefFactory implements ObjectFactory {
 
                     // Load all datas relative to the handler : SOAPHeaders, config init element,
                     // portNames to be set on
-                    List<QName> headers = new ArrayList<>();
-                    Hashtable<String,String> config = new Hashtable<>();
-                    List<String> portNames = new ArrayList<>();
+                    List<QName> headers = new ArrayList<QName>();
+                    Hashtable<String,String> config = new Hashtable<String,String>();
+                    List<String> portNames = new ArrayList<String>();
                     for (int i = 0; i < handlerRef.size(); i++) {
                         if (HandlerRef.HANDLER_LOCALPART.equals(handlerRef.get(i).getType())) {
                             String localpart = "";
@@ -290,7 +290,7 @@ public class ServiceRefFactory implements ObjectFactory {
 
                     // Set the handlers informations
                     handlerInfo.setHandlerClass(handlerClass);
-                    handlerInfo.setHeaders(headers.toArray(new QName[0]));
+                    handlerInfo.setHeaders(headers.toArray(new QName[headers.size()]));
                     handlerInfo.setHandlerConfig(config);
 
                     if (!portNames.isEmpty()) {

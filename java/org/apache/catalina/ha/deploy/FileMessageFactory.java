@@ -42,12 +42,14 @@ import org.apache.tomcat.util.res.StringManager;
  * To force a cleanup, call cleanup() from the calling object. <BR>
  * This class is not thread safe.
  *
+ * @author Filip Hanik
  * @version 1.0
  */
 public class FileMessageFactory {
     /*--Static Variables----------------------------------------*/
     private static final Log log = LogFactory.getLog(FileMessageFactory.class);
-    private static final StringManager sm = StringManager.getManager(FileMessageFactory.class);
+    private static final StringManager sm =
+        StringManager.getManager(Constants.Package);
 
     /**
      * The number of bytes that we read from file
@@ -57,16 +59,16 @@ public class FileMessageFactory {
     /**
      * The file that we are reading/writing
      */
-    protected final File file;
+    protected File file = null;
 
     /**
      * True means that we are writing with this factory. False means that we are
      * reading with this factory
      */
-    protected final boolean openForWrite;
+    protected boolean openForWrite;
 
     /**
-     * Once the factory is used, it cannot be reused.
+     * Once the factory is used, it can not be reused.
      */
     protected boolean closed = false;
 
@@ -105,7 +107,8 @@ public class FileMessageFactory {
      * everything is worked as expected, messages will spend very little time in
      * the buffer.
      */
-    protected final Map<Long, FileMessage> msgBuffer = new ConcurrentHashMap<>();
+    protected Map<Long, FileMessage> msgBuffer =
+        new ConcurrentHashMap<Long, FileMessage>();
 
     /**
      * The bytes that we hold the data in, not thread safe.
@@ -214,6 +217,7 @@ public class FileMessageFactory {
             return null;
         } else {
             f.setData(data, length);
+            f.setTotalLength(size);
             f.setTotalNrOfMsgs(totalNrOfMessages);
             f.setMessageNumber(++nrOfMessagesProcessed);
             return f;
@@ -235,26 +239,36 @@ public class FileMessageFactory {
      */
     public boolean writeMessage(FileMessage msg)
             throws IllegalArgumentException, IOException {
-        if (!openForWrite) {
-            throw new IllegalArgumentException(sm.getString("fileMessageFactory.cannotWrite"));
-        }
+        if (!openForWrite)
+            throw new IllegalArgumentException(
+                    "Can't write message, this factory is reading.");
         if (log.isDebugEnabled())
             log.debug("Message " + msg + " data " + HexUtils.toHexString(msg.getData())
                     + " data length " + msg.getDataLength() + " out " + out);
 
         if (msg.getMessageNumber() <= lastMessageProcessed.get()) {
             // Duplicate of message already processed
-            log.warn(sm.getString("fileMessageFactory.duplicateMessage", msg.getContextName(), msg.getFileName(),
-                    HexUtils.toHexString(msg.getData()), Integer.valueOf(msg.getDataLength())));
+            log.warn("Receive Message again -- Sender ActTimeout too short [ name: "
+                    + msg.getContextName()
+                    + " war: "
+                    + msg.getFileName()
+                    + " data: "
+                    + HexUtils.toHexString(msg.getData())
+                    + " data length: " + msg.getDataLength() + " ]");
             return false;
         }
 
         FileMessage previous =
             msgBuffer.put(Long.valueOf(msg.getMessageNumber()), msg);
-        if (previous != null) {
+        if (previous !=null) {
             // Duplicate of message not yet processed
-            log.warn(sm.getString("fileMessageFactory.duplicateMessage", msg.getContextName(), msg.getFileName(),
-                    HexUtils.toHexString(msg.getData()), Integer.valueOf(msg.getDataLength())));
+            log.warn("Receive Message again -- Sender ActTimeout too short [ name: "
+                    + msg.getContextName()
+                    + " war: "
+                    + msg.getFileName()
+                    + " data: "
+                    + HexUtils.toHexString(msg.getData())
+                    + " data length: " + msg.getDataLength() + " ]");
             return false;
         }
 
@@ -323,22 +337,24 @@ public class FileMessageFactory {
      * asked to do. Invoked by readMessage/writeMessage before those methods
      * proceed.
      *
-     * @param openForWrite The value to check
-     * @throws IllegalArgumentException if the state is not the expected one
+     * @param openForWrite
+     *            boolean
+     * @throws IllegalArgumentException
      */
     protected void checkState(boolean openForWrite)
             throws IllegalArgumentException {
         if (this.openForWrite != openForWrite) {
             cleanup();
-            if (openForWrite) {
-                throw new IllegalArgumentException(sm.getString("fileMessageFactory.cannotWrite"));
-            } else {
-                throw new IllegalArgumentException(sm.getString("fileMessageFactory.cannotRead"));
-            }
+            if (openForWrite)
+                throw new IllegalArgumentException(
+                        "Can't write message, this factory is reading.");
+            else
+                throw new IllegalArgumentException(
+                        "Can't read message, this factory is writing.");
         }
         if (this.closed) {
             cleanup();
-            throw new IllegalArgumentException(sm.getString("fileMessageFactory.closed"));
+            throw new IllegalArgumentException("Factory has been closed.");
         }
     }
 
@@ -348,13 +364,14 @@ public class FileMessageFactory {
      * @param args
      *            String[], args[0] - read from filename, args[1] write to
      *            filename
-     * @throws Exception An error occurred
-     * @deprecated
+     * @throws Exception
      */
-    @Deprecated
     public static void main(String[] args) throws Exception {
-        System.out.println("Usage: FileMessageFactory fileToBeRead fileToBeWritten");
-        System.out.println("Usage: This will make a copy of the file on the local file system");
+
+        System.out
+                .println("Usage: FileMessageFactory fileToBeRead fileToBeWritten");
+        System.out
+                .println("Usage: This will make a copy of the file on the local file system");
         FileMessageFactory read = getInstance(new File(args[0]), false);
         FileMessageFactory write = getInstance(new File(args[1]), true);
         FileMessage msg = new FileMessage(null, args[0], args[0]);
@@ -384,9 +401,7 @@ public class FileMessageFactory {
             int timeIdle = (int) ((timeNow - creationTime) / 1000L);
             if (timeIdle > maxValidTime) {
                 cleanup();
-                if (file.exists() && !file.delete()) {
-                    log.warn(sm.getString("fileMessageFactory.deleteFail", file));
-                }
+                if (file.exists()) file.delete();
                 return false;
             }
         }

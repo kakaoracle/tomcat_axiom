@@ -24,7 +24,7 @@ import java.util.StringTokenizer;
 import org.apache.catalina.tribes.Channel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.group.GroupChannel;
-import org.apache.catalina.tribes.group.interceptors.MessageDispatchInterceptor;
+import org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor;
 import org.apache.catalina.tribes.group.interceptors.NonBlockingCoordinator;
 import org.apache.catalina.tribes.group.interceptors.TcpFailureDetector;
 import org.apache.catalina.tribes.transport.ReceiverBase;
@@ -132,7 +132,7 @@ public class CoordinationDemo {
                 args = tokenize(l);
             }
         }
-        for (Status value : status) value.stop();
+        for ( int i=0; i<status.length; i++ ) status[i].stop();
     }
 
     private void cmdStop(String[] args) {
@@ -317,7 +317,7 @@ public class CoordinationDemo {
                 synchronized (System.err) {
                     System.err.println("Start failed:");
                     StackTraceElement[] els = x.getStackTrace();
-                    for (StackTraceElement el : els) System.err.println(el.toString());
+                    for (int i = 0; i < els.length; i++) System.err.println(els[i].toString());
                 }
                 status = "Start failed:"+x.getMessage();
                 error = x;
@@ -342,7 +342,7 @@ public class CoordinationDemo {
                 synchronized (System.err) {
                     System.err.println("Stop failed:");
                     StackTraceElement[] els = x.getStackTrace();
-                    for (StackTraceElement el : els) System.err.println(el.toString());
+                    for (int i = 0; i < els.length; i++) System.err.println(els[i].toString());
                 }
 
                 status = "Stop failed:"+x.getMessage();
@@ -371,7 +371,7 @@ public class CoordinationDemo {
             };
             channel.addInterceptor(interceptor);
             channel.addInterceptor(new TcpFailureDetector());
-            channel.addInterceptor(new MessageDispatchInterceptor());
+            channel.addInterceptor(new MessageDispatch15Interceptor());
             return channel;
         }
     }

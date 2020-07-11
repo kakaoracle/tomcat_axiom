@@ -38,16 +38,20 @@ abstract class ELNode {
 
     public abstract void accept(Visitor v) throws JasperException;
 
+    /**
+     * Child classes
+     */
+
 
     /**
      * Represents an EL expression: anything in ${ and }.
      */
     public static class Root extends ELNode {
 
-        private final ELNode.Nodes expr;
+        private final Nodes expr;
         private final char type;
 
-        Root(ELNode.Nodes expr, char type) {
+        Root(Nodes expr, char type) {
             this.expr = expr;
         this.type = type;
         }
@@ -57,7 +61,7 @@ abstract class ELNode {
             v.visit(this);
         }
 
-        public ELNode.Nodes getExpression() {
+        public Nodes getExpression() {
             return expr;
         }
 
@@ -188,11 +192,11 @@ abstract class ELNode {
         /* Name used for creating a map for the functions in this
            EL expression, for communication to Generator.
          */
-        private String mapName = null;    // The function map associated this EL
+        String mapName = null;        // The function map associated this EL
         private final List<ELNode> list;
 
         public Nodes() {
-            list = new ArrayList<>();
+            list = new ArrayList<ELNode>();
         }
 
         public void add(ELNode en) {
@@ -200,14 +204,13 @@ abstract class ELNode {
         }
 
         /**
-         * Visit the nodes in the list with the supplied visitor.
-         *
+         * Visit the nodes in the list with the supplied visitor
          * @param v The visitor used
-         *
-         * @throws JasperException if an error occurs while visiting a node
          */
         public void visit(Visitor v) throws JasperException {
-            for (ELNode n : list) {
+            Iterator<ELNode> iter = list.iterator();
+            while (iter.hasNext()) {
+                ELNode n = iter.next();
                 n.accept(v);
             }
         }
@@ -224,7 +227,9 @@ abstract class ELNode {
          * @return true if the expression contains a ${...}
          */
         public boolean containsEL() {
-            for (ELNode n : list) {
+            Iterator<ELNode> iter = list.iterator();
+            while (iter.hasNext()) {
+                ELNode n = iter.next();
                 if (n instanceof Root) {
                     return true;
                 }

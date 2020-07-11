@@ -20,12 +20,14 @@ package org.apache.jasper.compiler;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.JarURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -35,8 +37,6 @@ import org.apache.jasper.Options;
 import org.apache.jasper.servlet.JspServletWrapper;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.Jar;
-import org.apache.tomcat.util.scan.JarFactory;
 
 /**
  * Main JSP compiler class. This class uses Ant for compiling.
@@ -68,7 +68,6 @@ public abstract class Compiler {
 
     protected Node.Nodes pageNodes;
 
-
     // ------------------------------------------------------------ Constructor
 
     public void init(JspCompilationContext ctxt, JspServletWrapper jsw) {
@@ -77,35 +76,28 @@ public abstract class Compiler {
         this.options = ctxt.getOptions();
     }
 
-
     // --------------------------------------------------------- Public Methods
 
-    public SmapStratum getSmap(String className) {
-
-        Map<String,SmapStratum> smaps = ctxt.getRuntimeContext().getSmaps();
-        SmapStratum smap = smaps.get(className);
-
-        if (smap == null && !options.isSmapSuppressed()) {
-            // Tomcat was restarted so cached SMAP has been lost. However, it
-            // was written to the class file so it can be recovered.
-            smap = SmapUtil.loadSmap(className, ctxt.getJspLoader());
-            if (smap != null) {
-                smaps.put(className, smap);
-            }
-        }
-
-        return smap;
+    /**
+     * <p>
+     * Retrieves the parsed nodes of the JSP page, if they are available. May
+     * return null. Used in development mode for generating detailed error
+     * messages. http://bz.apache.org/bugzilla/show_bug.cgi?id=37062.
+     * </p>
+     */
+    public Node.Nodes getPageNodes() {
+        return this.pageNodes;
     }
-
 
     /**
      * Compile the jsp file into equivalent servlet in .java file
      *
-     * @return A map of class names to JSR 045 source maps
-     *
-     * @throws Exception Error generating Java source
+     * @return a smap for the current JSP page, if one is generated, null
+     *         otherwise
      */
-    protected Map<String,SmapStratum> generateJava() throws Exception {
+    protected String[] generateJava() throws Exception {
+
+        String[] smapStr = null;
 
         long t1, t2, t3, t4;
 
@@ -180,6 +172,7 @@ public abstract class Compiler {
         ctxt.checkOutputDir();
         String javaFileName = ctxt.getServletJavaFileName();
 
+        ServletWriter writer = null;
         try {
             /*
              * The setting of isELIgnored changes the behaviour of the parser
@@ -213,10 +206,11 @@ public abstract class Compiler {
 
             if (ctxt.isPrototypeMode()) {
                 // generate prototype .java file for the tag file
-                try (ServletWriter writer = setupContextWriter(javaFileName)) {
-                    Generator.generate(writer, this, pageNodes);
-                    return null;
-                }
+                writer = setupContextWriter(javaFileName);
+                Generator.generate(writer, this, pageNodes);
+                writer.close();
+                writer = null;
+                return null;
             }
 
             // Validate and process attributes - don't re-validate the
@@ -253,9 +247,10 @@ public abstract class Compiler {
             ELFunctionMapper.map(pageNodes);
 
             // generate servlet .java file
-            try (ServletWriter writer = setupContextWriter(javaFileName)) {
-                Generator.generate(writer, this, pageNodes);
-            }
+            writer = setupContextWriter(javaFileName);
+            Generator.generate(writer, this, pageNodes);
+            writer.close();
+            writer = null;
 
             // The writer is only used during the compile, dereference
             // it in the JspCompilationContext when done to allow it
@@ -268,7 +263,15 @@ public abstract class Compiler {
                         + " generate=" + (t4 - t3) + " validate=" + (t2 - t1));
             }
 
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
+            if (writer != null) {
+                try {
+                    writer.close();
+                    writer = null;
+                } catch (Exception e1) {
+                    // do nothing
+                }
+            }
             // Remove the generated .java file
             File file = new File(javaFileName);
             if (file.exists()) {
@@ -279,16 +282,19 @@ public abstract class Compiler {
                 }
             }
             throw e;
+        } finally {
+            if (writer != null) {
+                try {
+                    writer.close();
+                } catch (Exception e2) {
+                    // do nothing
+                }
+            }
         }
-
-        Map<String,SmapStratum> smaps = null;
 
         // JSR45 Support
         if (!options.isSmapSuppressed()) {
-            smaps = SmapUtil.generateSmap(ctxt, pageNodes);
-            // Add them to the web application wide cache for future lookup in
-            // error handling etc.
-            ctxt.getRuntimeContext().getSmaps().putAll(smaps);
+            smapStr = SmapUtil.generateSmap(ctxt, pageNodes);
         }
 
         // If any proto type .java and .class files was generated,
@@ -298,7 +304,7 @@ public abstract class Compiler {
         // generate .class again from the new .java file just generated.
         tfp.removeProtoTypeFiles(ctxt.getClassFileName());
 
-        return smaps;
+        return smapStr;
     }
 
     private ServletWriter setupContextWriter(String javaFileName)
@@ -322,24 +328,13 @@ public abstract class Compiler {
     }
 
     /**
-     * Servlet compilation. This compiles the generated sources into
-     * Servlets.
-     *
-     * @param smaps The source maps for the class(es) generated from the source
-     *              file
-     *
-     * @throws FileNotFoundException Source files not found
-     * @throws JasperException Compilation error
-     * @throws Exception Some other error
+     * Compile the servlet from .java file to .class file
      */
-    protected abstract void generateClass(Map<String,SmapStratum> smaps)
+    protected abstract void generateClass(String[] smap)
             throws FileNotFoundException, JasperException, Exception;
 
     /**
-     * Compile the jsp file from the current engine context.
-     * @throws FileNotFoundException Source files not found
-     * @throws JasperException Compilation error
-     * @throws Exception Some other error
+     * Compile the jsp file from the current engine context
      */
     public void compile() throws FileNotFoundException, JasperException,
             Exception {
@@ -353,9 +348,6 @@ public abstract class Compiler {
      * @param compileClass
      *            If true, generate both .java and .class file If false,
      *            generate only .java file
-     * @throws FileNotFoundException Source files not found
-     * @throws JasperException Compilation error
-     * @throws Exception Some other error
      */
     public void compile(boolean compileClass) throws FileNotFoundException,
             JasperException, Exception {
@@ -371,9 +363,6 @@ public abstract class Compiler {
      *            generate only .java file
      * @param jspcMode
      *            true if invoked from JspC, false otherwise
-     * @throws FileNotFoundException Source files not found
-     * @throws JasperException Compilation error
-     * @throws Exception Some other error
      */
     public void compile(boolean compileClass, boolean jspcMode)
             throws FileNotFoundException, JasperException, Exception {
@@ -382,22 +371,17 @@ public abstract class Compiler {
         }
 
         try {
-            final Long jspLastModified = ctxt.getLastModified(ctxt.getJspFile());
-            Map<String,SmapStratum> smaps = generateJava();
+            String[] smap = generateJava();
             File javaFile = new File(ctxt.getServletJavaFileName());
-            if (!javaFile.setLastModified(jspLastModified.longValue())) {
-                throw new JasperException(Localizer.getMessage("jsp.error.setLastModified", javaFile));
-            }
+            Long jspLastModified = ctxt.getLastModified(ctxt.getJspFile());
+            javaFile.setLastModified(jspLastModified.longValue());
             if (compileClass) {
-                generateClass(smaps);
+                generateClass(smap);
                 // Fix for bugzilla 41606
                 // Set JspServletWrapper.servletClassLastModifiedTime after successful compile
                 File targetFile = new File(ctxt.getClassFileName());
                 if (targetFile.exists()) {
-                    if (!targetFile.setLastModified(jspLastModified.longValue())) {
-                        throw new JasperException(
-                                Localizer.getMessage("jsp.error.setLastModified", targetFile));
-                    }
+                    targetFile.setLastModified(jspLastModified.longValue());
                     if (jsw != null) {
                         jsw.setServletClassLastModifiedTime(
                                 jspLastModified.longValue());
@@ -415,7 +399,14 @@ public abstract class Compiler {
             tfp = null;
             errDispatcher = null;
             pageInfo = null;
-            pageNodes = null;
+
+            // Only get rid of the pageNodes if in production.
+            // In development mode, they are used for detailed
+            // error messages.
+            // http://bz.apache.org/bugzilla/show_bug.cgi?id=37062
+            if (!this.options.getDevelopment()) {
+                pageNodes = null;
+            }
 
             if (ctxt.getWriter() != null) {
                 ctxt.getWriter().close();
@@ -427,8 +418,6 @@ public abstract class Compiler {
     /**
      * This is a protected method intended to be overridden by subclasses of
      * Compiler. This is used by the compile method to do all the compilation.
-     * @return <code>true</code> if the source generation and compilation
-     *  should occur
      */
     public boolean isOutDated() {
         return isOutDated(true);
@@ -443,8 +432,6 @@ public abstract class Compiler {
      * @param checkClass
      *            If true, check against .class file, if false, check against
      *            .java file.
-     * @return <code>true</code> if the source generation and compilation
-     *  should occur
      */
     public boolean isOutDated(boolean checkClass) {
 
@@ -459,30 +446,29 @@ public abstract class Compiler {
             jsw.setLastModificationTest(System.currentTimeMillis());
         }
 
-        // Test the target file first. Unless there is an error checking the
-        // last modified time of the source (unlikely) the target is going to
-        // have to be checked anyway. If the target doesn't exist (likely during
-        // startup) this saves an unnecessary check of the source.
-        File targetFile;
-        if (checkClass) {
-            targetFile = new File(ctxt.getClassFileName());
-        } else {
-            targetFile = new File(ctxt.getServletJavaFileName());
-        }
-        if (!targetFile.exists()) {
-            return true;
-        }
-        long targetLastModified = targetFile.lastModified();
-        if (checkClass && jsw != null) {
-            jsw.setServletClassLastModifiedTime(targetLastModified);
-        }
-
         Long jspRealLastModified = ctxt.getLastModified(ctxt.getJspFile());
         if (jspRealLastModified.longValue() < 0) {
             // Something went wrong - assume modification
             return true;
         }
 
+        long targetLastModified = 0;
+        File targetFile;
+
+        if (checkClass) {
+            targetFile = new File(ctxt.getClassFileName());
+        } else {
+            targetFile = new File(ctxt.getServletJavaFileName());
+        }
+
+        if (!targetFile.exists()) {
+            return true;
+        }
+
+        targetLastModified = targetFile.lastModified();
+        if (checkClass && jsw != null) {
+            jsw.setServletClassLastModifiedTime(targetLastModified);
+        }
         if (targetLastModified != jspRealLastModified.longValue()) {
             if (log.isDebugEnabled()) {
                 log.debug("Compiler: outdated: " + targetFile + " "
@@ -502,35 +488,29 @@ public abstract class Compiler {
             return false;
         }
 
-        for (Entry<String, Long> include : depends.entrySet()) {
+        Iterator<Entry<String,Long>> it = depends.entrySet().iterator();
+        while (it.hasNext()) {
+            Entry<String,Long> include = it.next();
+            URLConnection iuc = null;
             try {
                 String key = include.getKey();
                 URL includeUrl;
-                long includeLastModified = 0;
-                if (key.startsWith("jar:jar:")) {
-                    // Assume we constructed this correctly
-                    int entryStart = key.lastIndexOf("!/");
-                    String entry = key.substring(entryStart + 2);
-                    try (Jar jar = JarFactory.newInstance(new URL(key.substring(4, entryStart)))) {
-                        includeLastModified = jar.getLastModified(entry);
-                    }
+                if (key.startsWith("jar:") || key.startsWith("file:")) {
+                    includeUrl = new URL(key);
                 } else {
-                    if (key.startsWith("jar:") || key.startsWith("file:")) {
-                        includeUrl = new URL(key);
-                    } else {
-                        includeUrl = ctxt.getResource(include.getKey());
-                    }
-                    if (includeUrl == null) {
-                        return true;
-                    }
-                    URLConnection iuc = includeUrl.openConnection();
-                    if (iuc instanceof JarURLConnection) {
-                        includeLastModified =
-                            ((JarURLConnection) iuc).getJarEntry().getTime();
-                    } else {
-                        includeLastModified = iuc.getLastModified();
-                    }
-                    iuc.getInputStream().close();
+                    includeUrl = ctxt.getResource(include.getKey());
+                }
+                if (includeUrl == null) {
+                    return true;
+                }
+
+                iuc = includeUrl.openConnection();
+                long includeLastModified = 0;
+                if (iuc instanceof JarURLConnection) {
+                    includeLastModified =
+                        ((JarURLConnection) iuc).getJarEntry().getTime();
+                } else {
+                    includeLastModified = iuc.getLastModified();
                 }
 
                 if (includeLastModified != include.getValue().longValue()) {
@@ -541,6 +521,13 @@ public abstract class Compiler {
                     log.debug("Problem accessing resource. Treat as outdated.",
                             e);
                 return true;
+            } finally {
+                if (iuc != null) {
+                    try {
+                        iuc.getInputStream().close();
+                    } catch (IOException e) {
+                    }
+                }
             }
         }
 
@@ -549,14 +536,14 @@ public abstract class Compiler {
     }
 
     /**
-     * @return the error dispatcher.
+     * Gets the error dispatcher.
      */
     public ErrorDispatcher getErrorDispatcher() {
         return errDispatcher;
     }
 
     /**
-     * @return the info about the page under compilation
+     * Gets the info about the page under compilation
      */
     public PageInfo getPageInfo() {
         return pageInfo;
@@ -570,10 +557,10 @@ public abstract class Compiler {
      * Remove generated files
      */
     public void removeGeneratedFiles() {
-        removeGeneratedClassFiles();
+        removeGeneratedClassFiles(); // 删除work目录下的当前jsp对应的class文件
 
         try {
-            File javaFile = new File(ctxt.getServletJavaFileName());
+            File javaFile = new File(ctxt.getServletJavaFileName()); // 删除work目录下的当前jsp对应的java文件
             if (log.isDebugEnabled())
                 log.debug("Deleting " + javaFile);
             if (javaFile.exists()) {

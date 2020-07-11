@@ -48,7 +48,7 @@ public final class ConstantFloat extends Constant {
     /**
      * @return data, i.e., 4 bytes.
      */
-    public float getBytes() {
+    public final float getBytes() {
         return bytes;
     }
 }

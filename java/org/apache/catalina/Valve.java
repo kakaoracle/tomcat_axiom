@@ -20,6 +20,7 @@ import java.io.IOException;
 
 import javax.servlet.ServletException;
 
+import org.apache.catalina.comet.CometEvent;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 
@@ -41,6 +42,12 @@ public interface Valve {
 
 
     //-------------------------------------------------------------- Properties
+
+    /**
+     * Return descriptive information about this Valve implementation.
+     */
+    public String getInfo();
+
 
     /**
      * @return the next Valve in the pipeline containing this Valve, if any.
@@ -115,6 +122,21 @@ public interface Valve {
      *  by a subsequently invoked Valve, Filter, or Servlet
      */
     public void invoke(Request request, Response response)
+        throws IOException, ServletException;
+
+
+    /**
+     * Process a Comet event.
+     *
+     * @param request The servlet request to be processed
+     * @param response The servlet response to be created
+     *
+     * @exception IOException if an input/output error occurs, or is thrown
+     *  by a subsequently invoked Valve, Filter, or Servlet
+     * @exception ServletException if a servlet error occurs, or is thrown
+     *  by a subsequently invoked Valve, Filter, or Servlet
+     */
+    public void event(Request request, Response response, CometEvent event)
         throws IOException, ServletException;
 
 

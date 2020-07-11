@@ -31,6 +31,7 @@ import org.apache.catalina.tribes.util.UUIDGenerator;
  * to another node. While the message is being processed by the different
  * interceptors, the message data can be manipulated as each interceptor seems appropriate.
  * @author Peter Rossbach
+ * @author Filip Hanik
  */
 public class ChannelData implements ChannelMessage {
     private static final long serialVersionUID = 1L;
@@ -183,7 +184,7 @@ public class ChannelData implements ChannelMessage {
             4 + //unique id length off=12
             uniqueId.length+ //id data off=12+uniqueId.length
             4 + //addr length off=12+uniqueId.length+4
-            address.getDataLength()+ //member data off=12+uniqueId.length+4+add.length
+            ((MemberImpl)address).getDataLength()+ //member data off=12+uniqueId.length+4+add.length
             4 + //message length off=12+uniqueId.length+4+add.length+4
             message.getLength();
         return length;
@@ -202,7 +203,7 @@ public class ChannelData implements ChannelMessage {
     }
 
     public byte[] getDataPackage(byte[] data, int offset)  {
-        byte[] addr = address.getData(false);
+        byte[] addr = ((MemberImpl)address).getData(false);
         XByteBuffer.toBytes(options,data,offset);
         offset += 4; //options
         XByteBuffer.toBytes(timestamp,data,offset);
@@ -218,6 +219,7 @@ public class ChannelData implements ChannelMessage {
         XByteBuffer.toBytes(message.getLength(),data,offset);
         offset += 4; //message.length
         System.arraycopy(message.getBytesDirect(),0,data,offset,message.getLength());
+        offset += message.getLength(); //message data
         return data;
     }
 
@@ -301,17 +303,15 @@ public class ChannelData implements ChannelMessage {
      * @return ClusterData
      */
     @Override
-    public ChannelData clone() {
-        ChannelData clone;
-        try {
-            clone = (ChannelData) super.clone();
-        } catch (CloneNotSupportedException e) {
-            // Cannot happen
-            throw new AssertionError();
-        }
-        if (this.message != null) {
-            clone.message = new XByteBuffer(this.message.getBytesDirect(),false);
-        }
+    public Object clone() {
+//        byte[] d = this.getDataPackage();
+//        return ClusterData.getDataFromPackage(d);
+        ChannelData clone = new ChannelData(false);
+        clone.options = this.options;
+        clone.message = new XByteBuffer(this.message.getBytesDirect(),false);
+        clone.timestamp = this.timestamp;
+        clone.uniqueId = this.uniqueId;
+        clone.address = this.address;
         return clone;
     }
 

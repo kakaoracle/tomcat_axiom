@@ -14,7 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina.ant;
+
 
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
@@ -23,21 +26,24 @@ import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
-import java.nio.channels.FileChannel;
 import java.util.regex.Pattern;
 
 import org.apache.tools.ant.BuildException;
 
+
 /**
- * Ant task that implements the <code>/deploy</code> command, supported by the
- * Tomcat manager application.
+ * Ant task that implements the <code>/deploy</code> command, supported by
+ * the Tomcat manager application.
  *
  * @author Craig R. McClanahan
  * @since 4.1
  */
 public class DeployTask extends AbstractCatalinaCommandTask {
-
     private static final Pattern PROTOCOL_PATTERN = Pattern.compile("\\w{3,5}\\:");
+
+
+    // ------------------------------------------------------------- Properties
+
 
     /**
      * URL of the context configuration file for this application, if any.
@@ -45,7 +51,7 @@ public class DeployTask extends AbstractCatalinaCommandTask {
     protected String config = null;
 
     public String getConfig() {
-        return this.config;
+        return (this.config);
     }
 
     public void setConfig(String config) {
@@ -54,13 +60,13 @@ public class DeployTask extends AbstractCatalinaCommandTask {
 
 
     /**
-     * URL of the server local web application archive (WAR) file to be
-     * deployed.
+     * URL of the server local web application archive (WAR) file
+     * to be deployed.
      */
     protected String localWar = null;
 
     public String getLocalWar() {
-        return this.localWar;
+        return (this.localWar);
     }
 
     public void setLocalWar(String localWar) {
@@ -74,7 +80,7 @@ public class DeployTask extends AbstractCatalinaCommandTask {
     protected String tag = null;
 
     public String getTag() {
-        return this.tag;
+        return (this.tag);
     }
 
     public void setTag(String tag) {
@@ -88,7 +94,7 @@ public class DeployTask extends AbstractCatalinaCommandTask {
     protected boolean update = false;
 
     public boolean getUpdate() {
-        return this.update;
+        return (this.update);
     }
 
     public void setUpdate(boolean update) {
@@ -102,12 +108,15 @@ public class DeployTask extends AbstractCatalinaCommandTask {
     protected String war = null;
 
     public String getWar() {
-        return this.war;
+        return (this.war);
     }
 
     public void setWar(String war) {
         this.war = war;
     }
+
+
+    // --------------------------------------------------------- Public Methods
 
 
     /**
@@ -117,39 +126,60 @@ public class DeployTask extends AbstractCatalinaCommandTask {
      */
     @Override
     public void execute() throws BuildException {
+
         super.execute();
         if (path == null) {
-            throw new BuildException("Must specify 'path' attribute");
+            throw new BuildException
+                ("Must specify 'path' attribute");
         }
         if ((war == null) && (localWar == null) && (config == null) && (tag == null)) {
-            throw new BuildException(
-                            "Must specify either 'war', 'localWar', 'config', or 'tag' attribute");
+            throw new BuildException
+                ("Must specify either 'war', 'localWar', 'config', or 'tag' attribute");
         }
+
         // Building an input stream on the WAR to upload, if any
         BufferedInputStream stream = null;
         String contentType = null;
-        long contentLength = -1;
+        int contentLength = -1;
         if (war != null) {
             if (PROTOCOL_PATTERN.matcher(war).lookingAt()) {
                 try {
                     URL url = new URL(war);
                     URLConnection conn = url.openConnection();
-                    contentLength = conn.getContentLengthLong();
-                    stream = new BufferedInputStream(conn.getInputStream(), 1024);
+                    contentLength = conn.getContentLength();
+                    stream = new BufferedInputStream
+                        (conn.getInputStream(), 1024);
                 } catch (IOException e) {
                     throw new BuildException(e);
                 }
             } else {
-                try (FileInputStream fsInput = new FileInputStream(war);
-                        FileChannel fsChannel = fsInput.getChannel()) {
-                    contentLength = fsChannel.size();
+                FileInputStream fsInput = null;
+                try {
+                    fsInput = new FileInputStream(war);
+                    long size = fsInput.getChannel().size();
+
+                    if (size > Integer.MAX_VALUE)
+                        throw new UnsupportedOperationException(
+                                "DeployTask does not support WAR files " +
+                                "greater than 2 Gb");
+                    contentLength = (int) size;
+
                     stream = new BufferedInputStream(fsInput, 1024);
+
                 } catch (IOException e) {
+                    if (fsInput != null) {
+                        try {
+                            fsInput.close();
+                        } catch (IOException ioe) {
+                            // Ignore
+                        }
+                    }
                     throw new BuildException(e);
                 }
             }
             contentType = "application/octet-stream";
         }
+
         // Building URL
         StringBuilder sb = createQueryString("/deploy");
         try {
@@ -168,6 +198,7 @@ public class DeployTask extends AbstractCatalinaCommandTask {
                 sb.append("&tag=");
                 sb.append(URLEncoder.encode(tag, getCharset()));
             }
+
             execute(sb.toString(), stream, contentType, contentLength);
         } catch (UnsupportedEncodingException e) {
             throw new BuildException("Invalid 'charset' attribute: " + getCharset());
@@ -180,5 +211,8 @@ public class DeployTask extends AbstractCatalinaCommandTask {
                 }
             }
         }
+
     }
+
+
 }

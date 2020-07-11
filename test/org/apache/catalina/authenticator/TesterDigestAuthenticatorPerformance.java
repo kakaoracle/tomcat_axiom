@@ -17,7 +17,6 @@
 package org.apache.catalina.authenticator;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.servlet.http.HttpServletResponse;
@@ -27,17 +26,11 @@ import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
-import org.apache.catalina.Engine;
-import org.apache.catalina.Host;
-import org.apache.catalina.Service;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.core.StandardContext;
-import org.apache.catalina.core.StandardEngine;
-import org.apache.catalina.core.StandardHost;
-import org.apache.catalina.core.StandardService;
+import org.apache.catalina.deploy.LoginConfig;
 import org.apache.catalina.filters.TesterHttpServletResponse;
-import org.apache.catalina.startup.TesterMapRealm;
-import org.apache.tomcat.util.descriptor.web.LoginConfig;
+import org.apache.catalina.startup.TestTomcat.MapRealm;
 import org.apache.tomcat.util.security.ConcurrentMessageDigest;
 import org.apache.tomcat.util.security.MD5Encoder;
 
@@ -105,7 +98,7 @@ public class TesterDigestAuthenticatorPerformance {
         System.out.println("Average time per request (wall): " +
                 wallTime/(threadCount * requestCount));
 
-        Assert.assertEquals(((long)requestCount) * threadCount, totalSuccess);
+        Assert.assertEquals(requestCount * threadCount, totalSuccess);
     }
 
     @Before
@@ -114,7 +107,7 @@ public class TesterDigestAuthenticatorPerformance {
         ConcurrentMessageDigest.init("MD5");
 
         // Configure the Realm
-        TesterMapRealm realm = new TesterMapRealm();
+        MapRealm realm = new MapRealm();
         realm.addUser(USER, PWD);
         realm.addUserRole(USER, ROLE);
 
@@ -122,20 +115,6 @@ public class TesterDigestAuthenticatorPerformance {
         Context context = new StandardContext();
         context.setName(CONTEXT_PATH);
         context.setRealm(realm);
-
-        Host host = new StandardHost();
-        context.setParent(host);
-
-        Engine engine = new StandardEngine();
-        host.setParent(engine);
-
-        Service service = new StandardService();
-        engine.setService(service);
-
-        // Configure the Login config
-        LoginConfig config = new LoginConfig();
-        config.setRealmName(REALM);
-        context.setLoginConfig(config);
 
         // Make the Context and Realm visible to the Authenticator
         authenticator.setContainer(context);
@@ -155,15 +134,16 @@ public class TesterDigestAuthenticatorPerformance {
 
         private TesterDigestRequest request;
         private HttpServletResponse response;
+        private LoginConfig config;
         private DigestAuthenticator authenticator;
 
         private static final String A1 = USER + ":" + REALM + ":" + PWD;
         private static final String A2 = METHOD + ":" + CONTEXT_PATH + URI;
 
         private static final String MD5A1 = MD5Encoder.encode(
-                ConcurrentMessageDigest.digest("MD5", A1.getBytes(StandardCharsets.UTF_8)));
+                ConcurrentMessageDigest.digest("MD5", A1.getBytes()));
         private static final String MD5A2 = MD5Encoder.encode(
-                ConcurrentMessageDigest.digest("MD5", A2.getBytes(StandardCharsets.UTF_8)));
+                ConcurrentMessageDigest.digest("MD5", A2.getBytes()));
 
 
 
@@ -175,9 +155,11 @@ public class TesterDigestAuthenticatorPerformance {
             this.requestCount = requestCount;
 
             request = new TesterDigestRequest();
-            request.getMappingData().context = authenticator.context;
 
             response = new TesterHttpServletResponse();
+
+            config = new LoginConfig();
+            config.setRealmName(REALM);
         }
 
         @Override
@@ -215,8 +197,8 @@ public class TesterDigestAuthenticatorPerformance {
             String response = MD5A1 + ":" + nonce + ":" + ncString + ":" +
                     cnonce + ":" + QOP + ":" + MD5A2;
 
-            String md5response = MD5Encoder.encode(ConcurrentMessageDigest.digest(
-                    "MD5", response.getBytes(StandardCharsets.UTF_8)));
+            String md5response = MD5Encoder.encode(
+                    ConcurrentMessageDigest.digest("MD5", response.getBytes()));
 
             StringBuilder auth = new StringBuilder();
             auth.append("Digest username=\"");
@@ -248,10 +230,6 @@ public class TesterDigestAuthenticatorPerformance {
     private static class TesterDigestRequest extends Request {
 
         private String authHeader = null;
-
-        public TesterDigestRequest() {
-            super(null);
-        }
 
         @Override
         public String getRemoteAddr() {

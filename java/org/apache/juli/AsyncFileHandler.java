@@ -37,32 +37,24 @@ import java.util.logging.LogRecord;
  * </ul>
  *
  * <p>See the System Properties page in the configuration reference of Tomcat.</p>
+ *
+ * @author Filip Hanik
+ *
  */
 public class AsyncFileHandler extends FileHandler {
 
-    public static final int OVERFLOW_DROP_LAST    = 1;
-    public static final int OVERFLOW_DROP_FIRST   = 2;
-    public static final int OVERFLOW_DROP_FLUSH   = 3;
+    public static final int OVERFLOW_DROP_LAST = 1;
+    public static final int OVERFLOW_DROP_FIRST = 2;
+    public static final int OVERFLOW_DROP_FLUSH = 3;
     public static final int OVERFLOW_DROP_CURRENT = 4;
 
-    public static final int DEFAULT_OVERFLOW_DROP_TYPE = 1;
-    public static final int DEFAULT_MAX_RECORDS        = 10000;
-    public static final int DEFAULT_LOGGER_SLEEP_TIME  = 1000;
+    public static final int OVERFLOW_DROP_TYPE = Integer.parseInt(System.getProperty("org.apache.juli.AsyncOverflowDropType", "1"));
+    public static final int DEFAULT_MAX_RECORDS = Integer.parseInt(System.getProperty("org.apache.juli.AsyncMaxRecordCount", "10000"));
+    public static final int LOGGER_SLEEP_TIME = Integer.parseInt(System.getProperty("org.apache.juli.AsyncLoggerPollInterval", "1000"));
 
-    public static final int OVERFLOW_DROP_TYPE = Integer.parseInt(
-            System.getProperty("org.apache.juli.AsyncOverflowDropType",
-                               Integer.toString(DEFAULT_OVERFLOW_DROP_TYPE)));
-    public static final int MAX_RECORDS = Integer.parseInt(
-            System.getProperty("org.apache.juli.AsyncMaxRecordCount",
-                               Integer.toString(DEFAULT_MAX_RECORDS)));
-    public static final int LOGGER_SLEEP_TIME = Integer.parseInt(
-            System.getProperty("org.apache.juli.AsyncLoggerPollInterval",
-                               Integer.toString(DEFAULT_LOGGER_SLEEP_TIME)));
+    protected static LinkedBlockingDeque<LogEntry> queue = new LinkedBlockingDeque<LogEntry>(DEFAULT_MAX_RECORDS);
 
-    protected static final LinkedBlockingDeque<LogEntry> queue =
-            new LinkedBlockingDeque<>(MAX_RECORDS);
-
-    protected static final LoggerThread logger = new LoggerThread();
+    protected static LoggerThread logger = new LoggerThread();
 
     static {
         logger.start();
@@ -71,14 +63,14 @@ public class AsyncFileHandler extends FileHandler {
     protected volatile boolean closed = false;
 
     public AsyncFileHandler() {
-        this(null, null, null);
+        this(null, null, null, DEFAULT_MAX_DAYS);
     }
 
     public AsyncFileHandler(String directory, String prefix, String suffix) {
-        this(directory, prefix, suffix, null);
+        this(directory, prefix, suffix, DEFAULT_MAX_DAYS);
     }
 
-    public AsyncFileHandler(String directory, String prefix, String suffix, Integer maxDays) {
+    public AsyncFileHandler(String directory, String prefix, String suffix, int maxDays) {
         super(directory, prefix, suffix, maxDays);
         open();
     }
@@ -107,9 +99,6 @@ public class AsyncFileHandler extends FileHandler {
         if (!isLoggable(record)) {
             return;
         }
-        // fill source entries, before we hand the record over to another
-        // thread with another class loader
-        record.getSourceMethodName();
         LogEntry entry = new LogEntry(record, this);
         boolean added = false;
         try {
@@ -136,8 +125,9 @@ public class AsyncFileHandler extends FileHandler {
                 }//switch
             }//while
         } catch (InterruptedException x) {
-            // Allow thread to be interrupted and back out of the publish
-            // operation. No further action required.
+            //allow thread to be interrupted and back out of the publish operation
+            //after this we clear the flag
+            Thread.interrupted();
         }
 
     }
@@ -147,6 +137,7 @@ public class AsyncFileHandler extends FileHandler {
     }
 
     protected static class LoggerThread extends Thread {
+        protected boolean run = true;
         public LoggerThread() {
             this.setDaemon(true);
             this.setName("AsyncFileHandlerWriter-" + System.identityHashCode(this));
@@ -154,24 +145,24 @@ public class AsyncFileHandler extends FileHandler {
 
         @Override
         public void run() {
-            while (true) {
+            while (run) {
                 try {
                     LogEntry entry = queue.poll(LOGGER_SLEEP_TIME, TimeUnit.MILLISECONDS);
                     if (entry != null) {
                         entry.flush();
                     }
                 } catch (InterruptedException x) {
-                    // Ignore the attempt to interrupt the thread.
+                    Thread.interrupted();
                 } catch (Exception x) {
                     x.printStackTrace();
                 }
-            }
+            }//while
         }
     }
 
     protected static class LogEntry {
-        private final LogRecord record;
-        private final AsyncFileHandler handler;
+        private LogRecord record;
+        private AsyncFileHandler handler;
         public LogEntry(LogRecord record, AsyncFileHandler handler) {
             super();
             this.record = record;
@@ -186,5 +177,7 @@ public class AsyncFileHandler extends FileHandler {
                 return true;
             }
         }
+
     }
+
 }

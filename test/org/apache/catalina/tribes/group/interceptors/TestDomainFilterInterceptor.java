@@ -73,8 +73,8 @@ public class TestDomainFilterInterceptor {
             };
             threads[i] = t;
         }
-        for (Thread thread : threads) thread.start();
-        for (Thread thread : threads) thread.join();
+        for (int i=0; i<threads.length; i++ ) threads[i].start();
+        for (int i=0; i<threads.length; i++ ) threads[i].join();
         System.out.println("All channels started.");
         for (int i=listeners.length-1; i>=0; i-- ) {
             Assert.assertEquals("Checking member arrival length",0,listeners[i].members.size());
@@ -84,9 +84,9 @@ public class TestDomainFilterInterceptor {
     @After
     public void tearDown() throws Exception {
 
-        for (ManagedChannel channel : channels) {
+        for (int i = 0; i < channels.length; i++) {
             try {
-                channel.stop(Channel.DEFAULT);
+                channels[i].stop(Channel.DEFAULT);
             } catch (Exception ignore) {
                 // Ignore
             }
@@ -100,7 +100,7 @@ public class TestDomainFilterInterceptor {
             this.name = name;
         }
 
-        public ArrayList<Member> members = new ArrayList<>();
+        public ArrayList<Member> members = new ArrayList<Member>();
         @Override
         public void memberAdded(Member member) {
             if (!members.contains(member)) {

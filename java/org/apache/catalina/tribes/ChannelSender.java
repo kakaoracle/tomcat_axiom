@@ -26,6 +26,7 @@ import java.io.IOException;
  * at the bottom layer, the IO layer (for layers see the javadoc for the {@link Channel} interface).<br>
  * The channel sender must support "silent" members, ie, be able to send a message to a member
  * that is not in the membership, but is part of the destination parameter
+ * @author Filip Hanik
  */
 public interface ChannelSender extends Heartbeat
 {
@@ -65,20 +66,7 @@ public interface ChannelSender extends Heartbeat
      * @param destination Member[] - the destinations
      * @throws ChannelException - if an error happens, the ChannelSender MUST report
      * individual send failures on a per member basis, using ChannelException.addFaultyMember
-     * @see ChannelException#addFaultyMember(Member,java.lang.Exception)
+     * @see ChannelException#addFaultyMember(Member, Exception)
      */
     public void sendMessage(ChannelMessage message, Member[] destination) throws ChannelException;
-
-    /**
-     * Return the channel that is related to this ChannelSender
-     * @return Channel
-     */
-    public Channel getChannel();
-
-    /**
-     * Set the channel that is related to this ChannelSender
-     * @param channel The channel
-     */
-    public void setChannel(Channel channel);
-
 }

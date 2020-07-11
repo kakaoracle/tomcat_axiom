@@ -16,21 +16,19 @@
  */
 package org.apache.jasper.compiler;
 
-import java.io.BufferedInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
+import java.util.Vector;
+import java.util.jar.JarFile;
+import java.util.zip.ZipEntry;
 
 import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
-import org.apache.tomcat.Jar;
-import org.apache.tomcat.util.security.Escape;
 import org.xml.sax.Attributes;
-import org.xml.sax.InputSource;
 
 /**
  * This class has all the utility method(s). Ideally should move all the bean
@@ -62,8 +60,6 @@ public class JspUtil {
             "synchronized", "this", "throw", "throws", "transient", "try",
             "void", "volatile", "while" };
 
-    static final int JSP_INPUT_STREAM_BUFFER_SIZE = 1024;
-
     public static final int CHUNKSIZE = 1024;
 
     /**
@@ -82,7 +78,7 @@ public class JspUtil {
             returnString = expression;
         }
 
-        return Escape.xml(returnString);
+        return escapeXml(returnString);
     }
 
     /**
@@ -129,12 +125,12 @@ public class JspUtil {
 
         // AttributesImpl.removeAttribute is broken, so we do this...
         int tempLength = (attrs == null) ? 0 : attrs.getLength();
-        ArrayList<String> temp = new ArrayList<>(tempLength);
+        Vector<String> temp = new Vector<String>(tempLength, 1);
         for (int i = 0; i < tempLength; i++) {
             @SuppressWarnings("null")  // If attrs==null, tempLength == 0
             String qName = attrs.getQName(i);
             if ((!qName.equals("xmlns")) && (!qName.startsWith("xmlns:"))) {
-                temp.add(qName);
+                temp.addElement(qName);
             }
         }
 
@@ -146,7 +142,7 @@ public class JspUtil {
                 Node node = tagBody.getNode(i);
                 if (node instanceof Node.NamedAttribute) {
                     String attrName = node.getAttributeValue("name");
-                    temp.add(attrName);
+                    temp.addElement(attrName);
                     // Check if this value appear in the attribute of the node
                     if (n.getAttributeValue(attrName) != null) {
                         err.jspError(n,
@@ -168,16 +164,16 @@ public class JspUtil {
          */
         String missingAttribute = null;
 
-        for (ValidAttribute validAttribute : validAttributes) {
+        for (int i = 0; i < validAttributes.length; i++) {
             int attrPos;
-            if (validAttribute.mandatory) {
-                attrPos = temp.indexOf(validAttribute.name);
+            if (validAttributes[i].mandatory) {
+                attrPos = temp.indexOf(validAttributes[i].name);
                 if (attrPos != -1) {
                     temp.remove(attrPos);
                     valid = true;
                 } else {
                     valid = false;
-                    missingAttribute = validAttribute.name;
+                    missingAttribute = validAttributes[i].name;
                     break;
                 }
             }
@@ -196,10 +192,13 @@ public class JspUtil {
         }
 
         // Now check to see if the rest of the attributes are valid too.
-        for(String attribute : temp) {
+        String attribute = null;
+
+        for (int j = 0; j < attrLeftLength; j++) {
             valid = false;
-            for (ValidAttribute validAttribute : validAttributes) {
-                if (attribute.equals(validAttribute.name)) {
+            attribute = temp.elementAt(j);
+            for (int i = 0; i < validAttributes.length; i++) {
+                if (attribute.equals(validAttributes[i].name)) {
                     valid = true;
                     break;
                 }
@@ -212,10 +211,65 @@ public class JspUtil {
         // XXX *could* move EL-syntax validation here... (sb)
     }
 
-    public static class ValidAttribute {
+    /**
+     * Escape the 5 entities defined by XML.
+     * @param s String to escape
+     * @return XML escaped string
+     */
+    public static String escapeXml(String s) {
+        if (s == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '<') {
+                sb.append("&lt;");
+            } else if (c == '>') {
+                sb.append("&gt;");
+            } else if (c == '\'') {
+                sb.append("&apos;");
+            } else if (c == '&') {
+                sb.append("&amp;");
+            } else if (c == '"') {
+                sb.append("&quot;");
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
 
-        private final String name;
-        private final boolean mandatory;
+    /**
+     * Replaces any occurrences of the character <code>replace</code> with the
+     * string <code>with</code>.
+     */
+    public static String replace(String name, char replace, String with) {
+        StringBuilder buf = new StringBuilder();
+        int begin = 0;
+        int end;
+        int last = name.length();
+
+        while (true) {
+            end = name.indexOf(replace, begin);
+            if (end < 0) {
+                end = last;
+            }
+            buf.append(name.substring(begin, end));
+            if (end == last) {
+                break;
+            }
+            buf.append(with);
+            begin = end + 1;
+        }
+
+        return buf.toString();
+    }
+
+    public static class ValidAttribute {
+        String name;
+
+        boolean mandatory;
 
         public ValidAttribute(String name, boolean mandatory) {
             this.name = name;
@@ -297,7 +351,7 @@ public class JspUtil {
             c = double.class;
         } else if ("void".equals(type)) {
             c = void.class;
-        } else {
+        } else if (type.indexOf('[') < 0) {
             c = loader.loadClass(type);
         }
 
@@ -324,10 +378,12 @@ public class JspUtil {
      *            the expected type of the interpreted result
      * @param fnmapvar
      *            Variable pointing to a function map.
+     * @param XmlEscape
+     *            True if the result should do XML escaping
      * @return a String representing a call to the EL interpreter.
      */
     public static String interpreterCall(boolean isTagFile, String expression,
-            Class<?> expectedType, String fnmapvar) {
+            Class<?> expectedType, String fnmapvar, boolean XmlEscape) {
         /*
          * Determine which context object to use.
          */
@@ -342,35 +398,38 @@ public class JspUtil {
          * Determine whether to use the expected type's textual name or, if it's
          * a primitive, the name of its correspondent boxed type.
          */
-        String returnType = expectedType.getCanonicalName();
-        String targetType = returnType;
+        String targetType = expectedType.getCanonicalName();
         String primitiveConverterMethod = null;
         if (expectedType.isPrimitive()) {
             if (expectedType.equals(Boolean.TYPE)) {
-                returnType = Boolean.class.getName();
+                targetType = Boolean.class.getName();
                 primitiveConverterMethod = "booleanValue";
             } else if (expectedType.equals(Byte.TYPE)) {
-                returnType = Byte.class.getName();
+                targetType = Byte.class.getName();
                 primitiveConverterMethod = "byteValue";
             } else if (expectedType.equals(Character.TYPE)) {
-                returnType = Character.class.getName();
+                targetType = Character.class.getName();
                 primitiveConverterMethod = "charValue";
             } else if (expectedType.equals(Short.TYPE)) {
-                returnType = Short.class.getName();
+                targetType = Short.class.getName();
                 primitiveConverterMethod = "shortValue";
             } else if (expectedType.equals(Integer.TYPE)) {
-                returnType = Integer.class.getName();
+                targetType = Integer.class.getName();
                 primitiveConverterMethod = "intValue";
             } else if (expectedType.equals(Long.TYPE)) {
-                returnType = Long.class.getName();
+                targetType = Long.class.getName();
                 primitiveConverterMethod = "longValue";
             } else if (expectedType.equals(Float.TYPE)) {
-                returnType = Float.class.getName();
+                targetType = Float.class.getName();
                 primitiveConverterMethod = "floatValue";
             } else if (expectedType.equals(Double.TYPE)) {
-                returnType = Double.class.getName();
+                targetType = Double.class.getName();
                 primitiveConverterMethod = "doubleValue";
             }
+        }
+
+        if (primitiveConverterMethod != null) {
+            XmlEscape = false;
         }
 
         /*
@@ -390,12 +449,12 @@ public class JspUtil {
         targetType = toJavaSourceType(targetType);
         StringBuilder call = new StringBuilder(
                 "("
-                        + returnType
+                        + targetType
                         + ") "
                         + "org.apache.jasper.runtime.PageContextImpl.proprietaryEvaluate"
                         + "(" + Generator.quote(expression) + ", " + targetType
                         + ".class, " + "(javax.servlet.jsp.PageContext)" + jspCtxt + ", "
-                        + fnmapvar + ")");
+                        + fnmapvar + ", " + XmlEscape + ")");
 
         /*
          * Add the primitive converter method if we need to.
@@ -633,14 +692,20 @@ public class JspUtil {
         }
     }
 
-    public static BufferedInputStream getInputStream(String fname, Jar jar,
-            JspCompilationContext ctxt) throws IOException {
+    public static InputStream getInputStream(String fname, JarFile jarFile,
+            JspCompilationContext ctxt, ErrorDispatcher err)
+            throws JasperException, IOException {
 
         InputStream in = null;
 
-        if (jar != null) {
+        if (jarFile != null) {
             String jarEntryName = fname.substring(1, fname.length());
-            in = jar.getInputStream(jarEntryName);
+            ZipEntry jarEntry = jarFile.getEntry(jarEntryName);
+            if (jarEntry == null) {
+                throw new FileNotFoundException(Localizer.getMessage(
+                        "jsp.error.file.not.found", fname));
+            }
+            in = jarFile.getInputStream(jarEntry);
         } else {
             in = ctxt.getResourceAsStream(fname);
         }
@@ -650,21 +715,7 @@ public class JspUtil {
                     "jsp.error.file.not.found", fname));
         }
 
-        return new BufferedInputStream(in, JspUtil.JSP_INPUT_STREAM_BUFFER_SIZE);
-    }
-
-    public static InputSource getInputSource(String fname, Jar jar, JspCompilationContext ctxt)
-        throws IOException {
-        InputSource source;
-        if (jar != null) {
-            String jarEntryName = fname.substring(1, fname.length());
-            source = new InputSource(jar.getInputStream(jarEntryName));
-            source.setSystemId(jar.getURL(jarEntryName));
-        } else {
-            source = new InputSource(ctxt.getResourceAsStream(fname));
-            source.setSystemId(ctxt.getResource(fname).toExternalForm());
-        }
-        return source;
+        return in;
     }
 
     /**
@@ -740,17 +791,46 @@ public class JspUtil {
      * @return Java package corresponding to the given path
      */
     public static final String makeJavaPackage(String path) {
-        String classNameComponents[] = path.split("/");
+        String classNameComponents[] = split(path, "/");
         StringBuilder legalClassNames = new StringBuilder();
-        for (String classNameComponent : classNameComponents) {
-            if (classNameComponent.length() > 0) {
-                if (legalClassNames.length() > 0) {
-                    legalClassNames.append('.');
-                }
-                legalClassNames.append(makeJavaIdentifier(classNameComponent));
+        for (int i = 0; i < classNameComponents.length; i++) {
+            legalClassNames.append(makeJavaIdentifier(classNameComponents[i]));
+            if (i < classNameComponents.length - 1) {
+                legalClassNames.append('.');
             }
         }
         return legalClassNames.toString();
+    }
+
+    /**
+     * Splits a string into it's components.
+     *
+     * @param path
+     *            String to split
+     * @param pat
+     *            Pattern to split at
+     * @return the components of the path
+     */
+    private static final String[] split(String path, String pat) {
+        Vector<String> comps = new Vector<String>();
+        int pos = path.indexOf(pat);
+        int start = 0;
+        while (pos >= 0) {
+            if (pos > start) {
+                String comp = path.substring(start, pos);
+                comps.add(comp);
+            }
+            start = pos + pat.length();
+            pos = path.indexOf(pat, start);
+        }
+        if (start < path.length()) {
+            comps.add(path.substring(start));
+        }
+        String[] result = new String[comps.size()];
+        for (int i = 0; i < comps.size(); i++) {
+            result[i] = comps.elementAt(i);
+        }
+        return result;
     }
 
     /**
@@ -833,7 +913,7 @@ public class JspUtil {
         int i = 0;
         int j = javaKeywords.length;
         while (i < j) {
-            int k = (i + j) >>> 1;
+            int k = (i + j) / 2;
             int result = javaKeywords[k].compareTo(key);
             if (result == 0) {
                 return true;
@@ -847,19 +927,44 @@ public class JspUtil {
         return false;
     }
 
-    static InputStreamReader getReader(String fname, String encoding,
-            Jar jar, JspCompilationContext ctxt, ErrorDispatcher err)
-            throws JasperException, IOException {
+    public static boolean isJavaIdentifier(String key) {
+        // Should not be the case but check to be sure
+        if (key == null || key.length() == 0) {
+            return false;
+        }
 
-        return getReader(fname, encoding, jar, ctxt, err, 0);
+        if (isJavaKeyword(key)) {
+            return false;
+        }
+
+        // Check the start character that has more restrictions
+        if (!Character.isJavaIdentifierStart(key.charAt(0))) {
+            return false;
+        }
+
+        // Check each remaining character used is permitted
+        for (int idx = 1; idx < key.length(); idx++) {
+            if (!Character.isJavaIdentifierPart(key.charAt(idx))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     static InputStreamReader getReader(String fname, String encoding,
-            Jar jar, JspCompilationContext ctxt, ErrorDispatcher err, int skip)
+            JarFile jarFile, JspCompilationContext ctxt, ErrorDispatcher err)
             throws JasperException, IOException {
 
+        return getReader(fname, encoding, jarFile, ctxt, err, 0);
+    }
+
+    static InputStreamReader getReader(String fname, String encoding,
+            JarFile jarFile, JspCompilationContext ctxt, ErrorDispatcher err,
+            int skip) throws JasperException, IOException {
+
         InputStreamReader reader = null;
-        InputStream in = getInputStream(fname, jar, ctxt);
+        InputStream in = getInputStream(fname, jarFile, ctxt, err);
         try {
             for (int i = 0; i < skip; i++) {
                 in.read();
@@ -932,7 +1037,8 @@ public class JspUtil {
 
         if (t == null) {
             // Should never happen
-            throw new IllegalArgumentException(Localizer.getMessage("jsp.error.unable.getType", type));
+            throw new IllegalArgumentException("Unable to extract type from [" +
+                    type + "]");
         }
 
         StringBuilder resultType = new StringBuilder(t);

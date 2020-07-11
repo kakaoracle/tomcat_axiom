@@ -24,8 +24,6 @@ import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collection;
 import java.util.Locale;
-import java.util.Map;
-import java.util.function.Supplier;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.Cookie;
@@ -40,9 +38,12 @@ import org.apache.tomcat.util.res.StringManager;
  * All methods are delegated to the wrapped response.
  *
  * @author Remy Maucherat
+ * @author Jean-Francois Arcand
  */
 @SuppressWarnings("deprecation")
-public class ResponseFacade implements HttpServletResponse {
+public class ResponseFacade
+    implements HttpServletResponse {
+
 
     // ----------------------------------------------------------- DoPrivileged
 
@@ -86,24 +87,8 @@ public class ResponseFacade implements HttpServletResponse {
         }
     }
 
-    private static class FlushBufferPrivilegedAction implements PrivilegedExceptionAction<Void> {
-
-        private final Response response;
-
-        public FlushBufferPrivilegedAction(Response response) {
-            this.response = response;
-        }
-
-        @Override
-        public Void run() throws IOException {
-            response.setAppCommitted(true);
-            response.flushBuffer();
-            return null;
-        }
-    }
-
-
     // ----------------------------------------------------------- Constructors
+
 
     /**
      * Construct a wrapper for the specified response.
@@ -122,7 +107,8 @@ public class ResponseFacade implements HttpServletResponse {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm = StringManager.getManager(ResponseFacade.class);
+    protected static final StringManager sm =
+        StringManager.getManager(Constants.Package);
 
 
     /**
@@ -211,7 +197,7 @@ public class ResponseFacade implements HttpServletResponse {
         if (isFinished()) {
             response.setSuspended(true);
         }
-        return sos;
+        return (sos);
 
     }
 
@@ -228,26 +214,20 @@ public class ResponseFacade implements HttpServletResponse {
         if (isFinished()) {
             response.setSuspended(true);
         }
-        return writer;
+        return (writer);
 
     }
 
 
     @Override
     public void setContentLength(int len) {
+
         if (isCommitted()) {
             return;
         }
+
         response.setContentLength(len);
-    }
 
-
-    @Override
-    public void setContentLengthLong(long length) {
-        if (isCommitted()) {
-            return;
-        }
-        response.setContentLengthLong(length);
     }
 
 
@@ -292,25 +272,40 @@ public class ResponseFacade implements HttpServletResponse {
 
 
     @Override
-    public void flushBuffer() throws IOException {
+    public void flushBuffer()
+        throws IOException {
 
         if (isFinished()) {
+            //            throw new IllegalStateException
+            //                (/*sm.getString("responseFacade.finished")*/);
             return;
         }
 
-        if (SecurityUtil.isPackageProtectionEnabled()) {
+        if (SecurityUtil.isPackageProtectionEnabled()){
             try{
-                AccessController.doPrivileged(new FlushBufferPrivilegedAction(response));
-            } catch(PrivilegedActionException e) {
+                AccessController.doPrivileged(
+                        new PrivilegedExceptionAction<Void>(){
+
+                    @Override
+                    public Void run() throws IOException{
+                        response.setAppCommitted(true);
+
+                        response.flushBuffer();
+                        return null;
+                    }
+                });
+            } catch(PrivilegedActionException e){
                 Exception ex = e.getException();
-                if (ex instanceof IOException) {
+                if (ex instanceof IOException){
                     throw (IOException)ex;
                 }
             }
         } else {
             response.setAppCommitted(true);
+
             response.flushBuffer();
         }
+
     }
 
 
@@ -335,7 +330,7 @@ public class ResponseFacade implements HttpServletResponse {
                             sm.getString("responseFacade.nullResponse"));
         }
 
-        return response.isAppCommitted();
+        return (response.isAppCommitted());
     }
 
 
@@ -641,17 +636,5 @@ public class ResponseFacade implements HttpServletResponse {
     @Override
     public Collection<String> getHeaders(String name) {
         return response.getHeaders(name);
-    }
-
-
-    @Override
-    public void setTrailerFields(Supplier<Map<String, String>> supplier) {
-        response.setTrailerFields(supplier);
-    }
-
-
-    @Override
-    public Supplier<Map<String, String>> getTrailerFields() {
-        return response.getTrailerFields();
     }
 }

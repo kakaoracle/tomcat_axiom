@@ -25,16 +25,13 @@ import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
 
-import org.apache.catalina.Context;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.coyote.ProtocolHandler;
 import org.apache.coyote.http11.AbstractHttp11JsseProtocol;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.util.net.SSLHostConfigCertificate.Type;
 import org.apache.tomcat.util.net.jsse.TesterBug50640SslImpl;
-import org.apache.tomcat.websocket.server.WsContextListener;
 
 /**
  * The keys and certificates used in this file are all available in svn and were
@@ -42,12 +39,6 @@ import org.apache.tomcat.websocket.server.WsContextListener;
  * repository since not all of them are AL2 licensed.
  */
 public class TestCustomSsl extends TomcatBaseTest {
-
-    private enum TrustType {
-        ALL,
-        CA,
-        NONE
-    }
 
     @Test
     public void testCustomSslImplementation() throws Exception {
@@ -60,30 +51,23 @@ public class TestCustomSsl extends TomcatBaseTest {
         Assume.assumeFalse("This test is only for JSSE based SSL connectors",
                 connector.getProtocolHandlerClassName().contains("Apr"));
 
-        SSLHostConfig sslHostConfig = new SSLHostConfig();
-        SSLHostConfigCertificate certificate = new SSLHostConfigCertificate(sslHostConfig, Type.UNDEFINED);
-        sslHostConfig.addCertificate(certificate);
-        connector.addSslHostConfig(sslHostConfig);
+        connector.setProperty("sslImplementationName",
+                "org.apache.tomcat.util.net.jsse.TesterBug50640SslImpl");
+        connector.setProperty(TesterBug50640SslImpl.PROPERTY_NAME,
+                TesterBug50640SslImpl.PROPERTY_VALUE);
 
-        Assert.assertTrue(connector.setProperty(
-                "sslImplementationName", "org.apache.tomcat.util.net.jsse.TesterBug50640SslImpl"));
+        connector.setProperty("sslProtocol", "tls");
 
-        // This setting will break ssl configuration unless the custom
-        // implementation is used.
-        sslHostConfig.setProtocols(TesterBug50640SslImpl.PROPERTY_VALUE);
-
-        sslHostConfig.setSslProtocol("tls");
-
-        File keystoreFile = new File(TesterSupport.LOCALHOST_RSA_JKS);
-        certificate.setCertificateKeystoreFile(keystoreFile.getAbsolutePath());
+        File keystoreFile =
+            new File("test/" + TesterSupport.LOCALHOST_JKS);
+        connector.setAttribute(
+                "keystoreFile", keystoreFile.getAbsolutePath());
 
         connector.setSecure(true);
-        Assert.assertTrue(connector.setProperty("SSLEnabled", "true"));
+        connector.setProperty("SSLEnabled", "true");
 
         File appDir = new File(getBuildDirectory(), "webapps/examples");
-        Context ctxt  = tomcat.addWebapp(
-                null, "/examples", appDir.getAbsolutePath());
-        ctxt.addApplicationListener(WsContextListener.class.getName());
+        tomcat.addWebapp(null, "/examples", appDir.getAbsolutePath());
 
         tomcat.start();
         ByteChunk res = getUrl("https://localhost:" + getPort() +
@@ -92,46 +76,42 @@ public class TestCustomSsl extends TomcatBaseTest {
     }
 
     @Test
-    public void testCustomTrustManagerAll() throws Exception {
-        doTestCustomTrustManager(TrustType.ALL);
+    public void testCustomTrustManager1() throws Exception {
+        doTestCustomTrustManager(false);
     }
 
     @Test
-    public void testCustomTrustManagerCA() throws Exception {
-        doTestCustomTrustManager(TrustType.CA);
+    public void testCustomTrustManager2() throws Exception {
+        doTestCustomTrustManager(true);
     }
 
-    @Test
-    public void testCustomTrustManagerNone() throws Exception {
-        doTestCustomTrustManager(TrustType.NONE);
-    }
-
-    private void doTestCustomTrustManager(TrustType trustType)
+    private void doTestCustomTrustManager(boolean serverTrustAll)
             throws Exception {
+
+        if (!TesterSupport.RFC_5746_SUPPORTED) {
+            // Make sure SSL renegotiation is not disabled in the JVM
+            System.setProperty("sun.security.ssl.allowUnsafeRenegotiation",
+                    "true");
+        }
 
         Tomcat tomcat = getTomcatInstance();
 
         Assume.assumeTrue("SSL renegotiation has to be supported for this test",
-                TesterSupport.isRenegotiationSupported(tomcat));
+                TesterSupport.isRenegotiationSupported(getTomcatInstance()));
 
         TesterSupport.configureClientCertContext(tomcat);
 
-        Connector connector = tomcat.getConnector();
-
         // Override the defaults
-        ProtocolHandler handler = connector.getProtocolHandler();
+        ProtocolHandler handler = tomcat.getConnector().getProtocolHandler();
         if (handler instanceof AbstractHttp11JsseProtocol) {
-            connector.findSslHostConfigs()[0].setTruststoreFile(null);
+            ((AbstractHttp11JsseProtocol<?>) handler).setTruststoreFile(null);
         } else {
             // Unexpected
             Assert.fail("Unexpected handler type");
         }
-        if (trustType.equals(TrustType.ALL)) {
-            connector.findSslHostConfigs()[0].setTrustManagerClassName(
+        if (serverTrustAll) {
+            tomcat.getConnector().setAttribute("trustManagerClassName",
                     "org.apache.tomcat.util.net.TesterSupport$TrustAllCerts");
-        } else if (trustType.equals(TrustType.CA)) {
-            connector.findSslHostConfigs()[0].setTrustManagerClassName(
-                    "org.apache.tomcat.util.net.TesterSupport$SequentialTrustManager");
         }
 
         // Start Tomcat
@@ -140,45 +120,33 @@ public class TestCustomSsl extends TomcatBaseTest {
         TesterSupport.configureClientSsl();
 
         // Unprotected resource
-        ByteChunk res = getUrl("https://localhost:" + getPort() + "/unprotected");
+        ByteChunk res =
+                getUrl("https://localhost:" + getPort() + "/unprotected");
         Assert.assertEquals("OK", res.toString());
 
         // Protected resource
         res.recycle();
         int rc = -1;
         try {
-            rc = getUrl("https://localhost:" + getPort() + "/protected", res, null, null);
+            rc = getUrl("https://localhost:" + getPort() + "/protected", res,
+                null, null);
         } catch (SocketException se) {
-            if (!trustType.equals(TrustType.NONE)) {
+            if (serverTrustAll) {
                 Assert.fail(se.getMessage());
                 se.printStackTrace();
             }
         } catch (SSLException he) {
-            if (!trustType.equals(TrustType.NONE)) {
+            if (serverTrustAll) {
                 Assert.fail(he.getMessage());
                 he.printStackTrace();
             }
         }
-
-        if (trustType.equals(TrustType.CA)) {
-            if (log.isDebugEnabled()) {
-                int count = TesterSupport.getLastClientAuthRequestedIssuerCount();
-                log.debug("Last client KeyManager usage: " + TesterSupport.getLastClientAuthKeyManagerUsage() +
-                          ", " + count + " requested Issuers, first one: " +
-                          (count > 0 ? TesterSupport.getLastClientAuthRequestedIssuer(0).getName() : "NONE"));
-                log.debug("Expected requested Issuer: " + TesterSupport.getClientAuthExpectedIssuer());
-            }
-            Assert.assertTrue("Checking requested client issuer against " +
-                    TesterSupport.getClientAuthExpectedIssuer(),
-                    TesterSupport.checkLastClientAuthRequestedIssuers());
-        }
-
-        if (trustType.equals(TrustType.NONE)) {
-            Assert.assertTrue(rc != 200);
-            Assert.assertNull(res.toString());
-        } else {
+        if (serverTrustAll) {
             Assert.assertEquals(200, rc);
             Assert.assertEquals("OK-" + TesterSupport.ROLE, res.toString());
+        } else {
+            Assert.assertTrue(rc != 200);
+            Assert.assertEquals("", res.toString());
         }
     }
 }

@@ -14,24 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package javax.el;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.Properties;
-import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -45,12 +46,16 @@ public abstract class ExpressionFactory {
     private static final boolean IS_SECURITY_ENABLED =
         (System.getSecurityManager() != null);
 
+    private static final String SERVICE_RESOURCE_NAME =
+        "META-INF/services/javax.el.ExpressionFactory";
+
     private static final String PROPERTY_NAME = "javax.el.ExpressionFactory";
 
     private static final String PROPERTY_FILE;
 
     private static final CacheValue nullTcclFactory = new CacheValue();
-    private static final Map<CacheKey, CacheValue> factoryCache = new ConcurrentHashMap<>();
+    private static ConcurrentMap<CacheKey, CacheValue> factoryCache =
+            new ConcurrentHashMap<CacheKey, CacheValue>();
 
     static {
         if (IS_SECURITY_ENABLED) {
@@ -172,7 +177,13 @@ public abstract class ExpressionFactory {
             Throwable cause = e.getCause();
             Util.handleThrowable(cause);
             throw new ELException(Util.message(null, "expressionFactory.cannotCreate", clazz.getName()), e);
-        } catch (ReflectiveOperationException | IllegalArgumentException e) {
+        } catch (InstantiationException e) {
+            throw new ELException(Util.message(null, "expressionFactory.cannotCreate", clazz.getName()), e);
+        } catch (IllegalAccessException e) {
+            throw new ELException(Util.message(null, "expressionFactory.cannotCreate", clazz.getName()), e);
+        } catch (IllegalArgumentException e) {
+            throw new ELException(Util.message(null, "expressionFactory.cannotCreate", clazz.getName()), e);
+        } catch (NoSuchMethodException e) {
             throw new ELException(Util.message(null, "expressionFactory.cannotCreate", clazz.getName()), e);
         }
 
@@ -235,24 +246,6 @@ public abstract class ExpressionFactory {
     public abstract Object coerceToType(Object obj, Class<?> expectedType);
 
     /**
-     * @return This default implementation returns null
-     *
-     * @since EL 3.0
-     */
-    public ELResolver getStreamELResolver() {
-        return null;
-    }
-
-    /**
-     * @return This default implementation returns null
-     *
-     * @since EL 3.0
-     */
-    public Map<String,Method> getInitFunctionMap() {
-        return null;
-    }
-
-    /**
      * Key used to cache ExpressionFactory discovery information per class
      * loader. The class loader reference is never {@code null}, because
      * {@code null} tccl is handled separately.
@@ -263,7 +256,7 @@ public abstract class ExpressionFactory {
 
         public CacheKey(ClassLoader cl) {
             hash = cl.hashCode();
-            ref = new WeakReference<>(cl);
+            ref = new WeakReference<ClassLoader>(cl);
         }
 
         @Override
@@ -312,7 +305,7 @@ public abstract class ExpressionFactory {
         }
 
         public void setFactoryClass(Class<?> clazz) {
-            ref = new WeakReference<>(clazz);
+            ref = new WeakReference<Class<?>>(clazz);
         }
     }
 
@@ -366,26 +359,56 @@ public abstract class ExpressionFactory {
     }
 
     private static String getClassNameServices(ClassLoader tccl) {
+        InputStream is = null;
 
-        ExpressionFactory result = null;
-
-        ServiceLoader<ExpressionFactory> serviceLoader = ServiceLoader.load(ExpressionFactory.class, tccl);
-        Iterator<ExpressionFactory> iter = serviceLoader.iterator();
-        while (result == null && iter.hasNext()) {
-            result = iter.next();
+        if (tccl == null) {
+            is = ClassLoader.getSystemResourceAsStream(SERVICE_RESOURCE_NAME);
+        } else {
+            is = tccl.getResourceAsStream(SERVICE_RESOURCE_NAME);
         }
 
-        if (result == null) {
-            return null;
+        if (is != null) {
+            String line = null;
+            BufferedReader br = null;
+            InputStreamReader isr = null;
+            try {
+                isr = new InputStreamReader(is, "UTF-8");
+                br = new BufferedReader(isr);
+                line = br.readLine();
+                if (line != null && line.trim().length() > 0) {
+                    return line.trim();
+                }
+            } catch (UnsupportedEncodingException e) {
+                // Should never happen with UTF-8
+                // If it does - ignore & return null
+            } catch (IOException e) {
+                throw new ELException(Util.message(null, "expressionFactory.readFailed", SERVICE_RESOURCE_NAME), e);
+            } finally {
+                try {
+                    if (br != null) {
+                        br.close();
+                    }
+                } catch (IOException ioe) {/*Ignore*/}
+                try {
+                    if (isr != null) {
+                        isr.close();
+                    }
+                } catch (IOException ioe) {/*Ignore*/}
+                try {
+                    is.close();
+                } catch (IOException ioe) {/*Ignore*/}
+            }
         }
 
-        return result.getClass().getName();
+        return null;
     }
 
     private static String getClassNameJreDir() {
         File file = new File(PROPERTY_FILE);
         if (file.canRead()) {
-            try (InputStream is = new FileInputStream(file)){
+            InputStream is = null;
+            try {
+                is = new FileInputStream(file);
                 Properties props = new Properties();
                 props.load(is);
                 String value = props.getProperty(PROPERTY_NAME);
@@ -396,6 +419,14 @@ public abstract class ExpressionFactory {
                 // Should not happen - ignore it if it does
             } catch (IOException e) {
                 throw new ELException(Util.message(null, "expressionFactory.readFailed", PROPERTY_FILE), e);
+            } finally {
+                if (is != null) {
+                    try {
+                        is.close();
+                    } catch (IOException e) {
+                        // Ignore
+                    }
+                }
             }
         }
         return null;

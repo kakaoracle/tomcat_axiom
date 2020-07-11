@@ -143,7 +143,6 @@ public class SSIServlet extends HttpServlet {
      *            a value of type 'HttpServletRequest'
      * @param res
      *            a value of type 'HttpServletResponse'
-     * @throws IOException an IO error occurred
      */
     protected void requestHandler(HttpServletRequest req,
             HttpServletResponse res) throws IOException {
@@ -157,12 +156,14 @@ public class SSIServlet extends HttpServlet {
         // (the "toUpperCase()" avoids problems on Windows systems)
         if (path == null || path.toUpperCase(Locale.ENGLISH).startsWith("/WEB-INF")
                 || path.toUpperCase(Locale.ENGLISH).startsWith("/META-INF")) {
-            res.sendError(HttpServletResponse.SC_NOT_FOUND);
+            res.sendError(HttpServletResponse.SC_NOT_FOUND, path);
+            log("Can't serve file: " + path);
             return;
         }
         URL resource = servletContext.getResource(path);
         if (resource == null) {
-            res.sendError(HttpServletResponse.SC_NOT_FOUND);
+            res.sendError(HttpServletResponse.SC_NOT_FOUND, path);
+            log("Can't find file: " + path);
             return;
         }
         String resourceMimeType = servletContext.getMimeType(path);

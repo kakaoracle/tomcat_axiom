@@ -25,8 +25,6 @@ public interface AsyncContext {
             "javax.servlet.async.request_uri";
     public static final String ASYNC_CONTEXT_PATH  =
             "javax.servlet.async.context_path";
-    public static final String ASYNC_MAPPING =
-            "javax.servlet.async.mapping";
     public static final String ASYNC_PATH_INFO =
             "javax.servlet.async.path_info";
     public static final String ASYNC_SERVLET_PATH =
@@ -86,7 +84,7 @@ public interface AsyncContext {
     void addListener(AsyncListener listener);
 
     void addListener(AsyncListener listener, ServletRequest request,
-            ServletResponse response);
+                     ServletResponse response);
 
     <T extends AsyncListener> T createListener(Class<T> clazz)
     throws ServletException;
@@ -100,7 +98,7 @@ public interface AsyncContext {
     void setTimeout(long timeout);
 
     /**
-     * Get the current timeout.
+     * Get the current.
      *
      * @return The timeout in milliseconds. 0 or less indicates no timeout.
      */

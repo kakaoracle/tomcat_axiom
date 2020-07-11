@@ -16,7 +16,7 @@
  */
 package org.apache.catalina.tribes.util;
 
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -25,18 +25,21 @@ import org.apache.catalina.tribes.ChannelMessage;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.UniqueId;
 import org.apache.catalina.tribes.group.AbsoluteOrder;
+import org.apache.catalina.tribes.membership.MemberImpl;
 import org.apache.catalina.tribes.membership.Membership;
 
 /**
+ * @author Filip Hanik
  * @version 1.0
  */
 public class Arrays {
-    protected static final StringManager sm = StringManager.getManager(Arrays.class);
+    private static final Charset CHARSET_ISO_8859_1 =
+        Charset.forName("ISO-8859-1");
 
     public static boolean contains(byte[] source, int srcoffset, byte[] key, int keyoffset, int length) {
-        if ( srcoffset < 0 || srcoffset >= source.length) throw new ArrayIndexOutOfBoundsException(sm.getString("arrays.srcoffset.outOfBounds"));
-        if ( keyoffset < 0 || keyoffset >= key.length) throw new ArrayIndexOutOfBoundsException(sm.getString("arrays.keyoffset.outOfBounds"));
-        if ( length > (key.length-keyoffset) ) throw new ArrayIndexOutOfBoundsException(sm.getString("arrays.length.outOfBounds"));
+        if ( srcoffset < 0 || srcoffset >= source.length) throw new ArrayIndexOutOfBoundsException("srcoffset is out of bounds.");
+        if ( keyoffset < 0 || keyoffset >= key.length) throw new ArrayIndexOutOfBoundsException("keyoffset is out of bounds.");
+        if ( length > (key.length-keyoffset) ) throw new ArrayIndexOutOfBoundsException("not enough data elements in the key, length is out of bounds.");
         //we don't have enough data to validate it
         if ( length > (source.length-srcoffset) ) return false;
         boolean match = true;
@@ -109,7 +112,7 @@ public class Arrays {
 
     public static int add(int[] data) {
         int result = 0;
-        for (int datum : data) result += datum;
+        for (int i=0;i<data.length; i++ ) result += data[i];
         return result;
     }
 
@@ -140,8 +143,9 @@ public class Arrays {
     public static Member[] merge(Member[] m1, Member[] m2) {
         AbsoluteOrder.absoluteOrder(m1);
         AbsoluteOrder.absoluteOrder(m2);
-        ArrayList<Member> list = new ArrayList<>(java.util.Arrays.asList(m1));
-        for (Member member : m2) if (!list.contains(member)) list.add(member);
+        ArrayList<Member> list =
+            new ArrayList<Member>(java.util.Arrays.asList(m1));
+        for (int i=0; i<m2.length; i++) if ( !list.contains(m2[i]) ) list.add(m2[i]);
         Member[] result = new Member[list.size()];
         list.toArray(result);
         AbsoluteOrder.absoluteOrder(result);
@@ -149,17 +153,17 @@ public class Arrays {
     }
 
     public static void fill(Membership mbrship, Member[] m) {
-        for (Member member : m) mbrship.addMember(member);
+        for (int i=0; i<m.length; i++ ) mbrship.addMember((MemberImpl)m[i]);
     }
 
-    public static Member[] diff(Membership complete, Membership local, Member ignore) {
-        List<Member> result = new ArrayList<>();
-        Member[] comp = complete.getMembers();
-        for (Member member : comp) {
-            if (ignore != null && ignore.equals(member)) continue;
-            if (local.getMember(member) == null) result.add(member);
+    public static Member[] diff(Membership complete, Membership local, MemberImpl ignore) {
+        ArrayList<Member> result = new ArrayList<Member>();
+        MemberImpl[] comp = complete.getMembers();
+        for ( int i=0; i<comp.length; i++ ) {
+            if ( ignore!=null && ignore.equals(comp[i]) ) continue;
+            if ( local.getMember(comp[i]) == null ) result.add(comp[i]);
         }
-        return result.toArray(new Member[0]);
+        return result.toArray(new MemberImpl[result.size()]);
     }
 
     public static Member[] remove(Member[] all, Member remove) {
@@ -168,9 +172,9 @@ public class Arrays {
 
     public static Member[] extract(Member[] all, Member[] remove) {
         List<Member> alist = java.util.Arrays.asList(all);
-        ArrayList<Member> list = new ArrayList<>(alist);
-        for (Member member : remove) list.remove(member);
-        return list.toArray(new Member[0]);
+        ArrayList<Member> list = new ArrayList<Member>(alist);
+        for (int i=0; i<remove.length; i++ ) list.remove(remove[i]);
+        return list.toArray(new Member[list.size()]);
     }
 
     public static int indexOf(Member member, Member[] members) {
@@ -192,7 +196,8 @@ public class Arrays {
             return 0;
 
         int result = 1;
-        for (byte element : a) {
+        for (int i=0; i<a.length; i++) {
+            byte element = a[i];
             result = 31 * result + element;
         }
         return result;
@@ -200,7 +205,7 @@ public class Arrays {
 
     public static byte[] fromString(String value) {
         if ( value == null ) return null;
-        if ( !value.startsWith("{") ) throw new RuntimeException(sm.getString("arrays.malformed.arrays"));
+        if ( !value.startsWith("{") ) throw new RuntimeException("byte arrays must be represented as {1,3,4,5,6}");
         StringTokenizer t = new StringTokenizer(value,"{,}",false);
         byte[] result = new byte[t.countTokens()];
         for (int i=0; i<result.length; i++ ) result[i] = Byte.parseByte(t.nextToken());
@@ -209,6 +214,6 @@ public class Arrays {
 
 
     public static byte[] convert(String s) {
-        return s.getBytes(StandardCharsets.ISO_8859_1);
+        return s.getBytes(CHARSET_ISO_8859_1);
     }
 }

@@ -36,11 +36,9 @@ import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
-import javax.servlet.WriteListener;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
-import javax.servlet.http.MappingMatch;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -380,7 +378,7 @@ import org.apache.juli.logging.LogFactory;
  * {@link #isEligibleToExpirationHeaderGeneration(HttpServletRequest, XHttpServletResponse)}
  * </li>
  * <li>
- * {@link #getExpirationDate(HttpServletRequest, XHttpServletResponse)}</li>
+ * {@link #getExpirationDate(XHttpServletResponse)}</li>
  * </ul>
  * <h2>Troubleshooting</h2>
  * <p>
@@ -1017,21 +1015,6 @@ public class ExpiresFilter extends FilterBase {
             servletOutputStream.write(b);
         }
 
-        /**
-         * TODO SERVLET 3.1
-         */
-        @Override
-        public boolean isReady() {
-            return false;
-        }
-
-        /**
-         * TODO SERVLET 3.1
-         */
-        @Override
-        public void setWriteListener(WriteListener listener) {
-        }
-
     }
 
     /**
@@ -1101,7 +1084,7 @@ public class ExpiresFilter extends FilterBase {
         if (str == null || searchStr == null) {
             return false;
         }
-        return str.contains(searchStr);
+        return str.indexOf(searchStr) >= 0;
     }
 
     /**
@@ -1204,7 +1187,7 @@ public class ExpiresFilter extends FilterBase {
     /**
      * Expires configuration by content type. Visible for test.
      */
-    private Map<String, ExpiresConfiguration> expiresConfigurationByContentType = new LinkedHashMap<>();
+    private Map<String, ExpiresConfiguration> expiresConfigurationByContentType = new LinkedHashMap<String, ExpiresConfiguration>();
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response,
@@ -1248,57 +1231,22 @@ public class ExpiresFilter extends FilterBase {
         return excludedResponseStatusCodes;
     }
 
-
     /**
+     * <p>
      * Returns the expiration date of the given {@link XHttpServletResponse} or
      * {@code null} if no expiration date has been configured for the
      * declared content type.
+     * </p>
      * <p>
      * {@code protected} for extension.
+     * </p>
      *
-     * @param response The wrapped HTTP response
-     *
+     * @param response The Servlet response
      * @return the expiration date
      * @see HttpServletResponse#getContentType()
-     *
-     * @deprecated  Will be removed in Tomcat 10.
-     *              Use {@link #getExpirationDate(HttpServletRequest, XHttpServletResponse)}
      */
-    @Deprecated
     protected Date getExpirationDate(XHttpServletResponse response) {
-        return getExpirationDate((HttpServletRequest) null, response);
-    }
-
-
-    /**
-     * Returns the expiration date of the given {@link XHttpServletResponse} or
-     * {@code null} if no expiration date has been configured for the
-     * declared content type.
-     * <p>
-     * {@code protected} for extension.
-     *
-     * @param request  The HTTP request
-     * @param response The wrapped HTTP response
-     *
-     * @return the expiration date
-     * @see HttpServletResponse#getContentType()
-     */
-    protected Date getExpirationDate(HttpServletRequest request, XHttpServletResponse response) {
         String contentType = response.getContentType();
-        if (contentType == null && request != null &&
-                request.getHttpServletMapping().getMappingMatch() == MappingMatch.DEFAULT &&
-                response.getStatus() == HttpServletResponse.SC_NOT_MODIFIED) {
-            // Default servlet normally sets the content type but does not for
-            // 304 responses. Look it up.
-            String servletPath = request.getServletPath();
-            if (servletPath != null) {
-                int lastSlash = servletPath.lastIndexOf('/');
-                if (lastSlash > -1) {
-                    String fileName = servletPath.substring(lastSlash + 1);
-                    contentType = request.getServletContext().getMimeType(fileName);
-                }
-            }
-        }
         if (contentType != null) {
             contentType = contentType.toLowerCase(Locale.ENGLISH);
         }
@@ -1431,7 +1379,7 @@ public class ExpiresFilter extends FilterBase {
             try {
                 if (name.startsWith(PARAMETER_EXPIRES_BY_TYPE)) {
                     String contentType = name.substring(
-                            PARAMETER_EXPIRES_BY_TYPE.length()).trim().toLowerCase(Locale.ENGLISH);
+                            PARAMETER_EXPIRES_BY_TYPE.length()).trim();
                     ExpiresConfiguration expiresConfiguration = parseExpiresConfiguration(value);
                     this.expiresConfigurationByContentType.put(contentType,
                             expiresConfiguration);
@@ -1521,7 +1469,7 @@ public class ExpiresFilter extends FilterBase {
             return;
         }
 
-        Date expirationDate = getExpirationDate(request, response);
+        Date expirationDate = getExpirationDate(response);
         if (expirationDate == null) {
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString("expiresFilter.noExpirationConfigured",
@@ -1611,7 +1559,7 @@ public class ExpiresFilter extends FilterBase {
             }
         }
 
-        List<Duration> durations = new ArrayList<>();
+        List<Duration> durations = new ArrayList<Duration>();
 
         while (currentToken != null) {
             int amount;

@@ -21,33 +21,31 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.util.Properties;
 
-import javax.management.ObjectName;
-
 import org.apache.catalina.tribes.Channel;
 import org.apache.catalina.tribes.ChannelException;
 import org.apache.catalina.tribes.ChannelMessage;
 import org.apache.catalina.tribes.Member;
-import org.apache.catalina.tribes.MembershipProvider;
+import org.apache.catalina.tribes.MembershipListener;
+import org.apache.catalina.tribes.MembershipService;
 import org.apache.catalina.tribes.MessageListener;
 import org.apache.catalina.tribes.io.ChannelData;
 import org.apache.catalina.tribes.io.XByteBuffer;
-import org.apache.catalina.tribes.jmx.JmxRegistry;
 import org.apache.catalina.tribes.util.Arrays;
 import org.apache.catalina.tribes.util.StringManager;
 import org.apache.catalina.tribes.util.UUIDGenerator;
-import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
 
 /**
  * A <b>membership</b> implementation using simple multicast.
  * This is the representation of a multicast membership service.
  * This class is responsible for maintaining a list of active cluster nodes in the cluster.
  * If a node fails to send out a heartbeat, the node will be dismissed.
+ *
+ * @author Filip Hanik
  */
-public class McastService
-        extends MembershipServiceBase implements MessageListener, McastServiceMBean {
+public class McastService implements MembershipService,MembershipListener,MessageListener {
 
-    private static final Log log = LogFactory.getLog(McastService.class);
+    private static final org.apache.juli.logging.Log log =
+        org.apache.juli.logging.LogFactory.getLog( McastService.class );
 
     /**
      * The string manager for this package.
@@ -55,10 +53,22 @@ public class McastService
     protected static final StringManager sm = StringManager.getManager(Constants.Package);
 
     /**
+     * The descriptive information about this implementation.
+     */
+    private static final String info = "McastService/2.1";
+
+    /**
+     * The implementation specific properties
+     */
+    protected Properties properties = new Properties();
+    /**
      * A handle to the actual low level implementation
      */
     protected McastServiceImpl impl;
-
+    /**
+     * A membership listener delegate (should be the cluster :)
+     */
+    protected MembershipListener listener;
     /**
      * A message listener delegate for broadcasts
      */
@@ -74,10 +84,7 @@ public class McastService
 
     protected byte[] domain;
 
-    /**
-     * the ObjectName of this McastService.
-     */
-    private ObjectName oname = null;
+    private Channel channel;
 
     /**
      * Create a membership service.
@@ -88,7 +95,16 @@ public class McastService
     }
 
     /**
-     * Sets the properties for the membership service.
+     * Return descriptive information about this implementation and the
+     * corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    public String getInfo() {
+        return (info);
+    }
+
+    /**
+     *
      * @param properties
      * <br>All are required<br>
      * 1. mcastPort - the port to listen to<BR>
@@ -98,7 +114,7 @@ public class McastService
      * 6. mcastFrequency - the frequency of sending messages<BR>
      * 7. tcpListenPort - the port this member listens to<BR>
      * 8. tcpListenHost - the bind address of this member<BR>
-     * @exception java.lang.IllegalArgumentException if a property is missing.
+     * @exception IllegalArgumentException if a property is missing.
      */
     @Override
     public void setProperties(Properties properties) {
@@ -113,15 +129,22 @@ public class McastService
     }
 
     /**
-     * @return the local member name
+     * Return the properties, see setProperties
      */
     @Override
+    public Properties getProperties() {
+        return properties;
+    }
+
+    /**
+     * Return the local member name
+     */
     public String getLocalMemberName() {
         return localMember.toString() ;
     }
 
     /**
-     * {@inheritDoc}
+     * Return the local member
      */
     @Override
     public Member getLocalMember(boolean alive) {
@@ -130,7 +153,7 @@ public class McastService
     }
 
     /**
-     * {@inheritDoc}
+     * Sets the local member properties for broadcasting
      */
     @Override
     public void setLocalMemberProperties(String listenHost, int listenPort, int securePort, int udpPort) {
@@ -161,9 +184,26 @@ public class McastService
         properties.setProperty("mcastAddress", addr);
     }
 
-    @Override
+    /**
+     * @deprecated use setAddress
+     * @param addr String
+     */
+    @Deprecated
+    public void setMcastAddr(String addr) {
+        setAddress(addr);
+    }
+
     public String getAddress() {
         return properties.getProperty("mcastAddress");
+    }
+
+    /**
+     * @deprecated use getAddress
+     * @return String
+     */
+    @Deprecated
+    public String getMcastAddr() {
+        return getAddress();
     }
 
     public void setMcastBindAddress(String bindaddr) {
@@ -173,10 +213,26 @@ public class McastService
     public void setBind(String bindaddr) {
         properties.setProperty("mcastBindAddress", bindaddr);
     }
+    /**
+     * @deprecated use getBind
+     * @return String
+     */
+    @Deprecated
+    public String getMcastBindAddress() {
+        return getBind();
+    }
 
-    @Override
     public String getBind() {
         return properties.getProperty("mcastBindAddress");
+    }
+
+    /**
+     * @deprecated use setPort
+     * @param port int
+     */
+    @Deprecated
+    public void setMcastPort(int port) {
+        setPort(port);
     }
 
     public void setPort(int port) {
@@ -187,7 +243,6 @@ public class McastService
         properties.setProperty("recoveryCounter", String.valueOf(recoveryCounter));
     }
 
-    @Override
     public int getRecoveryCounter(){
         String p = properties.getProperty("recoveryCounter");
         if(p != null){
@@ -200,7 +255,6 @@ public class McastService
         properties.setProperty("recoveryEnabled", String.valueOf(recoveryEnabled));
     }
 
-    @Override
     public boolean getRecoveryEnabled() {
         String p = properties.getProperty("recoveryEnabled");
         if(p != null){
@@ -213,7 +267,6 @@ public class McastService
         properties.setProperty("recoverySleepTime", String.valueOf(recoverySleepTime));
     }
 
-    @Override
     public long getRecoverySleepTime(){
         String p = properties.getProperty("recoverySleepTime");
         if(p != null){
@@ -226,8 +279,7 @@ public class McastService
         properties.setProperty("localLoopbackDisabled",String.valueOf(localLoopbackDisabled));
     }
 
-    @Override
-    public boolean getLocalLoopbackDisabled() {
+    public boolean getLocalLoopbackDisabled(boolean localLoopbackDisabled) {
         String p = properties.getProperty("localLoopbackDisabled");
         if(p != null){
             return Boolean.parseBoolean(p);
@@ -235,17 +287,41 @@ public class McastService
         return false;
     }
 
-    @Override
+    /**
+     * @deprecated use getPort()
+     * @return int
+     */
+    @Deprecated
+    public int getMcastPort() {
+        return getPort();
+    }
     public int getPort() {
         String p = properties.getProperty("mcastPort");
         return Integer.parseInt(p);
+    }
+
+    /**
+     * @deprecated use setFrequency
+     * @param time long
+     */
+    @Deprecated
+    public void setMcastFrequency(long time) {
+        setFrequency(time);
     }
 
     public void setFrequency(long time) {
         properties.setProperty("mcastFrequency", String.valueOf(time));
     }
 
-    @Override
+    /**
+     * @deprecated use getFrequency
+     * @return long
+     */
+    @Deprecated
+    public long getMcastFrequency() {
+        return getFrequency();
+    }
+
     public long getFrequency() {
         String p = properties.getProperty("mcastFrequency");
         return Long.parseLong(p);
@@ -258,7 +334,15 @@ public class McastService
         properties.setProperty("memberDropTime", String.valueOf(time));
     }
 
-    @Override
+    /**
+     * @deprecated use getDropTime
+     * @return long
+     */
+    @Deprecated
+    public long getMcastDropTime() {
+        return getDropTime();
+    }
+
     public long getDropTime() {
         String p = properties.getProperty("memberDropTime");
         return Long.parseLong(p);
@@ -270,11 +354,21 @@ public class McastService
      * @param name The property to check for
      */
     protected void hasProperty(Properties properties, String name){
-        if ( properties.getProperty(name)==null) throw new IllegalArgumentException(sm.getString("mcastService.missing.property", name));
+        if ( properties.getProperty(name)==null) throw new IllegalArgumentException("McastService:Required property \""+name+"\" is missing.");
+    }
+
+    /**
+     * Start broadcasting and listening to membership pings
+     * @throws Exception if a IO error occurs
+     */
+    @Override
+    public void start() throws Exception {
+        start(MembershipService.MBR_RX);
+        start(MembershipService.MBR_TX);
     }
 
     @Override
-    public void start(int level) throws java.lang.Exception {
+    public void start(int level) throws Exception {
         hasProperty(properties,"mcastPort");
         hasProperty(properties,"mcastAddress");
         hasProperty(properties,"memberDropTime");
@@ -318,16 +412,14 @@ public class McastService
             try {
                 ttl = Integer.parseInt(properties.getProperty("mcastTTL"));
             } catch ( Exception x ) {
-                log.error(sm.getString("McastService.parseTTL",
-                        properties.getProperty("mcastTTL")), x);
+                log.error("Unable to parse mcastTTL="+properties.getProperty("mcastTTL"),x);
             }
         }
         if ( properties.getProperty("mcastSoTimeout") != null ) {
             try {
                 soTimeout = Integer.parseInt(properties.getProperty("mcastSoTimeout"));
             } catch ( Exception x ) {
-                log.error(sm.getString("McastService.parseSoTimeout",
-                        properties.getProperty("mcastSoTimeout")), x);
+                log.error("Unable to parse mcastSoTimeout="+properties.getProperty("mcastSoTimeout"),x);
             }
         }
 
@@ -341,7 +433,6 @@ public class McastService
                                     this,
                                     this,
                                     Boolean.parseBoolean(properties.getProperty("localLoopbackDisabled")));
-        impl.setMembershipService(this);
         String value = properties.getProperty("recoveryEnabled");
         boolean recEnabled = Boolean.parseBoolean(value);
         impl.setRecoveryEnabled(recEnabled);
@@ -352,11 +443,7 @@ public class McastService
         impl.setChannel(channel);
 
         impl.start(level);
-        // register jmx
-        JmxRegistry jmxRegistry = JmxRegistry.getRegistry(channel);
-        if (jmxRegistry != null) {
-            this.oname = jmxRegistry.registerJmx(",component=Membership", this);
-        }
+
 
     }
 
@@ -368,18 +455,78 @@ public class McastService
     public void stop(int svc) {
         try  {
             if ( impl != null && impl.stop(svc) ) {
-                if (oname != null) {
-                    JmxRegistry.getRegistry(channel).unregisterJmx(oname);
-                    oname = null;
-                }
                 impl.setChannel(null);
                 impl = null;
                 channel = null;
             }
         } catch ( Exception x)  {
-            log.error(sm.getString(
-                    "McastService.stopFail", Integer.valueOf(svc)), x);
+            log.error("Unable to stop the mcast service, level:"+svc+".",x);
         }
+    }
+
+
+    /**
+     * Return all the members by name
+     */
+    @Override
+    public String[] getMembersByName() {
+        Member[] currentMembers = getMembers();
+        String [] membernames ;
+        if(currentMembers != null) {
+            membernames = new String[currentMembers.length];
+            for (int i = 0; i < currentMembers.length; i++) {
+                membernames[i] = currentMembers[i].toString() ;
+            }
+        } else
+            membernames = new String[0] ;
+        return membernames ;
+    }
+
+    /**
+     * Return the member by name
+     */
+    @Override
+    public Member findMemberByName(String name) {
+        Member[] currentMembers = getMembers();
+        for (int i = 0; i < currentMembers.length; i++) {
+            if (name.equals(currentMembers[i].toString()))
+                return currentMembers[i];
+        }
+        return null;
+    }
+
+    /**
+     * has members?
+     */
+    @Override
+    public boolean hasMembers() {
+       if ( impl == null || impl.membership == null ) return false;
+       return impl.membership.hasMembers();
+    }
+
+    @Override
+    public Member getMember(Member mbr) {
+        if ( impl == null || impl.membership == null ) return null;
+        return impl.membership.getMember(mbr);
+    }
+
+    /**
+     * Return all the members
+     */
+    protected static final Member[]EMPTY_MEMBERS = new Member[0];
+    @Override
+    public Member[] getMembers() {
+        if ( impl == null || impl.membership == null ) return EMPTY_MEMBERS;
+        return impl.membership.getMembers();
+    }
+    /**
+     * Add a membership listener, this version only supports one listener per service,
+     * so calling this method twice will result in only the second listener being active.
+     * @param listener The listener
+     */
+    @Override
+    public void setMembershipListener(MembershipListener listener) {
+        this.listener = listener;
     }
 
     public void setMessageListener(MessageListener listener) {
@@ -388,6 +535,28 @@ public class McastService
 
     public void removeMessageListener() {
         this.msglistener = null;
+    }
+    /**
+     * Remove the membership listener
+     */
+    @Override
+    public void removeMembershipListener(){
+        listener = null;
+    }
+
+    @Override
+    public void memberAdded(Member member) {
+        if ( listener!=null ) listener.memberAdded(member);
+    }
+
+    /**
+     * Callback from the impl when a new member has been received
+     * @param member The member
+     */
+    @Override
+    public void memberDisappeared(Member member)
+    {
+        if ( listener!=null ) listener.memberDisappeared(member);
     }
 
     @Override
@@ -402,13 +571,11 @@ public class McastService
     @Override
     public void broadcast(ChannelMessage message) throws ChannelException {
         if (impl==null || (impl.startLevel & Channel.MBR_TX_SEQ)!=Channel.MBR_TX_SEQ )
-            throw new ChannelException(sm.getString("mcastService.noStart"));
+            throw new ChannelException("Multicast send is not started or enabled.");
 
         byte[] data = XByteBuffer.createDataPackage((ChannelData)message);
         if (data.length>McastServiceImpl.MAX_PACKET_SIZE) {
-            throw new ChannelException(sm.getString("mcastService.exceed.maxPacketSize",
-                    Integer.toString(data.length) ,
-                    Integer.toString(McastServiceImpl.MAX_PACKET_SIZE)));
+            throw new ChannelException("Packet length["+data.length+"] exceeds max packet size of "+McastServiceImpl.MAX_PACKET_SIZE+" bytes.");
         }
         DatagramPacket packet = new DatagramPacket(data,0,data.length);
         try {
@@ -418,9 +585,26 @@ public class McastService
         }
     }
 
-    @Override
+    /**
+     * @deprecated use getSoTimeout
+     * @return int
+     */
+    @Deprecated
+    public int getMcastSoTimeout() {
+        return getSoTimeout();
+    }
+
     public int getSoTimeout() {
         return mcastSoTimeout;
+    }
+
+    /**
+     * @deprecated use setSoTimeout
+     * @param mcastSoTimeout int
+     */
+    @Deprecated
+    public void setMcastSoTimeout(int mcastSoTimeout) {
+        setSoTimeout(mcastSoTimeout);
     }
 
     public void setSoTimeout(int mcastSoTimeout) {
@@ -428,7 +612,15 @@ public class McastService
         properties.setProperty("mcastSoTimeout", String.valueOf(mcastSoTimeout));
     }
 
-    @Override
+    /**
+     * @deprecated use getTtl
+     * @return int
+     */
+    @Deprecated
+    public int getMcastTTL() {
+        return getTtl();
+    }
+
     public int getTtl() {
         return mcastTTL;
     }
@@ -437,9 +629,17 @@ public class McastService
         return payload;
     }
 
-    @Override
     public byte[] getDomain() {
         return domain;
+    }
+
+    /**
+     * @deprecated use setTtl
+     * @param mcastTTL int
+     */
+    @Deprecated
+    public void setMcastTTL(int mcastTTL) {
+        setTtl(mcastTTL);
     }
 
     public void setTtl(int mcastTTL) {
@@ -452,10 +652,11 @@ public class McastService
         this.payload = payload;
         if ( localMember != null ) {
             localMember.setPayload(payload);
+            localMember.getData(true,true);
             try {
                 if (impl != null) impl.send(false);
             }catch ( Exception x ) {
-                log.error(sm.getString("McastService.payload"), x);
+                log.error("Unable to send payload update.",x);
             }
         }
     }
@@ -465,10 +666,11 @@ public class McastService
         this.domain = domain;
         if ( localMember != null ) {
             localMember.setDomain(domain);
+            localMember.getData(true,true);
             try {
                 if (impl != null) impl.send(false);
             }catch ( Exception x ) {
-                log.error(sm.getString("McastService.domain"), x);
+                log.error("Unable to send domain update.",x);
             }
         }
     }
@@ -479,9 +681,12 @@ public class McastService
         else setDomain(Arrays.convert(domain));
     }
 
-    @Override
-    public MembershipProvider getMembershipProvider() {
-        return impl;
+    public Channel getChannel() {
+        return channel;
+    }
+
+    public void setChannel(Channel channel) {
+        this.channel = channel;
     }
 
     protected void setDefaults(Properties properties) {
@@ -510,8 +715,10 @@ public class McastService
      * @throws Exception If an error occurs
      */
     public static void main(String args[]) throws Exception {
+        if(log.isInfoEnabled())
+            log.info("Usage McastService hostname tcpport");
         McastService service = new McastService();
-        java.util.Properties p = new java.util.Properties();
+        Properties p = new Properties();
         p.setProperty("mcastPort","5555");
         p.setProperty("mcastAddress","224.10.10.10");
         p.setProperty("mcastClusterDomain","catalina");

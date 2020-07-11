@@ -19,6 +19,7 @@ package org.apache.catalina.connector;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,7 +38,6 @@ import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.unittest.TesterContext;
 import org.apache.tomcat.unittest.TesterRequest;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.util.collections.CaseInsensitiveKeyMap;
 
 /**
  * Test case for {@link Request}.
@@ -53,11 +53,11 @@ public class TestResponse extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new Bug49598Servlet());
-        ctx.addServletMappingDecoded("/", "servlet");
+        ctx.addServletMapping("/", "servlet");
 
         tomcat.start();
 
-        Map<String,List<String>> headers = new CaseInsensitiveKeyMap<>();
+        Map<String,List<String>> headers = new HashMap<String,List<String>>();
         getUrl("http://localhost:" + getPort() + "/", new ByteChunk(), headers);
 
         // Check for headers without a name
@@ -97,7 +97,7 @@ public class TestResponse extends TomcatBaseTest {
     }
 
 
-    /*
+    /**
      * Tests an issue noticed during the investigation of BZ 52811.
      */
     @Test
@@ -109,7 +109,7 @@ public class TestResponse extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new CharsetServlet());
-        ctx.addServletMappingDecoded("/", "servlet");
+        ctx.addServletMapping("/", "servlet");
 
         tomcat.start();
 
@@ -148,7 +148,7 @@ public class TestResponse extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new Bug52811Servlet());
-        ctx.addServletMappingDecoded("/", "servlet");
+        ctx.addServletMapping("/", "servlet");
 
         tomcat.start();
 
@@ -571,10 +571,7 @@ public class TestResponse extends TomcatBaseTest {
     @Test
     public void testEncodeRedirectURL16() throws Exception {
         doTestEncodeURL("./..#/../..", "./..;jsessionid=1234#/../..");
-    }
-
-
-    @Test
+    }    @Test
     public void testSendRedirect01() throws Exception {
         doTestSendRedirect("../foo", "../foo");
     }
@@ -598,12 +595,13 @@ public class TestResponse extends TomcatBaseTest {
         Connector connector = new Connector();
         org.apache.coyote.Response cResponse = new org.apache.coyote.Response();
         Response response = new Response();
+        response.setConnector(connector);
         response.setCoyoteResponse(cResponse);
-        Request request = new Request(connector);
+        Request request = new Request();
         org.apache.coyote.Request cRequest = new org.apache.coyote.Request();
         request.setCoyoteRequest(cRequest);
         Context context = new TesterContext();
-        request.getMappingData().context = context;
+        request.setContext(context);
         response.setRequest(request);
         // Do test
         response.sendRedirect(input);

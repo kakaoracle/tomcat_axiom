@@ -17,7 +17,6 @@
 
 package org.apache.catalina.core;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -28,9 +27,9 @@ import javax.servlet.DispatcherType;
 import javax.servlet.FilterRegistration;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.deploy.FilterDef;
+import org.apache.catalina.deploy.FilterMap;
 import org.apache.catalina.util.ParameterMap;
-import org.apache.tomcat.util.descriptor.web.FilterDef;
-import org.apache.tomcat.util.descriptor.web.FilterMap;
 import org.apache.tomcat.util.res.StringManager;
 
 public class ApplicationFilterRegistration
@@ -42,8 +41,8 @@ public class ApplicationFilterRegistration
     private static final StringManager sm =
       StringManager.getManager(Constants.Package);
 
-    private final FilterDef filterDef;
-    private final Context context;
+    private FilterDef filterDef;
+    private Context context;
 
     public ApplicationFilterRegistration(FilterDef filterDef,
             Context context) {
@@ -97,7 +96,6 @@ public class ApplicationFilterRegistration
         }
 
         if (urlPatterns != null) {
-            // % decoded (if necessary) using UTF-8
             for (String urlPattern : urlPatterns) {
                 filterMap.addURLPattern(urlPattern);
             }
@@ -114,13 +112,15 @@ public class ApplicationFilterRegistration
 
     @Override
     public Collection<String> getServletNameMappings() {
-        Collection<String> result = new HashSet<>();
+        Collection<String> result = new HashSet<String>();
 
         FilterMap[] filterMaps = context.findFilterMaps();
 
         for (FilterMap filterMap : filterMaps) {
             if (filterMap.getFilterName().equals(filterDef.getFilterName())) {
-                result.addAll(Arrays.asList(filterMap.getServletNames()));
+                for (String servletName : filterMap.getServletNames()) {
+                    result.add(servletName);
+                }
             }
         }
         return result;
@@ -128,13 +128,15 @@ public class ApplicationFilterRegistration
 
     @Override
     public Collection<String> getUrlPatternMappings() {
-        Collection<String> result = new HashSet<>();
+        Collection<String> result = new HashSet<String>();
 
         FilterMap[] filterMaps = context.findFilterMaps();
 
         for (FilterMap filterMap : filterMaps) {
             if (filterMap.getFilterName().equals(filterDef.getFilterName())) {
-                result.addAll(Arrays.asList(filterMap.getURLPatterns()));
+                for (String urlPattern : filterMap.getURLPatterns()) {
+                    result.add(urlPattern);
+                }
             }
         }
         return result;
@@ -152,7 +154,7 @@ public class ApplicationFilterRegistration
 
     @Override
     public Map<String, String> getInitParameters() {
-        ParameterMap<String,String> result = new ParameterMap<>();
+        ParameterMap<String,String> result = new ParameterMap<String,String>();
         result.putAll(filterDef.getParameterMap());
         result.setLocked(true);
         return result;
@@ -182,7 +184,7 @@ public class ApplicationFilterRegistration
     @Override
     public Set<String> setInitParameters(Map<String, String> initParameters) {
 
-        Set<String> conflicts = new HashSet<>();
+        Set<String> conflicts = new HashSet<String>();
 
         for (Map.Entry<String, String> entry : initParameters.entrySet()) {
             if (entry.getKey() == null || entry.getValue() == null) {

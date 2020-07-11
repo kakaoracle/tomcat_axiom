@@ -16,20 +16,24 @@
 --%>
 <%@ page import="java.io.IOException" contentType="text/plain"%>
 <%
-    boolean flush = Boolean.parseBoolean(request.getParameter("flush"));
-    try {
-        if (flush) {
-            out.println("Flush");
-            pageContext.include("/jsp/pageContext2.jsp", true);
-        } else {
-            pageContext.include("/jsp/pageContext2.jsp");
+    boolean flush = Boolean.valueOf(request.getParameter("flush"));
+    if (pageContext != null) {
+        try {
+            if (flush) {
+                out.println("Flush");
+                pageContext.include("/jsp/pageContext2.jsp", true);
+            } else {
+                pageContext.include("/jsp/pageContext2.jsp");
+            }
+        } catch (IOException e) {
+            out.println("OK");
+            return;
+        } catch (Throwable t) {
+            out.println("FAILED. Expected IOException, received: " + t.getClass().getName());
+            return;
         }
-    } catch (IOException e) {
-        out.println("OK");
-        return;
-    } catch (Throwable t) {
-        out.println("FAILED. Expected IOException, received: " + t.getClass().getName());
-        return;
+        out.println("FAILED. Expected IOException.");
+    } else {
+        out.println("FAILED. Expected IOException.");
     }
-    out.println("FAILED. Expected IOException.");
 %>

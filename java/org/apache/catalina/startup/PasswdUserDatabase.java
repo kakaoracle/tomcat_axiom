@@ -18,6 +18,7 @@ package org.apache.catalina.startup;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.io.IOException;
 import java.util.Enumeration;
 import java.util.Hashtable;
 
@@ -45,7 +46,7 @@ public final class PasswdUserDatabase implements UserDatabase {
     /**
      * The set of home directories for all defined users, keyed by username.
      */
-    private final Hashtable<String,String> homes = new Hashtable<>();
+    private Hashtable<String,String> homes = new Hashtable<String,String>();
 
 
     /**
@@ -99,7 +100,9 @@ public final class PasswdUserDatabase implements UserDatabase {
      * Initialize our set of users and home directories.
      */
     private void init() {
-        try (BufferedReader reader = new BufferedReader(new FileReader(PASSWORD_FILE))) {
+        BufferedReader reader = null;
+        try {
+            reader = new BufferedReader(new FileReader(PASSWORD_FILE));
             String line = reader.readLine();
             while (line != null) {
                 String tokens[] = line.split(":");
@@ -112,6 +115,14 @@ public final class PasswdUserDatabase implements UserDatabase {
             }
         } catch (Exception e) {
             log.warn(sm.getString("passwdUserDatabase.readFail"), e);
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
         }
     }
 }

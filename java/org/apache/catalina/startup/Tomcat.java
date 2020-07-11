@@ -17,11 +17,11 @@
 package org.apache.catalina.startup;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -30,17 +30,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Stack;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.logging.Level;
-import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
 import javax.servlet.Servlet;
 import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
 
 import org.apache.catalina.Container;
 import org.apache.catalina.Context;
@@ -65,18 +62,13 @@ import org.apache.catalina.core.StandardHost;
 import org.apache.catalina.core.StandardServer;
 import org.apache.catalina.core.StandardService;
 import org.apache.catalina.core.StandardWrapper;
+import org.apache.catalina.deploy.LoginConfig;
 import org.apache.catalina.realm.GenericPrincipal;
 import org.apache.catalina.realm.RealmBase;
-import org.apache.catalina.security.SecurityClassLoad;
 import org.apache.catalina.util.ContextName;
 import org.apache.catalina.util.IOTools;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.UriUtil;
-import org.apache.tomcat.util.compat.JreCompat;
-import org.apache.tomcat.util.descriptor.web.LoginConfig;
-import org.apache.tomcat.util.file.ConfigFileLoader;
-import org.apache.tomcat.util.file.ConfigurationSource;
-import org.apache.tomcat.util.modeler.Registry;
 import org.apache.tomcat.util.res.StringManager;
 
 // TODO: lazy init for the temp dir - only when a JSP is compiled or
@@ -118,17 +110,12 @@ import org.apache.tomcat.util.res.StringManager;
  * this class.
  *
  * <p>
- * This class provides a set of convenience methods for configuring web
- * application contexts; all overloads of the method <code>addWebapp()</code>.
- * These methods are equivalent to adding a web application to the Host's
- * appBase (normally the webapps directory). These methods create a Context,
- * configure it with the equivalent of the defaults provided by
- * <code>conf/web.xml</code> (see {@link #initWebappDefaults(String)} for
- * details) and add the Context to a Host. These methods do not use a global
- * default web.xml; rather, they add a {@link LifecycleListener} to configure
- * the defaults. Any WEB-INF/web.xml and META-INF/context.xml packaged with the
- * application will be processed normally. Normal web fragment and
- * {@link javax.servlet.ServletContainerInitializer} processing will be applied.
+ * This class provides a set of convenience methods for configuring webapp
+ * contexts, all overloads of the method <code>addWebapp</code>. These methods
+ * create a webapp context, configure it, and then add it to a {@link Host}.
+ * They do not use a global default web.xml; rather, they add a lifecycle
+ * listener that adds the standard DefaultServlet, JSP processing, and welcome
+ * files.
  *
  * <p>
  * In complex cases, you may prefer to use the ordinary Tomcat API to create
@@ -137,6 +124,9 @@ import org.apache.tomcat.util.res.StringManager;
  * behavior of the <code>addWebapp</code> methods, you may want to call two
  * methods of this class: {@link #noDefaultWebXmlPath()} and
  * {@link #getDefaultWebXmlListener()}.
+ *
+ * <p>
+ * {@link #getDefaultRealm()} returns the simple security realm.
  *
  * <p>
  * {@link #getDefaultWebXmlListener()} returns a {@link LifecycleListener} that
@@ -165,53 +155,65 @@ public class Tomcat {
     // after Loggers are configured but before they are used. The purpose of
     // this Map is to retain strong references to explicitly configured loggers
     // so that configuration is not lost.
-    private final Map<String, Logger> pinnedLoggers = new HashMap<>();
+    private final Map<String, Logger> pinnedLoggers = new HashMap<String, Logger>();
 
+    // Single engine, service, server, connector - few cases need more,
+    // they can use server.xml
     protected Server server;
+    protected Service service;
+    protected Engine engine;
+    protected Connector connector; // for more - customize the classes
+
+    // To make it a bit easier to config for the common case
+    // ( one host, one context ).
+    protected Host host;
+
+    // TODO: it's easy to add support for more hosts - but is it
+    // really needed ?
+
+    // TODO: allow use of in-memory connector
 
     protected int port = 8080;
     protected String hostname = "localhost";
     protected String basedir;
 
-    private final Map<String, String> userPass = new HashMap<>();
-    private final Map<String, List<String>> userRoles = new HashMap<>();
-    private final Map<String, Principal> userPrincipals = new HashMap<>();
-
-    private boolean addDefaultWebXmlToWebapp = true;
+    // Default in-memory realm, will be set by default on the Engine. Can be
+    // replaced at engine level or over-ridden at Host or Context level
+    @Deprecated // Will be removed in Tomcat 8.0.x.
+    protected Realm defaultRealm;
+    private final Map<String, String> userPass = new HashMap<String, String>();
+    private final Map<String, List<String>> userRoles =
+        new HashMap<String, List<String>>();
+    private final Map<String, Principal> userPrincipals =
+        new HashMap<String, Principal>();
 
     public Tomcat() {
         ExceptionUtils.preload();
     }
 
     /**
-     * Tomcat requires that the base directory is set because the defaults for
-     * a number of other locations, such as the work directory, are derived from
-     * the base directory. This should be the first method called.
-     * <p>
-     * If this method is not called then Tomcat will attempt to use these
-     * locations in the following order:
-     * <ol>
-     *  <li>if set, the catalina.base system property</li>
-     *  <li>if set, the catalina.home system property</li>
-     *  <li>The user.dir system property (the directory where Java was run from)
-     *      where a directory named tomcat.$PORT will be created. $PORT is the
-     *      value configured via {@link #setPort(int)} which defaults to 8080 if
-     *      not set</li>
-     * </ol>
-     * The user should ensure that the file permissions for the base directory
-     * are appropriate.
-     * <p>
-     * TODO: disable work dir if not needed ( no jsp, etc ).
+     * Tomcat needs a directory for temp files. This should be the
+     * first method called.
      *
-     * @param basedir The Tomcat base folder on which all others will be derived
+     * <p>
+     * By default, if this method is not called, we use:
+     * <ul>
+     *  <li>system properties - catalina.base, catalina.home</li>
+     *  <li>$PWD/tomcat.$PORT</li>
+     * </ul>
+     * ( /tmp doesn't seem a good choice for security ).
+     *
+     * <p>
+     * TODO: better default ? Maybe current dir ?
+     * TODO: disable work dir if not needed ( no jsp, etc ).
      */
     public void setBaseDir(String basedir) {
         this.basedir = basedir;
     }
 
     /**
-     * Set the port for the default connector. The default connector will
-     * only be created if getConnector is called.
+     * Set the port for the default connector. Must
+     * be called before start().
      * @param port The port number
      */
     public void setPort(int port) {
@@ -227,22 +229,17 @@ public class Tomcat {
         hostname = s;
     }
 
-
     /**
-     * This is equivalent to adding a web application to a Host's appBase
-     * (usually Tomcat's webapps directory). By default, the equivalent of the
-     * default web.xml will be applied to the web application (see
-     * {@link #initWebappDefaults(String)}). This may be prevented by calling
-     * {@link #setAddDefaultWebXmlToWebapp(boolean)} with {@code false}. Any
-     * <code>WEB-INF/web.xml</code> and <code>META-INF/context.xml</code>
-     * packaged with the application will always be processed and normal web
-     * fragment and {@link javax.servlet.ServletContainerInitializer} processing
-     * will always be applied.
+     * This is equivalent to adding a web application to Tomcat's webapps
+     * directory. The equivalent of the default web.xml will be applied  to the
+     * web application and any WEB-INF/web.xml and META-INF/context.xml packaged
+     * with the application will be processed normally. Normal web fragment and
+     * {@link javax.servlet.ServletContainerInitializer} processing will be
+     * applied.
      *
      * @param contextPath The context mapping to use, "" for root context.
-     * @param docBase     Base directory for the context, for static files. Must
-     *                        exist, relative to the server home
-     *
+     * @param docBase Base directory for the context, for static files.
+     *  Must exist, relative to the server home
      * @return the deployed context
      */
     public Context addWebapp(String contextPath, String docBase) {
@@ -277,8 +274,8 @@ public class Tomcat {
         }
 
         // Make sure appBase does not contain a conflicting web application
-        File targetWar = new File(h.getAppBaseFile(), cn.getBaseName() + ".war");
-        File targetDir = new File(h.getAppBaseFile(), cn.getBaseName());
+        File targetWar = new File(h.getAppBase(), cn.getBaseName() + ".war");
+        File targetDir = new File(h.getAppBase(), cn.getBaseName());
 
         if (targetWar.exists()) {
             throw new IllegalArgumentException(sm.getString("tomcat.addWebapp.conflictFile",
@@ -292,9 +289,27 @@ public class Tomcat {
         // Should be good to copy the WAR now
         URLConnection uConn = source.openConnection();
 
-        try (InputStream is = uConn.getInputStream();
-                OutputStream os = new FileOutputStream(targetWar)) {
+        InputStream is = null;
+        OutputStream os = null;
+        try {
+            is = uConn.getInputStream();
+            os = new FileOutputStream(targetWar);
             IOTools.flow(is, os);
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
+            if (os != null) {
+                try {
+                    os.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
         }
 
         return addWebapp(contextPath, targetWar.getAbsolutePath());
@@ -302,15 +317,7 @@ public class Tomcat {
 
 
     /**
-     * Add a context - programmatic mode, no default web.xml used. This means
-     * that there is no JSP support (no JSP servlet), no default servlet and
-     * no web socket support unless explicitly enabled via the programmatic
-     * interface. There is also no
-     * {@link javax.servlet.ServletContainerInitializer} processing and no
-     * annotation processing. If a
-     * {@link javax.servlet.ServletContainerInitializer} is added
-     * programmatically, there will still be no scanning for
-     * {@link javax.servlet.annotation.HandlesTypes} matches.
+     * Add a context - programmatic mode, no default web.xml used.
      *
      * <p>
      * API calls equivalent with web.xml:
@@ -427,33 +434,13 @@ public class Tomcat {
 
 
     /**
-     * Initialize the server given the specified configuration source.
-     * The server will be loaded according to the Tomcat configuration
-     * files contained in the source (server.xml, web.xml, context.xml,
-     * SSL certificates, etc).
-     * If no configuration source is specified, it will use the default
-     * locations for these files.
-     * @param source The configuration source
-     */
-    public void init(ConfigurationSource source) {
-        ConfigFileLoader.setSource(source);
-        addDefaultWebXmlToWebapp = false;
-        Catalina catalina = new Catalina();
-        // Load the Catalina instance with the regular configuration files
-        // from specified source
-        catalina.load();
-        // Retrieve and set the server
-        server = catalina.getServer();
-    }
-
-
-    /**
      * Initialize the server.
      *
      * @throws LifecycleException Init error
      */
     public void init() throws LifecycleException {
         getServer();
+        getConnector();
         server.init();
     }
 
@@ -465,6 +452,7 @@ public class Tomcat {
      */
     public void start() throws LifecycleException {
         getServer();
+        getConnector();
         server.start();
     }
 
@@ -510,56 +498,43 @@ public class Tomcat {
     public void addRole(String user, String role) {
         List<String> roles = userRoles.get(user);
         if (roles == null) {
-            roles = new ArrayList<>();
+            roles = new ArrayList<String>();
             userRoles.put(user, roles);
         }
         roles.add(role);
     }
 
     // ------- Extra customization -------
-    // You can tune individual Tomcat objects, using internal APIs
+    // You can tune individual tomcat objects, using internal APIs
 
     /**
-     * Get the default HTTP connector that is used by the embedded
-     * Tomcat. It is first configured connector in the service.
-     * If there's no connector defined, it will create and add a default
-     * connector using the port and address specified in this Tomcat
-     * instance, and return it for further customization.
+     * Get the default http connector. You can set more
+     * parameters - the port is already initialized.
      *
-     * @return The connector object
+     * <p>
+     * Alternatively, you can construct a Connector and set any params,
+     * then call addConnector(Connector)
+     *
+     * @return A connector object that can be customized
      */
     public Connector getConnector() {
-        Service service = getService();
-        if (service.findConnectors().length > 0) {
-            return service.findConnectors()[0];
+        getServer();
+        if (connector != null) {
+            return connector;
         }
+
         // The same as in standard Tomcat configuration.
         // This creates an APR HTTP connector if AprLifecycleListener has been
         // configured (created) and Tomcat Native library is available.
-        // Otherwise it creates a NIO HTTP connector.
-        Connector connector = new Connector("HTTP/1.1");
+        // Otherwise it creates a BIO HTTP connector (Http11Protocol).
+        connector = new Connector("HTTP/1.1");
         connector.setPort(port);
-        service.addConnector(connector);
+        service.addConnector( connector );
         return connector;
     }
 
-    /**
-     * Set the specified connector in the service, if it is not already
-     * present.
-     * @param connector The connector instance to add
-     */
     public void setConnector(Connector connector) {
-        Service service = getService();
-        boolean found = false;
-        for (Connector serviceConnector : service.findConnectors()) {
-            if (connector == serviceConnector) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            service.addConnector(connector);
-        }
+        this.connector = connector;
     }
 
     /**
@@ -568,7 +543,8 @@ public class Tomcat {
      * @return The service
      */
     public Service getService() {
-        return getServer().findServices()[0];
+        getServer();
+        return service;
     }
 
     /**
@@ -579,45 +555,49 @@ public class Tomcat {
      * @param host The current host
      */
     public void setHost(Host host) {
-        Engine engine = getEngine();
-        boolean found = false;
-        for (Container engineHost : engine.findChildren()) {
-            if (engineHost == host) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            engine.addChild(host);
-        }
+        this.host = host;
     }
 
     public Host getHost() {
-        Engine engine = getEngine();
-        if (engine.findChildren().length > 0) {
-            return (Host) engine.findChildren()[0];
-        }
+        if (host == null) {
+            host = new StandardHost();
+            host.setName(hostname);
 
-        Host host = new StandardHost();
-        host.setName(hostname);
-        getEngine().addChild(host);
+            getEngine().addChild( host );
+        }
         return host;
     }
+
+    /**
+     * Set a custom realm for auth. If not called, a simple
+     * default will be used, using an internal map.
+     *
+     * Must be called before adding a context.
+     *
+     * @deprecated Will be removed in Tomcat 8.0.x.
+     */
+    @Deprecated
+    public void setDefaultRealm(Realm realm) {
+        defaultRealm = realm;
+    }
+
 
     /**
      * Access to the engine, for further customization.
      * @return The engine
      */
     public Engine getEngine() {
-        Service service = getServer().findServices()[0];
-        if (service.getContainer() != null) {
-            return service.getContainer();
+        if(engine == null ) {
+            getServer();
+            engine = new StandardEngine();
+            engine.setName( "Tomcat" );
+            engine.setDefaultHost(hostname);
+            if (defaultRealm == null) {
+                initSimpleAuth();
+            }
+            engine.setRealm(defaultRealm);
+            service.setContainer(engine);
         }
-        Engine engine = new StandardEngine();
-        engine.setName( "Tomcat" );
-        engine.setDefaultHost(hostname);
-        engine.setRealm(createDefaultRealm());
-        service.setContainer(engine);
         return engine;
     }
 
@@ -632,20 +612,16 @@ public class Tomcat {
             return server;
         }
 
+        initBaseDir();
+
         System.setProperty("catalina.useNaming", "false");
 
         server = new StandardServer();
-
-        initBaseDir();
-
-        // Set configuration source
-        ConfigFileLoader.setSource(new CatalinaBaseConfigurationSource(new File(basedir), null));
-
         server.setPort( -1 );
 
-        Service service = new StandardService();
+        service = new StandardService();
         service.setName("Tomcat");
-        server.addService(service);
+        server.addService( service );
         return server;
     }
 
@@ -687,31 +663,20 @@ public class Tomcat {
         return ctx;
     }
 
-
     /**
-     * This is equivalent to adding a web application to a Host's appBase
-     * (usually Tomcat's webapps directory). By default, the equivalent of the
-     * default web.xml will be applied to the web application (see
-     * {@link #initWebappDefaults(String)}). This may be prevented by calling
-     * {@link #setAddDefaultWebXmlToWebapp(boolean)} with {@code false}. Any
-     * <code>WEB-INF/web.xml</code> and <code>META-INF/context.xml</code>
-     * packaged with the application will always be processed and normal web
-     * fragment and {@link javax.servlet.ServletContainerInitializer} processing
-     * will always be applied.
-     *
-     * @param host        The host in which the context will be deployed
+     * @param host The host in which the context will be deployed
      * @param contextPath The context mapping to use, "" for root context.
-     * @param docBase     Base directory for the context, for static files. Must
-     *                        exist, relative to the server home
-     *
+     * @param docBase Base directory for the context, for static files.
+     *  Must exist, relative to the server home
      * @return the deployed context
+     * @see #addWebapp(String, String)
      */
     public Context addWebapp(Host host, String contextPath, String docBase) {
         LifecycleListener listener = null;
         try {
             Class<?> clazz = Class.forName(getHost().getConfigClass());
-            listener = (LifecycleListener) clazz.getConstructor().newInstance();
-        } catch (ReflectiveOperationException e) {
+            listener = (LifecycleListener) clazz.newInstance();
+        } catch (Exception e) {
             // Wrap in IAE since we can't easily change the method signature to
             // to throw the specific checked exceptions
             throw new IllegalArgumentException(e);
@@ -720,27 +685,31 @@ public class Tomcat {
         return addWebapp(host, contextPath, docBase, listener);
     }
 
+    /**
+     * @param host The host in which the context will be deployed
+     * @param contextPath The context mapping to use, "" for root context.
+     * @param docBase Base directory for the context, for static files.
+     *  Must exist, relative to the server home
+     * @param name Ignored. The contextPath will be used
+     * @return the deployed context
+     * @see #addWebapp(String, String)
+     *
+     *
+     * @deprecated Use {@link #addWebapp(Host, String, String)}
+     */
+    @Deprecated
+    public Context addWebapp(Host host, String contextPath, String name, String docBase) {
+        return addWebapp(host,  contextPath, docBase);
+    }
 
     /**
-     * This is equivalent to adding a web application to a Host's appBase
-     * (usually Tomcat's webapps directory). By default, the equivalent of the
-     * default web.xml will be applied to the web application (see
-     * {@link #initWebappDefaults(String)}). This may be prevented by calling
-     * {@link #setAddDefaultWebXmlToWebapp(boolean)} with {@code false}. Any
-     * <code>WEB-INF/web.xml</code> and <code>META-INF/context.xml</code>
-     * packaged with the application will always be processed and normal web
-     * fragment and {@link javax.servlet.ServletContainerInitializer} processing
-     * will always be applied.
-     *
-     * @param host        The host in which the context will be deployed
+     * @param host The host in which the context will be deployed
      * @param contextPath The context mapping to use, "" for root context.
-     * @param docBase     Base directory for the context, for static files. Must
-     *                        exist, relative to the server home
-     * @param config      Custom context configuration helper. Any configuration
-     *                        will be in addition to equivalent of the default
-     *                        web.xml configuration described above.
-     *
+     * @param docBase Base directory for the context, for static files.
+     *  Must exist, relative to the server home
+     * @param config Custom context configurator helper
      * @return the deployed context
+     * @see #addWebapp(String, String)
      */
     public Context addWebapp(Host host, String contextPath, String docBase,
             LifecycleListener config) {
@@ -750,16 +719,12 @@ public class Tomcat {
         Context ctx = createContext(host, contextPath);
         ctx.setPath(contextPath);
         ctx.setDocBase(docBase);
-
-        if (addDefaultWebXmlToWebapp) {
-            ctx.addLifecycleListener(getDefaultWebXmlListener());
-        }
-
+        ctx.addLifecycleListener(getDefaultWebXmlListener());
         ctx.setConfigFile(getWebappConfigFile(docBase, contextPath));
 
         ctx.addLifecycleListener(config);
 
-        if (addDefaultWebXmlToWebapp && (config instanceof ContextConfig)) {
+        if (config instanceof ContextConfig) {
             // prevent it from looking ( if it finds one - it'll have dup error )
             ((ContextConfig) config).setDefaultWebXml(noDefaultWebXmlPath());
         }
@@ -794,6 +759,21 @@ public class Tomcat {
         return Constants.NoDefaultWebXml;
     }
 
+    /**
+     * For complex configurations, this accessor allows callers of this class
+     * to obtain the simple realm created by default.
+     * @return the simple in-memory realm created by default.
+     * @deprecated Will be removed in Tomcat 8.0.x
+     */
+    @Deprecated
+    public Realm getDefaultRealm() {
+        if (defaultRealm == null) {
+            initSimpleAuth();
+        }
+        return defaultRealm;
+    }
+
+
     // ---------- Helper methods and classes -------------------
 
     /**
@@ -801,35 +781,37 @@ public class Tomcat {
      * one. The Realm created here will be added to the Engine by default and
      * may be replaced at the Engine level or over-ridden (as per normal Tomcat
      * behaviour) at the Host or Context level.
-     * @return a realm instance
+     * @deprecated Will be removed in Tomcat 8.0.x
      */
-    protected Realm createDefaultRealm() {
-        return new SimpleRealm();
-    }
-
-
-    private class SimpleRealm extends RealmBase {
-
-        @Override
-        protected String getPassword(String username) {
-            return userPass.get(username);
-        }
-
-        @Override
-        protected Principal getPrincipal(String username) {
-            Principal p = userPrincipals.get(username);
-            if (p == null) {
-                String pass = userPass.get(username);
-                if (pass != null) {
-                    p = new GenericPrincipal(username, pass,
-                            userRoles.get(username));
-                    userPrincipals.put(username, p);
-                }
+    @Deprecated
+    protected void initSimpleAuth() {
+        defaultRealm = new RealmBase() {
+            @Override
+            protected String getName() {
+                return "Simple";
             }
-            return p;
-        }
-    }
 
+            @Override
+            protected String getPassword(String username) {
+                return userPass.get(username);
+            }
+
+            @Override
+            protected Principal getPrincipal(String username) {
+                Principal p = userPrincipals.get(username);
+                if (p == null) {
+                    String pass = userPass.get(username);
+                    if (pass != null) {
+                        p = new GenericPrincipal(username, pass,
+                                userRoles.get(username));
+                        userPrincipals.put(username, p);
+                    }
+                }
+                return p;
+            }
+
+        };
+    }
 
     protected void initBaseDir() {
         String catalinaHome = System.getProperty(Globals.CATALINA_HOME_PROP);
@@ -841,57 +823,26 @@ public class Tomcat {
         }
         if (basedir == null) {
             // Create a temp dir.
-            basedir = System.getProperty("user.dir") + "/tomcat." + port;
-        }
-
-        File baseFile = new File(basedir);
-        if (baseFile.exists()) {
-            if (!baseFile.isDirectory()) {
-                throw new IllegalArgumentException(sm.getString("tomcat.baseDirNotDir", baseFile));
+            basedir = System.getProperty("user.dir") +
+                "/tomcat." + port;
+            File home = new File(basedir);
+            home.mkdir();
+            if (!home.isAbsolute()) {
+                try {
+                    basedir = home.getCanonicalPath();
+                } catch (IOException e) {
+                    basedir = home.getAbsolutePath();
+                }
             }
-        } else {
-            if (!baseFile.mkdirs()) {
-                // Failed to create base directory
-                throw new IllegalStateException(sm.getString("tomcat.baseDirMakeFail", baseFile));
-            }
-            /*
-             * If file permissions were going to be set on the newly created
-             * directory, this is the place to do it. However, even simple
-             * calls such as File.setReadable(boolean,boolean) behaves
-             * differently on different platforms. Therefore, setBaseDir
-             * documents that the user needs to do this.
-             */
         }
-        try {
-            baseFile = baseFile.getCanonicalFile();
-        } catch (IOException e) {
-            baseFile = baseFile.getAbsoluteFile();
-        }
-        server.setCatalinaBase(baseFile);
-        System.setProperty(Globals.CATALINA_BASE_PROP, baseFile.getPath());
-        basedir = baseFile.getPath();
-
         if (catalinaHome == null) {
-            server.setCatalinaHome(baseFile);
-        } else {
-            File homeFile = new File(catalinaHome);
-            if (!homeFile.isDirectory() && !homeFile.mkdirs()) {
-                // Failed to create home directory
-                throw new IllegalStateException(sm.getString("tomcat.homeDirMakeFail", homeFile));
-            }
-            try {
-                homeFile = homeFile.getCanonicalFile();
-            } catch (IOException e) {
-                homeFile = homeFile.getAbsoluteFile();
-            }
-            server.setCatalinaHome(homeFile);
+            System.setProperty(Globals.CATALINA_HOME_PROP, basedir);
         }
-        System.setProperty(Globals.CATALINA_HOME_PROP,
-                server.getCatalinaHome().getPath());
+        System.setProperty(Globals.CATALINA_BASE_PROP, basedir);
     }
 
     static final String[] silences = new String[] {
-        "org.apache.coyote.http11.Http11NioProtocol",
+        "org.apache.coyote.http11.Http11Protocol",
         "org.apache.catalina.core.StandardService",
         "org.apache.catalina.core.StandardEngine",
         "org.apache.catalina.startup.ContextConfig",
@@ -931,24 +882,6 @@ public class Tomcat {
         } else {
             logger.setLevel(Level.INFO);
         }
-    }
-
-
-    /**
-     * By default, when calling addWebapp() to create a Context, the settings from
-     * from the default web.xml are added to the context.  Calling this method with
-     * a <code>false</code> value prior to calling addWebapp() allows to opt out of
-     * the default settings. In that event you will need to add the configurations
-     * yourself,  either programmatically or by using web.xml deployment descriptors.
-     * @param addDefaultWebXmlToWebapp <code>false</code> will prevent the class from
-     *                                 automatically adding the default settings when
-     *                                 calling addWebapp().
-     *                                 <code>true</code> will add the default settings
-     *                                 and is the default behavior.
-     * @see #addWebapp(Host, String, String, LifecycleListener)
-     */
-    public void setAddDefaultWebXmlToWebapp(boolean addDefaultWebXmlToWebapp){
-        this.addDefaultWebXmlToWebapp = addDefaultWebXmlToWebapp;
     }
 
 
@@ -1003,8 +936,41 @@ public class Tomcat {
         try {
             return (Context) Class.forName(contextClass).getConstructor()
                     .newInstance();
-        } catch (ReflectiveOperationException  | IllegalArgumentException | SecurityException e) {
-            throw new IllegalArgumentException(sm.getString("tomcat.noContextClass", contextClass, host, url), e);
+        } catch (InstantiationException e) {
+            throw new IllegalArgumentException(
+                    "Can't instantiate context-class " + contextClass
+                            + " for host " + host + " and url "
+                            + url, e);
+        } catch (IllegalAccessException e) {
+            throw new IllegalArgumentException(
+                    "Can't instantiate context-class " + contextClass
+                            + " for host " + host + " and url "
+                            + url, e);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "Can't instantiate context-class " + contextClass
+                            + " for host " + host + " and url "
+                            + url, e);
+        } catch (InvocationTargetException e) {
+            throw new IllegalArgumentException(
+                    "Can't instantiate context-class " + contextClass
+                            + " for host " + host + " and url "
+                            + url, e);
+        } catch (NoSuchMethodException e) {
+            throw new IllegalArgumentException(
+                    "Can't instantiate context-class " + contextClass
+                            + " for host " + host + " and url "
+                            + url, e);
+        } catch (SecurityException e) {
+            throw new IllegalArgumentException(
+                    "Can't instantiate context-class " + contextClass
+                            + " for host " + host + " and url "
+                            + url, e);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException(
+                    "Can't instantiate context-class " + contextClass
+                            + " for host " + host + " and url "
+                            + url, e);
         }
     }
 
@@ -1043,32 +1009,22 @@ public class Tomcat {
         }
     }
 
-
     /**
-     * Provide default configuration for a context. This is broadly the
-     * programmatic equivalent of the default web.xml and provides the following
-     * features:
-     * <ul>
-     * <li>Default servlet mapped to "/"</li>
-     * <li>JSP servlet mapped to "*.jsp" and ""*.jspx"</li>
-     * <li>Session timeout of 30 minutes</li>
-     * <li>MIME mappings (subset of those in conf/web.xml)</li>
-     * <li>Welcome files</li>
-     * </ul>
-     * TODO: Align the MIME mappings with conf/web.xml - possibly via a common
-     *       file.
+     * Provide default configuration for a context. This is the programmatic
+     * equivalent of the default web.xml.
      *
-     * @param contextPath   The path of the context to set the defaults for
+     *  TODO: in normal Tomcat, if default-web.xml is not found, use this
+     *  method
+     *
+     * @param contextPath   The context to set the defaults for
      */
     public void initWebappDefaults(String contextPath) {
         Container ctx = getHost().findChild(contextPath);
         initWebappDefaults((Context) ctx);
     }
 
-
     /**
-     * Static version of {@link #initWebappDefaults(String)}.
-     *
+     * Static version of {@link #initWebappDefaults(String)}
      * @param ctx   The context to set the defaults for
      */
     public static void initWebappDefaults(Context ctx) {
@@ -1086,39 +1042,23 @@ public class Tomcat {
         servlet.setOverridable(true);
 
         // Servlet mappings
-        ctx.addServletMappingDecoded("/", "default");
-        ctx.addServletMappingDecoded("*.jsp", "jsp");
-        ctx.addServletMappingDecoded("*.jspx", "jsp");
+        ctx.addServletMapping("/", "default");
+        ctx.addServletMapping("*.jsp", "jsp");
+        ctx.addServletMapping("*.jspx", "jsp");
 
         // Sessions
         ctx.setSessionTimeout(30);
 
-        // MIME type mappings
-        addDefaultMimeTypeMappings(ctx);
+        // MIME mappings
+        for (int i = 0; i < DEFAULT_MIME_MAPPINGS.length;) {
+            ctx.addMimeMapping(DEFAULT_MIME_MAPPINGS[i++],
+                    DEFAULT_MIME_MAPPINGS[i++]);
+        }
 
         // Welcome files
         ctx.addWelcomeFile("index.html");
         ctx.addWelcomeFile("index.htm");
         ctx.addWelcomeFile("index.jsp");
-    }
-
-
-    /**
-     * Add the default MIME type mappings to the provide Context.
-     *
-     * @param context The web application to which the default MIME type
-     *                mappings should be added.
-     */
-    public static void addDefaultMimeTypeMappings(Context context) {
-        Properties defaultMimeMappings = new Properties();
-        try (InputStream is = Tomcat.class.getResourceAsStream("MimeTypeMappings.properties")) {
-            defaultMimeMappings.load(is);
-            for (Map.Entry<Object, Object>  entry: defaultMimeMappings.entrySet()) {
-                context.addMimeMapping((String) entry.getKey(), (String) entry.getValue());
-            }
-        } catch (IOException e) {
-            throw new IllegalStateException(sm.getString("tomcat.defaultMimeTypeMappingsFail"), e);
-        }
     }
 
 
@@ -1182,28 +1122,18 @@ public class Tomcat {
             this.existing = existing;
             if (existing instanceof javax.servlet.SingleThreadModel) {
                 singleThreadModel = true;
-                instancePool = new Stack<>();
+                instancePool = new Stack<Servlet>();
             }
-            this.asyncSupported = hasAsync(existing);
         }
-
-        private static boolean hasAsync(Servlet existing) {
-            boolean result = false;
-            Class<?> clazz = existing.getClass();
-            WebServlet ws = clazz.getAnnotation(WebServlet.class);
-            if (ws != null) {
-                result = ws.asyncSupported();
-            }
-            return result;
-        }
-
         @Override
         public synchronized Servlet loadServlet() throws ServletException {
             if (singleThreadModel) {
                 Servlet instance;
                 try {
-                    instance = existing.getClass().getConstructor().newInstance();
-                } catch (ReflectiveOperationException e) {
+                    instance = existing.getClass().newInstance();
+                } catch (InstantiationException e) {
+                    throw new ServletException(e);
+                } catch (IllegalAccessException e) {
                     throw new ServletException(e);
                 }
                 instance.init(facade);
@@ -1234,6 +1164,185 @@ public class Tomcat {
         }
     }
 
+    /**
+     * TODO: would a properties resource be better ? Or just parsing
+     * /etc/mime.types ?
+     * This is needed because we don't use the default web.xml, where this
+     * is encoded.
+     */
+    private static final String[] DEFAULT_MIME_MAPPINGS = {
+        "abs", "audio/x-mpeg",
+        "ai", "application/postscript",
+        "aif", "audio/x-aiff",
+        "aifc", "audio/x-aiff",
+        "aiff", "audio/x-aiff",
+        "aim", "application/x-aim",
+        "art", "image/x-jg",
+        "asf", "video/x-ms-asf",
+        "asx", "video/x-ms-asf",
+        "au", "audio/basic",
+        "avi", "video/x-msvideo",
+        "avx", "video/x-rad-screenplay",
+        "bcpio", "application/x-bcpio",
+        "bin", "application/octet-stream",
+        "bmp", "image/bmp",
+        "body", "text/html",
+        "cdf", "application/x-cdf",
+        "cer", "application/pkix-cert",
+        "class", "application/java",
+        "cpio", "application/x-cpio",
+        "csh", "application/x-csh",
+        "css", "text/css",
+        "dib", "image/bmp",
+        "doc", "application/msword",
+        "dtd", "application/xml-dtd",
+        "dv", "video/x-dv",
+        "dvi", "application/x-dvi",
+        "eps", "application/postscript",
+        "etx", "text/x-setext",
+        "exe", "application/octet-stream",
+        "gif", "image/gif",
+        "gtar", "application/x-gtar",
+        "gz", "application/x-gzip",
+        "hdf", "application/x-hdf",
+        "hqx", "application/mac-binhex40",
+        "htc", "text/x-component",
+        "htm", "text/html",
+        "html", "text/html",
+        "ief", "image/ief",
+        "jad", "text/vnd.sun.j2me.app-descriptor",
+        "jar", "application/java-archive",
+        "java", "text/x-java-source",
+        "jnlp", "application/x-java-jnlp-file",
+        "jpe", "image/jpeg",
+        "jpeg", "image/jpeg",
+        "jpg", "image/jpeg",
+        "js", "application/javascript",
+        "jsf", "text/plain",
+        "jspf", "text/plain",
+        "kar", "audio/midi",
+        "latex", "application/x-latex",
+        "m3u", "audio/x-mpegurl",
+        "mac", "image/x-macpaint",
+        "man", "text/troff",
+        "mathml", "application/mathml+xml",
+        "me", "text/troff",
+        "mid", "audio/midi",
+        "midi", "audio/midi",
+        "mif", "application/x-mif",
+        "mov", "video/quicktime",
+        "movie", "video/x-sgi-movie",
+        "mp1", "audio/mpeg",
+        "mp2", "audio/mpeg",
+        "mp3", "audio/mpeg",
+        "mp4", "video/mp4",
+        "mpa", "audio/mpeg",
+        "mpe", "video/mpeg",
+        "mpeg", "video/mpeg",
+        "mpega", "audio/x-mpeg",
+        "mpg", "video/mpeg",
+        "mpv2", "video/mpeg2",
+        "nc", "application/x-netcdf",
+        "oda", "application/oda",
+        "odb", "application/vnd.oasis.opendocument.database",
+        "odc", "application/vnd.oasis.opendocument.chart",
+        "odf", "application/vnd.oasis.opendocument.formula",
+        "odg", "application/vnd.oasis.opendocument.graphics",
+        "odi", "application/vnd.oasis.opendocument.image",
+        "odm", "application/vnd.oasis.opendocument.text-master",
+        "odp", "application/vnd.oasis.opendocument.presentation",
+        "ods", "application/vnd.oasis.opendocument.spreadsheet",
+        "odt", "application/vnd.oasis.opendocument.text",
+        "otg", "application/vnd.oasis.opendocument.graphics-template",
+        "oth", "application/vnd.oasis.opendocument.text-web",
+        "otp", "application/vnd.oasis.opendocument.presentation-template",
+        "ots", "application/vnd.oasis.opendocument.spreadsheet-template ",
+        "ott", "application/vnd.oasis.opendocument.text-template",
+        "ogx", "application/ogg",
+        "ogv", "video/ogg",
+        "oga", "audio/ogg",
+        "ogg", "audio/ogg",
+        "spx", "audio/ogg",
+        "flac", "audio/flac",
+        "anx", "application/annodex",
+        "axa", "audio/annodex",
+        "axv", "video/annodex",
+        "xspf", "application/xspf+xml",
+        "pbm", "image/x-portable-bitmap",
+        "pct", "image/pict",
+        "pdf", "application/pdf",
+        "pgm", "image/x-portable-graymap",
+        "pic", "image/pict",
+        "pict", "image/pict",
+        "pls", "audio/x-scpls",
+        "png", "image/png",
+        "pnm", "image/x-portable-anymap",
+        "pnt", "image/x-macpaint",
+        "ppm", "image/x-portable-pixmap",
+        "ppt", "application/vnd.ms-powerpoint",
+        "pps", "application/vnd.ms-powerpoint",
+        "ps", "application/postscript",
+        "psd", "image/vnd.adobe.photoshop",
+        "qt", "video/quicktime",
+        "qti", "image/x-quicktime",
+        "qtif", "image/x-quicktime",
+        "ras", "image/x-cmu-raster",
+        "rdf", "application/rdf+xml",
+        "rgb", "image/x-rgb",
+        "rm", "application/vnd.rn-realmedia",
+        "roff", "text/troff",
+        "rtf", "application/rtf",
+        "rtx", "text/richtext",
+        "sh", "application/x-sh",
+        "shar", "application/x-shar",
+        /*"shtml", "text/x-server-parsed-html",*/
+        "sit", "application/x-stuffit",
+        "snd", "audio/basic",
+        "src", "application/x-wais-source",
+        "sv4cpio", "application/x-sv4cpio",
+        "sv4crc", "application/x-sv4crc",
+        "svg", "image/svg+xml",
+        "svgz", "image/svg+xml",
+        "swf", "application/x-shockwave-flash",
+        "t", "text/troff",
+        "tar", "application/x-tar",
+        "tcl", "application/x-tcl",
+        "tex", "application/x-tex",
+        "texi", "application/x-texinfo",
+        "texinfo", "application/x-texinfo",
+        "tif", "image/tiff",
+        "tiff", "image/tiff",
+        "tr", "text/troff",
+        "tsv", "text/tab-separated-values",
+        "txt", "text/plain",
+        "ulw", "audio/basic",
+        "ustar", "application/x-ustar",
+        "vxml", "application/voicexml+xml",
+        "xbm", "image/x-xbitmap",
+        "xht", "application/xhtml+xml",
+        "xhtml", "application/xhtml+xml",
+        "xls", "application/vnd.ms-excel",
+        "xml", "application/xml",
+        "xpm", "image/x-xpixmap",
+        "xsl", "application/xml",
+        "xslt", "application/xslt+xml",
+        "xul", "application/vnd.mozilla.xul+xml",
+        "xwd", "image/x-xwindowdump",
+        "vsd", "application/vnd.visio",
+        "wav", "audio/x-wav",
+        "wbmp", "image/vnd.wap.wbmp",
+        "wml", "text/vnd.wap.wml",
+        "wmlc", "application/vnd.wap.wmlc",
+        "wmls", "text/vnd.wap.wmlsc",
+        "wmlscriptc", "application/vnd.wap.wmlscriptc",
+        "wmv", "video/x-ms-wmv",
+        "wrl", "model/vrml",
+        "wspolicy", "application/wspolicy+xml",
+        "Z", "application/x-compress",
+        "z", "application/x-compress",
+        "zip", "application/zip"
+    };
+
     protected URL getWebappConfigFile(String path, String contextName) {
         File docBase = new File(path);
         if (docBase.isDirectory()) {
@@ -1251,7 +1360,7 @@ public class Tomcat {
                 result = webAppContextXml.toURI().toURL();
             } catch (MalformedURLException e) {
                 Logger.getLogger(getLoggerName(getHost(), contextName)).log(Level.WARNING,
-                        sm.getString("tomcat.noContextXml", docBase), e);
+                        "Unable to determine web application context.xml " + docBase, e);
             }
         }
         return result;
@@ -1259,75 +1368,25 @@ public class Tomcat {
 
     private URL getWebappConfigFileFromWar(File docBase, String contextName) {
         URL result = null;
-        try (JarFile jar = new JarFile(docBase)) {
+        JarFile jar = null;
+        try {
+            jar = new JarFile(docBase);
             JarEntry entry = jar.getJarEntry(Constants.ApplicationContextXml);
             if (entry != null) {
                 result = UriUtil.buildJarUrl(docBase, Constants.ApplicationContextXml);
             }
         } catch (IOException e) {
             Logger.getLogger(getLoggerName(getHost(), contextName)).log(Level.WARNING,
-                    sm.getString("tomcat.noContextXml", docBase), e);
+                    "Unable to determine web application context.xml " + docBase, e);
+        } finally {
+            if (jar != null) {
+                try {
+                    jar.close();
+                } catch (IOException e) {
+                    // ignore
+                }
+            }
         }
         return result;
     }
-
-    static {
-        // Graal native images don't load any configuration except the VM default
-        if (JreCompat.isGraalAvailable()) {
-            try (InputStream is = new FileInputStream(new File(System.getProperty("java.util.logging.config.file", "conf/logging.properties")))) {
-                LogManager.getLogManager().readConfiguration(is);
-            } catch (SecurityException | IOException e) {
-                // Ignore, the VM default will be used
-            }
-        }
-    }
-
-    /**
-     * Main executable method for use with a Maven packager.
-     * @param args the command line arguments
-     * @throws Exception if an error occurs
-     */
-    public static void main(String[] args) throws Exception {
-        // Process some command line parameters
-        for (String arg : args) {
-            if (arg.equals("--no-jmx")) {
-                Registry.disableRegistry();
-            }
-        }
-        SecurityClassLoad.securityClassLoad(Thread.currentThread().getContextClassLoader());
-        org.apache.catalina.startup.Tomcat tomcat = new org.apache.catalina.startup.Tomcat();
-        // Create a Catalina instance and let it parse the configuration files
-        // It will also set a shutdown hook to stop the Server when needed
-        // Use the default configuration source
-        tomcat.init(null);
-        boolean await = false;
-        String path = "";
-        // Process command line parameters
-        for (int i = 0; i < args.length; i++) {
-            if (args[i].equals("--war")) {
-                if (++i >= args.length) {
-                    throw new IllegalArgumentException(sm.getString("tomcat.invalidCommandLine", args[i - 1]));
-                }
-                File war = new File(args[i]);
-                tomcat.addWebapp(path, war.getAbsolutePath());
-            } else if (args[i].equals("--path")) {
-                if (++i >= args.length) {
-                    throw new IllegalArgumentException(sm.getString("tomcat.invalidCommandLine", args[i - 1]));
-                }
-                path = args[i];
-            } else if (args[i].equals("--await")) {
-                await = true;
-            } else if (args[i].equals("--no-jmx")) {
-                // This was already processed before
-            } else {
-                throw new IllegalArgumentException(sm.getString("tomcat.invalidCommandLine", args[i]));
-            }
-        }
-        tomcat.start();
-        // Ideally the utility threads are non daemon
-        if (await) {
-            tomcat.getServer().await();
-        }
-    }
-
 }

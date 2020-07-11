@@ -47,7 +47,7 @@ import java.util.ResourceBundle;
  * @author James Duncan Davidson [duncan@eng.sun.com]
  * @author James Todd [gonzo@eng.sun.com]
  * @author Mel Martinez [mmartinez@g1440.com]
- * @see java.util.ResourceBundle
+ * @see ResourceBundle
  */
 public class StringManager {
 
@@ -188,7 +188,7 @@ public class StringManager {
     // --------------------------------------------------------------
 
     private static final Map<String, Map<Locale,StringManager>> managers =
-            new Hashtable<>();
+        new Hashtable<String, Map<Locale,StringManager>>();
 
 
     /**

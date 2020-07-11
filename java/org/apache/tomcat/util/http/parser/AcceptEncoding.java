@@ -21,6 +21,8 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.tomcat.util.http.parser.HttpParser.SkipResult;
+
 public class AcceptEncoding {
 
     private final String encoding;
@@ -42,7 +44,7 @@ public class AcceptEncoding {
 
     public static List<AcceptEncoding> parse(StringReader input) throws IOException {
 
-        List<AcceptEncoding> result = new ArrayList<>();
+        List<AcceptEncoding> result = new ArrayList<AcceptEncoding>();
 
         do {
             String encoding = HttpParser.readToken(input);

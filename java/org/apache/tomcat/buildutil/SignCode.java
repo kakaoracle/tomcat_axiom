@@ -51,11 +51,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 /**
- * Ant task that submits a file to the Digicert (formally Symantec) code-signing
- * service. The service is defined by the published
- * <a href="https://api.ws.digicert.com/webtrust/SigningService?wsdl">WSDL</a>.
- * Note that while the service has migrated to a Digicert domain, the namespace
- * continues to use a Symantec domain.
+ * Ant task that submits a file to the Symantec code-signing service.
  */
 public class SignCode extends Task {
 
@@ -68,7 +64,7 @@ public class SignCode extends Task {
     static {
         try {
             SIGNING_SERVICE_URL = new URL(
-                    "https://api-appsec.pki.digicert.com/webtrust/SigningService");
+                    "https://api-appsec-cws.ws.symantec.com/webtrust/SigningService");
         } catch (MalformedURLException e) {
             throw new IllegalArgumentException(e);
         }
@@ -79,7 +75,7 @@ public class SignCode extends Task {
         }
     }
 
-    private final List<FileSet> filesets = new ArrayList<>();
+    private final List<FileSet> filesets = new ArrayList<FileSet>();
     private String userName;
     private String password;
     private String partnerCode;
@@ -143,7 +139,7 @@ public class SignCode extends Task {
     @Override
     public void execute() throws BuildException {
 
-        List<File> filesToSign = new ArrayList<>();
+        List<File> filesToSign = new ArrayList<File>();
 
         // Process the filesets and populate the list of files that need to be
         // signed.
@@ -152,8 +148,8 @@ public class SignCode extends Task {
             File basedir = ds.getBasedir();
             String[] files = ds.getIncludedFiles();
             if (files.length > 0) {
-                for (String s : files) {
-                    File file = new File(basedir, s);
+                for (int i = 0; i < files.length; i++) {
+                    File file = new File(basedir, files[i]);
                     filesToSign.add(file);
                 }
             }
@@ -166,7 +162,9 @@ public class SignCode extends Task {
         try {
             String signingSetID = makeSigningRequest(filesToSign);
             downloadSignedFiles(filesToSign, signingSetID);
-        } catch (SOAPException | IOException e) {
+        } catch (SOAPException e) {
+            throw new BuildException(e);
+        } catch (IOException e) {
             throw new BuildException(e);
         }
     }
@@ -338,7 +336,7 @@ public class SignCode extends Task {
      * to sign and how to sign it.
      */
     private static List<String> getFileNames(List<File> filesToSign) {
-        List<String> result = new ArrayList<>(filesToSign.size());
+        List<String> result = new ArrayList<String>(filesToSign.size());
 
         for (int i = 0; i < filesToSign.size(); i++) {
             File f = filesToSign.get(i);
@@ -372,17 +370,29 @@ public class SignCode extends Task {
         //       buffering the entire set of files in memory would make it more
         //       widely useful.
         ByteArrayOutputStream baos = new ByteArrayOutputStream(16 * 1024 * 1024);
-        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+        ZipOutputStream zos = null;
+        try {
+            zos = new ZipOutputStream(baos);
             byte[] buf = new byte[32 * 1024];
             for (int i = 0; i < files.size(); i++) {
-                try (FileInputStream fis = new FileInputStream(files.get(i))) {
+                FileInputStream fis = null;
+                try {
+                    fis = new FileInputStream(files.get(i));
                     ZipEntry zipEntry = new ZipEntry(fileNames.get(i));
                     zos.putNextEntry(zipEntry);
                     int numRead;
                     while ( (numRead = fis.read(buf)) >= 0) {
                         zos.write(buf, 0, numRead);
                     }
+                } finally {
+                    if (fis != null) {
+                        fis.close();
+                    }
                 }
+            }
+        } finally {
+            if (zos != null) {
+                zos.close();
             }
         }
 
@@ -397,16 +407,28 @@ public class SignCode extends Task {
     private static void extractFilesFromApplicationString(String data, List<File> files)
             throws IOException {
         ByteArrayInputStream bais = new ByteArrayInputStream(Base64.decodeBase64(data));
-        try (ZipInputStream zis = new ZipInputStream(bais)) {
+        ZipInputStream zis = null;
+        try {
+            zis = new ZipInputStream(bais);
             byte[] buf = new byte[32 * 1024];
-            for (File file : files) {
-                try (FileOutputStream fos = new FileOutputStream(file)) {
+            for (int i = 0; i < files.size(); i ++) {
+                FileOutputStream fos = null;
+                try {
+                    fos = new FileOutputStream(files.get(i));
                     zis.getNextEntry();
                     int numRead;
-                    while ((numRead = zis.read(buf)) >= 0) {
-                        fos.write(buf, 0, numRead);
+                    while ( (numRead = zis.read(buf)) >= 0) {
+                        fos.write(buf, 0 , numRead);
+                    }
+                } finally {
+                    if (fos != null) {
+                        fos.close();
                     }
                 }
+            }
+        } finally {
+            if (zis != null) {
+                zis.close();
             }
         }
     }

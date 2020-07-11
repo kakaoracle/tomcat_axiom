@@ -16,40 +16,50 @@
  */
 package org.apache.catalina.tribes.group.interceptors;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameter;
-import org.junit.runners.Parameterized.Parameters;
 
-@RunWith(Parameterized.class)
 public class TestGzipInterceptor {
 
-    @Parameters(name = "{index}: bufferSize[{0}]")
-    public static Collection<Object[]> inputs() {
-        List<Object[]> result = new ArrayList<>();
-        result.add(new Object[] { Integer.valueOf(GzipInterceptor.DEFAULT_BUFFER_SIZE / 2) });
-        result.add(new Object[] { Integer.valueOf(GzipInterceptor.DEFAULT_BUFFER_SIZE - 1) });
-        result.add(new Object[] { Integer.valueOf(GzipInterceptor.DEFAULT_BUFFER_SIZE) });
-        result.add(new Object[] { Integer.valueOf(GzipInterceptor.DEFAULT_BUFFER_SIZE + 1) });
-        result.add(new Object[] { Integer.valueOf(GzipInterceptor.DEFAULT_BUFFER_SIZE * 2) });
-        result.add(new Object[] { Integer.valueOf(GzipInterceptor.DEFAULT_BUFFER_SIZE * 4) });
-        result.add(new Object[] { Integer.valueOf(GzipInterceptor.DEFAULT_BUFFER_SIZE * 10 + 1000) });
-        return result;
+    @Test
+    public void testSmallerThanBufferSize() throws Exception {
+        doCompressDecompress(GzipInterceptor.DEFAULT_BUFFER_SIZE / 2);
     }
 
-    @Parameter(0)
-    public int bufferSize;
+    @Test
+    public void testJustSmallerThanBufferSize() throws Exception {
+        doCompressDecompress(GzipInterceptor.DEFAULT_BUFFER_SIZE -1);
+    }
 
     @Test
-    public void testCompressDecompress() throws Exception {
-        byte[] data = new byte[bufferSize];
+    public void testExactBufferSize() throws Exception {
+        doCompressDecompress(GzipInterceptor.DEFAULT_BUFFER_SIZE);
+    }
+
+    @Test
+    public void testJustLargerThanBufferSize() throws Exception {
+        doCompressDecompress(GzipInterceptor.DEFAULT_BUFFER_SIZE + 1);
+    }
+
+    @Test
+    public void testFactor2BufferSize() throws Exception {
+        doCompressDecompress(GzipInterceptor.DEFAULT_BUFFER_SIZE * 2);
+    }
+
+    @Test
+    public void testFactor4BufferSize() throws Exception {
+        doCompressDecompress(GzipInterceptor.DEFAULT_BUFFER_SIZE * 4);
+    }
+
+    @Test
+    public void testMuchLargerThanBufferSize() throws Exception {
+        doCompressDecompress(GzipInterceptor.DEFAULT_BUFFER_SIZE * 10 + 1000);
+    }
+
+    private void doCompressDecompress(int size) throws Exception {
+        byte[] data = new byte[size];
         Arrays.fill(data, (byte)1);
         byte[] compress = GzipInterceptor.compress(data);
         byte[] result = GzipInterceptor.decompress(compress);

@@ -23,7 +23,7 @@ import java.util.Locale;
  * conversions between baseName, path and version take place.
  */
 public final class ContextName {
-    public static final String ROOT_NAME = "ROOT";
+    private static final String ROOT_NAME = "ROOT";
     private static final String VERSION_MARKER = "##";
     private static final String FWD_SLASH_REPLACEMENT = "#";
 
@@ -31,6 +31,19 @@ public final class ContextName {
     private final String path;
     private final String version;
     private final String name;
+
+    /**
+     * Creates an instance from a context name, display name, base name,
+     * directory name, WAR name or context.xml name.
+     *
+     * @param name  The name to use as the basis for this object
+     *
+     * @deprecated  Use {@link ContextName#ContextName(String, boolean)}
+     */
+    @Deprecated
+    public ContextName(String name) {
+        this(name, true);
+    }
 
 
     /**
@@ -81,6 +94,7 @@ public final class ContextName {
             tmp2 = baseName;
         }
 
+        // 应用名字为ROOT，那么path为""
         if (ROOT_NAME.equals(tmp2)) {
             path = "";
         } else {
@@ -172,30 +186,5 @@ public final class ContextName {
     @Override
     public String toString() {
         return getDisplayName();
-    }
-
-
-    /**
-     * Extract the final component of the given path which is assumed to be a
-     * base name and generate a {@link ContextName} from that base name.
-     *
-     * @param path The path that ends in a base name
-     *
-     * @return the {@link ContextName} generated from the given base name
-     */
-    public static ContextName extractFromPath(String path) {
-        // Convert '\' to '/'
-        path = path.replaceAll("\\\\", "/");
-        // Remove trailing '/'. Use while just in case a value ends in ///
-        while (path.endsWith("/")) {
-            path = path.substring(0, path.length() - 1);
-        }
-
-        int lastSegment = path.lastIndexOf('/');
-        if (lastSegment > 0) {
-            path = path.substring(lastSegment + 1);
-        }
-
-        return new ContextName(path, true);
     }
 }

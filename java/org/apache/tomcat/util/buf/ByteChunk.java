@@ -22,7 +22,6 @@ import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 
 /*
  * In a server it is very important to be able to operate on
@@ -83,7 +82,7 @@ public final class ByteChunk extends AbstractChunk {
          *
          * @throws IOException If an I/O error occurs during reading
          */
-        public int realReadBytes() throws IOException;
+        public int realReadBytes(byte cbuf[], int off, int len) throws IOException;
     }
 
     /**
@@ -104,16 +103,6 @@ public final class ByteChunk extends AbstractChunk {
          * @throws IOException If an I/O occurs while writing the bytes
          */
         public void realWriteBytes(byte buf[], int off, int len) throws IOException;
-
-
-        /**
-         * Send the bytes ( usually the internal conversion buffer ). Expect 8k
-         * output if the buffer is full.
-         *
-         * @param from bytes that will be written
-         * @throws IOException If an I/O occurs while writing the bytes
-         */
-        public void realWriteBytes(ByteBuffer from) throws IOException;
     }
 
     // --------------------
@@ -123,7 +112,7 @@ public final class ByteChunk extends AbstractChunk {
      * standards seem to converge, but the servlet API requires 8859_1, and this
      * object is used mostly for servlets.
      */
-    public static final Charset DEFAULT_CHARSET = StandardCharsets.ISO_8859_1;
+    public static final Charset DEFAULT_CHARSET = B2CConverter.ISO_8859_1;
 
     private transient Charset charset;
 
@@ -135,6 +124,9 @@ public final class ByteChunk extends AbstractChunk {
     private transient ByteOutputChannel out = null;
 
 
+    private boolean optimizedWrite = true;
+
+
     /**
      * Creates a new, uninitialized ByteChunk object.
      */
@@ -144,6 +136,19 @@ public final class ByteChunk extends AbstractChunk {
 
     public ByteChunk(int initial) {
         allocate(initial, -1);
+    }
+
+
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public ByteChunk getClone() {
+        try {
+            return (ByteChunk) this.clone();
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
 
@@ -169,6 +174,11 @@ public final class ByteChunk extends AbstractChunk {
     public void recycle() {
         super.recycle();
         charset = null;
+    }
+
+
+    public void reset() {
+        buff = null;
     }
 
 
@@ -199,6 +209,15 @@ public final class ByteChunk extends AbstractChunk {
         end = start + len;
         isSet = true;
         hasHashCode = false;
+    }
+
+
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public void setOptimizedWrite(boolean optimizedWrite) {
+        this.optimizedWrite = optimizedWrite;
     }
 
 
@@ -255,6 +274,19 @@ public final class ByteChunk extends AbstractChunk {
 
     // -------------------- Adding data to the buffer --------------------
 
+    /**
+     * Append a char, by casting it to byte. This IS NOT intended for unicode.
+     *
+     * @param c
+     * @throws IOException
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public void append(char c) throws IOException {
+        append((byte) c);
+    }
+
+
     public void append(byte b) throws IOException {
         makeSpace(1);
         int limit = getLimitInternal();
@@ -282,24 +314,30 @@ public final class ByteChunk extends AbstractChunk {
      */
     public void append(byte src[], int off, int len) throws IOException {
         // will grow, up to limit
+        // 向缓冲区中添加数据，需要开辟缓存区空间，缓存区初始大小为256，最大大小可以设置，默认为8192
+        // 意思是现在要想缓冲区存放数据，首先得去开辟空间，但是空间是有一个最大限制的，所以要存放的数据可能小于限制，也可能大于限制
         makeSpace(len);
-        int limit = getLimitInternal();
+        int limit = getLimitInternal(); // 缓冲区大小的最大限制
 
         // Optimize on a common case.
         // If the buffer is empty and the source is going to fill up all the
         // space in buffer, may as well write it directly to the output,
         // and avoid an extra copy
-        if (len == limit && end == start && out != null) {
+        // 如果要添加到缓冲区中的数据大小正好等于最大限制，并且缓冲区是空的，那么则直接把数据发送给out，不要存在缓冲区中了
+        if (optimizedWrite && len == limit && end == start && out != null) {
             out.realWriteBytes(src, off, len);
             return;
         }
 
         // if we are below the limit
+        // 如果要发送的数据长度小于缓冲区中剩余空间，则把数据填充到剩余空间
         if (len <= limit - end) {
             System.arraycopy(src, off, buff, end, len);
             end += len;
             return;
         }
+
+        // 如果要发送的数据长度大于缓冲区中剩余空间，
 
         // Need more space than we can afford, need to flush buffer.
 
@@ -308,113 +346,65 @@ public final class ByteChunk extends AbstractChunk {
         // We chunk the data into slices fitting in the buffer limit, although
         // if the data is written directly if it doesn't fit.
 
+        // 缓冲区中还能容纳avail个字节的数据
         int avail = limit - end;
+        // 先将一部分数据复制到buff，填满缓冲区
         System.arraycopy(src, off, buff, end, avail);
         end += avail;
 
+        // 将缓冲区的数据发送出去
         flushBuffer();
 
+        // 还剩下一部分数据没有放到缓冲区中的
         int remain = len - avail;
 
+        // 如果剩下的数据 超过 缓冲区剩余大小,那么就把数据直接发送出去
         while (remain > (limit - end)) {
             out.realWriteBytes(src, (off + len) - remain, limit - end);
             remain = remain - (limit - end);
         }
 
+        // 知道最后剩下的数据能放入缓冲区，那么就放入到缓冲区
         System.arraycopy(src, (off + len) - remain, buff, end, remain);
-        end += remain;
-    }
-
-
-    /**
-     * Add data to the buffer.
-     *
-     * @param from the ByteBuffer with the data
-     * @throws IOException Writing overflow data to the output channel failed
-     */
-    public void append(ByteBuffer from) throws IOException {
-        int len = from.remaining();
-
-        // will grow, up to limit
-        makeSpace(len);
-        int limit = getLimitInternal();
-
-        // Optimize on a common case.
-        // If the buffer is empty and the source is going to fill up all the
-        // space in buffer, may as well write it directly to the output,
-        // and avoid an extra copy
-        if (len == limit && end == start && out != null) {
-            out.realWriteBytes(from);
-            from.position(from.limit());
-            return;
-        }
-        // if we have limit and we're below
-        if (len <= limit - end) {
-            // makeSpace will grow the buffer to the limit,
-            // so we have space
-            from.get(buff, end, len);
-            end += len;
-            return;
-        }
-
-        // need more space than we can afford, need to flush
-        // buffer
-
-        // the buffer is already at ( or bigger than ) limit
-
-        // We chunk the data into slices fitting in the buffer limit, although
-        // if the data is written directly if it doesn't fit
-
-        int avail = limit - end;
-        from.get(buff, end, avail);
-        end += avail;
-
-        flushBuffer();
-
-        int fromLimit = from.limit();
-        int remain = len - avail;
-        avail = limit - end;
-        while (remain >= avail) {
-            from.limit(from.position() + avail);
-            out.realWriteBytes(from);
-            from.position(from.limit());
-            remain = remain - avail;
-        }
-
-        from.limit(fromLimit);
-        from.get(buff, end, remain);
         end += remain;
     }
 
 
     // -------------------- Removing data from the buffer --------------------
 
-    /*
-     * @deprecated Use {@link #subtract()}.
-     *             This method will be removed in Tomcat 10
-     */
-    @Deprecated
     public int substract() throws IOException {
-        return subtract();
-    }
-
-    public int subtract() throws IOException {
         if (checkEof()) {
             return -1;
         }
         return buff[start++] & 0xFF;
     }
 
-    /*
-     * @deprecated Use {@link #subtractB()}.
-     *             This method will be removed in Tomcat 10
+
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
      */
     @Deprecated
-    public byte substractB() throws IOException {
-        return subtractB();
+    public int substract(ByteChunk src) throws IOException {
+
+        if ((end - start) == 0) {
+            if (in == null) {
+                return -1;
+            }
+            int n = in.realReadBytes(buff, 0, buff.length); //
+            if (n < 0) {
+                return -1;
+            }
+        }
+
+        int len = getLength();
+        src.append(buff, start, len);
+        start = end;
+        return len;
+
     }
 
-    public byte subtractB() throws IOException {
+
+    public byte substractB() throws IOException {
         if (checkEof()) {
             return -1;
         }
@@ -422,68 +412,18 @@ public final class ByteChunk extends AbstractChunk {
     }
 
 
-    /*
-     * @deprecated Use {@link #subtract(byte[],int,int)}.
-     *             This method will be removed in Tomcat 10
-     */
-    @Deprecated
     public int substract(byte dest[], int off, int len) throws IOException {
-        return subtract(dest, off, len);
-    }
-
-    public int subtract(byte dest[], int off, int len) throws IOException {
+        // 这里会对当前ByteChunk初始化
         if (checkEof()) {
             return -1;
         }
         int n = len;
+        // 如果需要的数据超过buff中标记的数据长度
         if (len > getLength()) {
             n = getLength();
         }
+        // 将buff数组中从start位置开始的数据，复制到dest中，长度为n，desc数组中就有值了
         System.arraycopy(buff, start, dest, off, n);
-        start += n;
-        return n;
-    }
-
-
-    /**
-     * Transfers bytes from the buffer to the specified ByteBuffer. After the
-     * operation the position of the ByteBuffer will be returned to the one
-     * before the operation, the limit will be the position incremented by the
-     * number of the transfered bytes.
-     *
-     * @param to the ByteBuffer into which bytes are to be written.
-     * @return an integer specifying the actual number of bytes read, or -1 if
-     *         the end of the stream is reached
-     * @throws IOException if an input or output exception has occurred
-     *
-     * @deprecated Use {@link #subtract(ByteBuffer)}.
-     *             This method will be removed in Tomcat 10
-     */
-    @Deprecated
-    public int substract(ByteBuffer to) throws IOException {
-        return subtract(to);
-    }
-
-
-    /**
-     * Transfers bytes from the buffer to the specified ByteBuffer. After the
-     * operation the position of the ByteBuffer will be returned to the one
-     * before the operation, the limit will be the position incremented by the
-     * number of the transfered bytes.
-     *
-     * @param to the ByteBuffer into which bytes are to be written.
-     * @return an integer specifying the actual number of bytes read, or -1 if
-     *         the end of the stream is reached
-     * @throws IOException if an input or output exception has occurred
-     */
-    public int subtract(ByteBuffer to) throws IOException {
-        if (checkEof()) {
-            return -1;
-        }
-        int n = Math.min(to.remaining(), getLength());
-        to.put(buff, start, n);
-        to.limit(to.position());
-        to.position(to.position() - n);
         start += n;
         return n;
     }
@@ -491,10 +431,12 @@ public final class ByteChunk extends AbstractChunk {
 
     private boolean checkEof() throws IOException {
         if ((end - start) == 0) {
+            // 如果bytechunk没有标记数据了，则开始比较
             if (in == null) {
                 return true;
             }
-            int n = in.realReadBytes();
+            // 从in中读取buff长度大小的数据，读到buff中，真实读到的数据为n
+            int n = in.realReadBytes(buff, 0, buff.length);
             if (n < 0) {
                 return true;
             }
@@ -512,8 +454,7 @@ public final class ByteChunk extends AbstractChunk {
     public void flushBuffer() throws IOException {
         // assert out!=null
         if (out == null) {
-            throw new IOException(sm.getString(
-                    "chunk.overflow", Integer.valueOf(getLimit()), Integer.valueOf(buff.length)));
+            throw new IOException("Buffer overflow, no sink " + getLimit() + " " + buff.length);
         }
         out.realWriteBytes(buff, start, end - start);
         end = start;
@@ -529,17 +470,21 @@ public final class ByteChunk extends AbstractChunk {
     public void makeSpace(int count) {
         byte[] tmp = null;
 
+        // 缓冲区的最大大小，可以设置，默认为8192
         int limit = getLimitInternal();
 
         long newSize;
+        // end表示缓冲区中已有数据的最后一个位置，desiredSize表示新数据+已有数据共多大
         long desiredSize = end + count;
 
         // Can't grow above the limit
+        // 如果超过限制了，那就只能开辟limit大小的缓冲区了
         if (desiredSize > limit) {
             desiredSize = limit;
         }
 
         if (buff == null) {
+            // 初始化字节数组
             if (desiredSize < 256) {
                 desiredSize = 256; // take a minimum
             }
@@ -548,22 +493,30 @@ public final class ByteChunk extends AbstractChunk {
 
         // limit < buf.length (the buffer is already big)
         // or we already have space XXX
+        // 如果需要的大小小于buff长度，那么不需要增大缓冲区
         if (desiredSize <= buff.length) {
             return;
         }
+
+        // 下面代码的前提条件是，需要的大小超过了buff的长度
+
         // grow in larger chunks
+        // 如果需要的大小大于buff.length, 小于2*buff.length，则缓冲区的新大小为2*buff.length，
         if (desiredSize < 2L * buff.length) {
             newSize = buff.length * 2L;
         } else {
+            // 否则为buff.length * 2L + count
             newSize = buff.length * 2L + count;
         }
 
+        // 扩容前没有超过限制，扩容后可能超过限制
         if (newSize > limit) {
             newSize = limit;
         }
         tmp = new byte[(int) newSize];
 
         // Compacts buffer
+        // 把当前buff中的内容复制到tmp中
         System.arraycopy(buff, start, tmp, 0, end - start);
         buff = tmp;
         tmp = null;
@@ -576,7 +529,7 @@ public final class ByteChunk extends AbstractChunk {
 
     @Override
     public String toString() {
-        if (isNull()) {
+        if (null == buff) {
             return null;
         } else if (end - start == 0) {
             return "";
@@ -594,6 +547,15 @@ public final class ByteChunk extends AbstractChunk {
         // bytes will be used. The code below is from Apache Harmony.
         CharBuffer cb = charset.decode(ByteBuffer.wrap(buff, start, end - start));
         return new String(cb.array(), cb.arrayOffset(), cb.length());
+    }
+
+
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public int getInt() {
+        return Ascii.parseInt(buff, start, end - start);
     }
 
 
@@ -721,6 +683,55 @@ public final class ByteChunk extends AbstractChunk {
      * in a case sensitive manner.
      *
      * @param s the string
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public boolean startsWith(String s) {
+        // Works only if enc==UTF
+        byte[] b = buff;
+        int blen = s.length();
+        if (b == null || blen > end - start) {
+            return false;
+        }
+        int boff = start;
+        for (int i = 0; i < blen; i++) {
+            if (b[boff++] != s.charAt(i)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /**
+     * Returns true if the message bytes start with the specified byte array.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public boolean startsWith(byte[] b2) {
+        byte[] b1 = buff;
+        if (b1 == null && b2 == null) {
+            return true;
+        }
+
+        int len = end - start;
+        if (b1 == null || b2 == null || b2.length > len) {
+            return false;
+        }
+        for (int i = start, j = 0; i < end && j < b2.length;) {
+            if (b1[i++] != b2[j++]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /**
+     * Returns true if the message bytes starts with the specified string.
+     *
+     * @param s the string
      * @param pos The position
      *
      * @return <code>true</code> if the start matches
@@ -769,6 +780,26 @@ public final class ByteChunk extends AbstractChunk {
     @Override
     protected int getBufferElement(int index) {
         return buff[index];
+    }
+
+
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public int hashIgnoreCase() {
+        return hashBytesIC(buff, start, end - start);
+    }
+
+
+    private static int hashBytesIC(byte bytes[], int start, int bytesLen) {
+        int max = start + bytesLen;
+        byte bb[] = bytes;
+        int code = 0;
+        for (int i = start; i < max; i++) {
+            code = code * 37 + Ascii.toLower(bb[i]);
+        }
+        return code;
     }
 
 
@@ -850,12 +881,48 @@ public final class ByteChunk extends AbstractChunk {
      *         is not found.
      */
     public static int findBytes(byte bytes[], int start, int end, byte b[]) {
+        int blen = b.length;
         int offset = start;
         while (offset < end) {
-            for (byte value : b) {
-                if (bytes[offset] == value) {
+            for (int i = 0; i < blen; i++) {
+                if (bytes[offset] == b[i]) {
                     return offset;
                 }
+            }
+            offset++;
+        }
+        return -1;
+    }
+
+
+    /**
+     * Returns the first instance of any byte that is not one of the given bytes
+     * in the byte array between the specified start and end.
+     *
+     * @param bytes The byte array to search
+     * @param start The point to start searching from in the byte array
+     * @param end The point to stop searching in the byte array
+     * @param b The list of bytes to search for
+     * @return The position of the first instance a byte that is not in the list
+     *         of bytes to search for or -1 if no such byte is found.
+     * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
+     */
+    @Deprecated
+    public static int findNotBytes(byte bytes[], int start, int end, byte b[]) {
+        int blen = b.length;
+        int offset = start;
+        boolean found;
+
+        while (offset < end) {
+            found = true;
+            for (int i = 0; i < blen; i++) {
+                if (bytes[offset] == b[i]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) {
+                return offset;
             }
             offset++;
         }

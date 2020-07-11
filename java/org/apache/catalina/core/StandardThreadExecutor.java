@@ -24,7 +24,6 @@ import org.apache.catalina.Executor;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.util.LifecycleMBeanBase;
-import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.util.threads.ResizableExecutor;
 import org.apache.tomcat.util.threads.TaskQueue;
 import org.apache.tomcat.util.threads.TaskThreadFactory;
@@ -32,9 +31,6 @@ import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 
 public class StandardThreadExecutor extends LifecycleMBeanBase
         implements Executor, ResizableExecutor {
-
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
 
     // ---------------------------------------------- Properties
     /**
@@ -144,9 +140,7 @@ public class StandardThreadExecutor extends LifecycleMBeanBase
     protected void stopInternal() throws LifecycleException {
 
         setState(LifecycleState.STOPPING);
-        if (executor != null) {
-            executor.shutdownNow();
-        }
+        if ( executor != null ) executor.shutdownNow();
         executor = null;
         taskqueue = null;
     }
@@ -160,28 +154,24 @@ public class StandardThreadExecutor extends LifecycleMBeanBase
 
     @Override
     public void execute(Runnable command, long timeout, TimeUnit unit) {
-        if (executor != null) {
+        if ( executor != null ) {
             executor.execute(command,timeout,unit);
         } else {
-            throw new IllegalStateException(sm.getString("standardThreadExecutor.notStarted"));
+            throw new IllegalStateException("StandardThreadExecutor not started.");
         }
     }
 
 
     @Override
     public void execute(Runnable command) {
-        if (executor != null) {
+        if ( executor != null ) {
             try {
                 executor.execute(command);
             } catch (RejectedExecutionException rx) {
                 //there could have been contention around the queue
-                if (!((TaskQueue) executor.getQueue()).force(command)) {
-                    throw new RejectedExecutionException(sm.getString("standardThreadExecutor.queueFull"));
-                }
+                if ( !( (TaskQueue) executor.getQueue()).force(command) ) throw new RejectedExecutionException("Work queue full.");
             }
-        } else {
-            throw new IllegalStateException(sm.getString("standardThreadExecutor.notStarted"));
-        }
+        } else throw new IllegalStateException("StandardThreadPool not started.");
     }
 
     public void contextStopping() {

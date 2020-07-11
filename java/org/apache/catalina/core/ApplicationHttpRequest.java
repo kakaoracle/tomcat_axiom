@@ -21,34 +21,24 @@ package org.apache.catalina.core;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
 import javax.servlet.DispatcherType;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletContext;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletRequestWrapper;
-import javax.servlet.http.HttpServletMapping;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpSession;
-import javax.servlet.http.PushBuilder;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.Globals;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Session;
-import org.apache.catalina.connector.RequestFacade;
 import org.apache.catalina.util.ParameterMap;
-import org.apache.catalina.util.RequestUtil;
 import org.apache.catalina.util.URLEncoder;
 import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.MessageBytes;
@@ -84,15 +74,11 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
       RequestDispatcher.INCLUDE_SERVLET_PATH,
       RequestDispatcher.INCLUDE_PATH_INFO,
       RequestDispatcher.INCLUDE_QUERY_STRING,
-      RequestDispatcher.INCLUDE_MAPPING,
       RequestDispatcher.FORWARD_REQUEST_URI,
       RequestDispatcher.FORWARD_CONTEXT_PATH,
       RequestDispatcher.FORWARD_SERVLET_PATH,
       RequestDispatcher.FORWARD_PATH_INFO,
-      RequestDispatcher.FORWARD_QUERY_STRING,
-      RequestDispatcher.FORWARD_MAPPING};
-
-    private static final int SPECIALS_FIRST_FORWARD_INDEX = 6;
+      RequestDispatcher.FORWARD_QUERY_STRING };
 
 
     // ----------------------------------------------------------- Constructors
@@ -102,9 +88,6 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      * Construct a new wrapped request around the specified servlet request.
      *
      * @param request The servlet request being wrapped
-     * @param context The target context for the wrapped request
-     * @param crossContext {@code true} if the wrapped request will be a
-     *                     cross-context request, otherwise {@code false}
      */
     public ApplicationHttpRequest(HttpServletRequest request, Context context,
                                   boolean crossContext) {
@@ -123,7 +106,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
     /**
      * The context for this request.
      */
-    protected final Context context;
+    protected Context context = null;
 
 
     /**
@@ -136,13 +119,20 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      * If this request is cross context, since this changes session access
      * behavior.
      */
-    protected final boolean crossContext;
+    protected boolean crossContext = false;
 
 
     /**
      * The current dispatcher type.
      */
     protected DispatcherType dispatcherType = null;
+
+
+    /**
+     * Descriptive information about this implementation.
+     */
+    protected static final String info =
+        "org.apache.catalina.core.ApplicationHttpRequest/1.0";
 
 
     /**
@@ -195,12 +185,6 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
 
 
     /**
-     * The mapping for this request.
-     */
-    private HttpServletMapping mapping = null;
-
-
-    /**
      * The currently active session for this request.
      */
     protected Session session = null;
@@ -209,7 +193,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
     /**
      * Special attributes.
      */
-    protected final Object[] specialAttributes = new Object[specials.length];
+    protected Object[] specialAttributes = new Object[specials.length];
 
 
     // ------------------------------------------------- ServletRequest Methods
@@ -245,9 +229,8 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         if (pos == -1) {
             return getRequest().getAttribute(name);
         } else {
-            if ((specialAttributes[pos] == null) &&
-                    (specialAttributes[SPECIALS_FIRST_FORWARD_INDEX] == null) &&
-                    (pos >= SPECIALS_FIRST_FORWARD_INDEX)) {
+            if ((specialAttributes[pos] == null)
+                && (specialAttributes[5] == null) && (pos >= 5)) {
                 // If it's a forward special attribute, and null, it means this
                 // is an include, so we check the wrapped request since
                 // the request could have been forwarded before the include
@@ -266,7 +249,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public Enumeration<String> getAttributeNames() {
-        return new AttributeNamesEnumerator();
+        return (new AttributeNamesEnumerator());
     }
 
 
@@ -320,7 +303,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
     public RequestDispatcher getRequestDispatcher(String path) {
 
         if (context == null)
-            return null;
+            return (null);
 
         if (path == null) {
             return null;
@@ -358,9 +341,9 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         if (context.getDispatchersUseEncodedPaths()) {
             if (pos >= 0) {
                 relative = URLEncoder.DEFAULT.encode(
-                        requestPath.substring(0, pos + 1), StandardCharsets.UTF_8) + path;
+                        requestPath.substring(0, pos + 1), "UTF-8") + path;
             } else {
-                relative = URLEncoder.DEFAULT.encode(requestPath, StandardCharsets.UTF_8) + path;
+                relative = URLEncoder.DEFAULT.encode(requestPath, "UTF-8") + path;
             }
         } else {
             if (pos >= 0) {
@@ -370,7 +353,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
             }
         }
 
-        return context.getServletContext().getRequestDispatcher(relative);
+        return (context.getServletContext().getRequestDispatcher(relative));
 
     }
 
@@ -394,7 +377,9 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public String getContextPath() {
-        return this.contextPath;
+
+        return (this.contextPath);
+
     }
 
 
@@ -405,6 +390,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public String getParameter(String name) {
+
         parseParameters();
 
         String[] value = parameters.get(name);
@@ -412,6 +398,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
             return null;
         }
         return value[0];
+
     }
 
 
@@ -421,8 +408,10 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public Map<String, String[]> getParameterMap() {
+
         parseParameters();
-        return parameters;
+        return (parameters);
+
     }
 
 
@@ -432,6 +421,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public Enumeration<String> getParameterNames() {
+
         parseParameters();
         return Collections.enumeration(parameters.keySet());
     }
@@ -445,8 +435,10 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public String[] getParameterValues(String name) {
+
         parseParameters();
         return parameters.get(name);
+
     }
 
 
@@ -455,7 +447,9 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public String getPathInfo() {
-        return this.pathInfo;
+
+        return (this.pathInfo);
+
     }
 
 
@@ -479,7 +473,9 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public String getQueryString() {
-        return this.queryString;
+
+        return (this.queryString);
+
     }
 
 
@@ -489,7 +485,9 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public String getRequestURI() {
-        return this.requestURI;
+
+        return (this.requestURI);
+
     }
 
 
@@ -499,7 +497,25 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public StringBuffer getRequestURL() {
-        return RequestUtil.getRequestURL(this);
+
+        StringBuffer url = new StringBuffer();
+        String scheme = getScheme();
+        int port = getServerPort();
+        if (port < 0)
+            port = 80; // Work around java.net.URL bug
+
+        url.append(scheme);
+        url.append("://");
+        url.append(getServerName());
+        if ((scheme.equals("http") && (port != 80))
+            || (scheme.equals("https") && (port != 443))) {
+            url.append(':');
+            url.append(port);
+        }
+        url.append(getRequestURI());
+
+        return (url);
+
     }
 
 
@@ -509,13 +525,9 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public String getServletPath() {
-        return this.servletPath;
-    }
 
+        return (this.servletPath);
 
-    @Override
-    public HttpServletMapping getHttpServletMapping() {
-        return mapping;
     }
 
 
@@ -525,7 +537,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     @Override
     public HttpSession getSession() {
-        return getSession(true);
+        return (getSession(true));
     }
 
 
@@ -542,11 +554,11 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
 
             // There cannot be a session if no context has been assigned yet
             if (context == null)
-                return null;
+                return (null);
 
             // Return the current session if it exists and is valid
             if (session != null && session.isValid()) {
-                return session.getSession();
+                return (session.getSession());
             }
 
             HttpSession other = super.getSession(false);
@@ -600,12 +612,12 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
 
             String requestedSessionId = getRequestedSessionId();
             if (requestedSessionId == null)
-                return false;
+                return (false);
             if (context == null)
-                return false;
+                return (false);
             Manager manager = context.getManager();
             if (manager == null)
-                return false;
+                return (false);
             Session session = null;
             try {
                 session = manager.findSession(requestedSessionId);
@@ -613,9 +625,9 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
                 // Ignore
             }
             if ((session != null) && session.isValid()) {
-                return true;
+                return (true);
             } else {
-                return false;
+                return (false);
             }
 
         } else {
@@ -624,21 +636,8 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
     }
 
 
-    @Override
-    public PushBuilder newPushBuilder() {
-        ServletRequest current = getRequest();
-        while (current instanceof ServletRequestWrapper) {
-            current = ((ServletRequestWrapper) current).getRequest();
-        }
-        if (current instanceof RequestFacade) {
-            return ((RequestFacade) current).newPushBuilder(this);
-        } else {
-            return null;
-        }
-    }
-
-
     // -------------------------------------------------------- Package Methods
+
 
     /**
      * Recycle this request
@@ -647,6 +646,14 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         if (session != null) {
             session.endAccess();
         }
+    }
+
+
+    /**
+     * Return descriptive information about this implementation.
+     */
+    public String getInfo() {
+        return info;
     }
 
 
@@ -706,7 +713,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         queryString = request.getQueryString();
         requestURI = request.getRequestURI();
         servletPath = request.getServletPath();
-        mapping = request.getHttpServletMapping();
+
     }
 
 
@@ -746,7 +753,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
             return;
         }
 
-        parameters = new ParameterMap<>();
+        parameters = new ParameterMap<String, String[]>();
         parameters.putAll(getRequest().getParameterMap());
         mergeParameters();
         ((ParameterMap<String,String[]>) parameters).setLocked(true);
@@ -764,12 +771,6 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         this.queryParamString = queryString;
     }
 
-
-    void setMapping(HttpServletMapping mapping) {
-        this.mapping = mapping;
-    }
-
-
     // ------------------------------------------------------ Protected Methods
 
     /**
@@ -780,11 +781,11 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      */
     protected boolean isSpecial(String name) {
 
-        for (String special : specials) {
-            if (special.equals(name))
-                return true;
+        for (int i = 0; i < specials.length; i++) {
+            if (specials[i].equals(name))
+                return (true);
         }
-        return false;
+        return (false);
 
     }
 
@@ -798,10 +799,10 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
     protected int getSpecial(String name) {
         for (int i = 0; i < specials.length; i++) {
             if (specials[i].equals(name)) {
-                return i;
+                return (i);
             }
         }
-        return -1;
+        return (-1);
     }
 
 
@@ -814,10 +815,10 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         for (int i = 0; i < specials.length; i++) {
             if (specials[i].equals(name)) {
                 specialAttributes[i] = value;
-                return true;
+                return (true);
             }
         }
-        return false;
+        return (false);
     }
 
 
@@ -830,10 +831,10 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         for (int i = 0; i < specials.length; i++) {
             if (specials[i].equals(name)) {
                 specialAttributes[i] = null;
-                return true;
+                return (true);
             }
         }
-        return false;
+        return (false);
     }
 
 
@@ -843,24 +844,33 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
      * @param values1 First set of values
      * @param values2 Second set of values
      */
-    private String[] mergeValues(String[] values1, String[] values2) {
+    protected String[] mergeValues(Object values1, Object values2) {
 
-        List<Object> results = new ArrayList<>();
+        ArrayList<Object> results = new ArrayList<Object>();
 
         if (values1 == null) {
             // Skip - nothing to merge
-        } else {
-            results.addAll(Arrays.asList(values1));
+        } else if (values1 instanceof String[]) {
+            for (String value : (String[]) values1) {
+                results.add(value);
+            }
+        } else { // String
+            results.add(values1.toString());
         }
 
         if (values2 == null) {
             // Skip - nothing to merge
-        } else {
-            results.addAll(Arrays.asList(values2));
+        } else if (values2 instanceof String[]) {
+            for (String value : (String[]) values2) {
+                results.add(value);
+            }
+        } else { // String
+            results.add(values2.toString());
         }
 
         String values[] = new String[results.size()];
         return results.toArray(values);
+
     }
 
 
@@ -883,26 +893,19 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
         MessageBytes queryMB = MessageBytes.newInstance();
         queryMB.setString(queryParamString);
 
-        // TODO
-        // - Should only use body encoding if useBodyEncodingForURI is true
-        // - Otherwise, should use URIEncoding
-        // - The problem is that the connector is not available...
-        // - To add to the fun, the URI default changed in Servlet 4.0 to UTF-8
-
         String encoding = getCharacterEncoding();
-        Charset charset = null;
+        // No need to process null value, as ISO-8859-1 is the default encoding
+        // in MessageBytes.toBytes().
         if (encoding != null) {
             try {
-                charset = B2CConverter.getCharset(encoding);
-                queryMB.setCharset(charset);
-            } catch (UnsupportedEncodingException e) {
-                // Fall-back to default (ISO-8859-1)
-                charset = StandardCharsets.ISO_8859_1;
+                queryMB.setCharset(B2CConverter.getCharset(encoding));
+            } catch (UnsupportedEncodingException ignored) {
+                // Fall-back to ISO-8859-1
             }
         }
 
         paramParser.setQuery(queryMB);
-        paramParser.setQueryStringCharset(charset);
+        paramParser.setQueryStringEncoding(encoding);
         paramParser.handleQueryParameters();
 
         // Insert the additional parameters from the dispatch target
@@ -930,12 +933,11 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
     protected class AttributeNamesEnumerator implements Enumeration<String> {
 
         protected int pos = -1;
-        protected final int last;
-        protected final Enumeration<String> parentEnumeration;
+        protected int last = -1;
+        protected Enumeration<String> parentEnumeration = null;
         protected String next = null;
 
         public AttributeNamesEnumerator() {
-            int last = -1;
             parentEnumeration = getRequest().getAttributeNames();
             for (int i = specialAttributes.length - 1; i >= 0; i--) {
                 if (getAttribute(specials[i]) != null) {
@@ -943,7 +945,6 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
                     break;
                 }
             }
-            this.last = last;
         }
 
         @Override
@@ -958,7 +959,7 @@ class ApplicationHttpRequest extends HttpServletRequestWrapper {
                 for (int i = pos + 1; i <= last; i++) {
                     if (getAttribute(specials[i]) != null) {
                         pos = i;
-                        return specials[i];
+                        return (specials[i]);
                     }
                 }
             }

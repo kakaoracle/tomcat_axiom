@@ -41,7 +41,7 @@ import org.apache.catalina.valves.PersistentValve;
 
 public class TestPersistentManagerIntegration extends TomcatBaseTest {
 
-    private static final String ACTIVITY_CHECK = "org.apache.catalina.session.StandardSession.ACTIVITY_CHECK";
+    private final String ACTIVITY_CHECK = "org.apache.catalina.session.StandardSession.ACTIVITY_CHECK";
 
     private String oldActivityCheck;
 
@@ -102,7 +102,7 @@ public class TestPersistentManagerIntegration extends TomcatBaseTest {
         ctx.setDistributable(true);
 
         Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMappingDecoded("/dummy", "DummyServlet");
+        ctx.addServletMapping("/dummy", "DummyServlet");
 
         PersistentManager manager = new PersistentManager();
         TesterStore store = new TesterStore();
@@ -134,7 +134,7 @@ public class TestPersistentManagerIntegration extends TomcatBaseTest {
         ctx.setDistributable(true);
 
         Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMappingDecoded("/dummy", "DummyServlet");
+        ctx.addServletMapping("/dummy", "DummyServlet");
 
         PersistentManager manager = new PersistentManager();
         TesterStore store = new TesterStore();
@@ -166,7 +166,7 @@ public class TestPersistentManagerIntegration extends TomcatBaseTest {
         ctx.setDistributable(true);
 
         Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMappingDecoded("/dummy", "DummyServlet");
+        ctx.addServletMapping("/dummy", "DummyServlet");
 
         PersistentManager manager = new PersistentManager();
         TesterStore store = new TesterStore();

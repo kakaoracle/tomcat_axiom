@@ -59,6 +59,20 @@ import org.apache.tools.ant.BuildException;
  */
 public class JMXAccessorEqualsCondition extends JMXAccessorConditionBase {
 
+    /**
+     * Descriptive information describing this implementation.
+     */
+    private static final String info = "org.apache.catalina.ant.JMXAccessorEqualsCondition/1.1";
+
+    /**
+     * Return descriptive information about this implementation and the
+     * corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    public String getInfo() {
+        return info;
+    }
+
     @Override
     public boolean eval() {
         String value = getValue();

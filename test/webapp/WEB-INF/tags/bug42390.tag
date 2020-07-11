@@ -14,5 +14,5 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 --%>
-<%@ variable name-given="X" scope="AT_END" %>
+<%@ variable name-given="X" scope="AT_BEGIN" %>
 <jsp:doBody/>

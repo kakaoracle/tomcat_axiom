@@ -14,6 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina.session;
 
 
@@ -25,6 +27,7 @@ import java.util.Date;
 import java.util.Deque;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -43,10 +46,10 @@ import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Session;
 import org.apache.catalina.SessionIdGenerator;
+import org.apache.catalina.mbeans.MBeanUtils;
 import org.apache.catalina.util.LifecycleMBeanBase;
 import org.apache.catalina.util.SessionIdGeneratorBase;
 import org.apache.catalina.util.StandardSessionIdGenerator;
-import org.apache.catalina.util.ToStringUtil;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
@@ -66,15 +69,54 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     // ----------------------------------------------------- Instance Variables
 
     /**
-     * The Context with which this Manager is associated.
+     * The Container with which this Manager is associated.
      */
-    private Context context;
+    protected Container container;
+
+
+    /**
+     * The distributable flag for Sessions created by this Manager.  If this
+     * flag is set to <code>true</code>, any user attributes added to a
+     * session controlled by this Manager must be Serializable.
+     *
+     * @deprecated Ignored. {@link Context#getDistributable()} always takes
+     *             precedence. Will be removed in Tomcat 9.0.x.
+     */
+    @Deprecated
+    protected boolean distributable;
+
+
+    /**
+     * The descriptive information string for this implementation.
+     */
+    private static final String info = "ManagerBase/1.0";
 
 
     /**
      * The descriptive name of this Manager implementation (for logging).
      */
     private static final String name = "ManagerBase";
+
+
+    /**
+     * The default maximum inactive interval for Sessions created by
+     * this Manager.
+     *
+     * @deprecated Ignored. {@link Context#getSessionTimeout()} always takes
+     *             precedence. Will be removed in Tomcat 9.0.x.
+     */
+    @Deprecated
+    protected int maxInactiveInterval = 30 * 60;
+
+
+    protected static final int SESSION_ID_LENGTH_UNSET = -1;
+
+    /**
+     * The session id length of Sessions created by this Manager.
+     * The length should be set directly on the SessionIdGenerator.
+     * Setting it here is deprecated.
+     */
+    protected int sessionIdLength = SESSION_ID_LENGTH_UNSET;
 
 
     /**
@@ -120,10 +162,11 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     protected static final int TIMING_STATS_CACHE_SIZE = 100;
 
     protected final Deque<SessionTiming> sessionCreationTiming =
-            new LinkedList<>();
+        new LinkedList<SessionTiming>();
 
+    // Deque, 双端队列，具有队列和栈的特性，可以从两端弹出
     protected final Deque<SessionTiming> sessionExpirationTiming =
-            new LinkedList<>();
+        new LinkedList<SessionTiming>();
 
     /**
      * Number of sessions that have expired.
@@ -135,7 +178,7 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      * The set of currently active Sessions for this Manager, keyed by
      * session identifier.
      */
-    protected Map<String, Session> sessions = new ConcurrentHashMap<>();
+    protected Map<String, Session> sessions = new ConcurrentHashMap<String, Session>();
 
     // Number of sessions created by this manager
     protected long sessionCounter=0;
@@ -193,16 +236,6 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
     private boolean warnOnSessionAttributeFilterFailure;
 
-    private boolean notifyBindingListenerOnUnchangedValue;
-
-    private boolean notifyAttributeListenerOnUnchangedValue = true;
-
-    /**
-     * Determines whether sessions managed by this manager shall persist (serialize)
-     * authentication information or not.
-     */
-    private boolean persistAuthentication = false;
-
 
     // ------------------------------------------------------------ Constructors
 
@@ -210,42 +243,14 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
         if (Globals.IS_SECURITY_ENABLED) {
             // Minimum set required for default distribution/persistence to work
             // plus String
-            // plus SerializablePrincipal and String[] (required for authentication persistence)
             setSessionAttributeValueClassNameFilter(
-                    "java\\.lang\\.(?:Boolean|Integer|Long|Number|String)"
-                    + "|org\\.apache\\.catalina\\.realm\\.GenericPrincipal\\$SerializablePrincipal"
-                    + "|\\[Ljava.lang.String;");
+                    "java\\.lang\\.(?:Boolean|Integer|Long|Number|String)");
             setWarnOnSessionAttributeFilterFailure(true);
         }
     }
 
 
     // -------------------------------------------------------------- Properties
-
-    @Override
-    public boolean getNotifyAttributeListenerOnUnchangedValue() {
-        return notifyAttributeListenerOnUnchangedValue;
-    }
-
-
-
-    @Override
-    public void setNotifyAttributeListenerOnUnchangedValue(boolean notifyAttributeListenerOnUnchangedValue) {
-        this.notifyAttributeListenerOnUnchangedValue = notifyAttributeListenerOnUnchangedValue;
-    }
-
-
-    @Override
-    public boolean getNotifyBindingListenerOnUnchangedValue() {
-        return notifyBindingListenerOnUnchangedValue;
-    }
-
-
-    @Override
-    public void setNotifyBindingListenerOnUnchangedValue(boolean notifyBindingListenerOnUnchangedValue) {
-        this.notifyBindingListenerOnUnchangedValue = notifyBindingListenerOnUnchangedValue;
-    }
-
 
     /**
      * Obtain the regular expression used to filter session attribute based on
@@ -265,20 +270,7 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     }
 
 
-    /**
-     * Set the regular expression to use to filter session attributes based on
-     * attribute name. The regular expression is anchored so it must match the
-     * entire name.
-     *
-     * @param sessionAttributeNameFilter The regular expression to use to filter
-     *        session attributes based on attribute name. Use {@code null} if no
-     *        filtering is required. If an empty string is specified then no
-     *        names will match the filter and all attributes will be blocked.
-     *
-     * @throws PatternSyntaxException If the expression is not valid
-     */
-    public void setSessionAttributeNameFilter(String sessionAttributeNameFilter)
-            throws PatternSyntaxException {
+    public void setSessionAttributeNameFilter(String sessionAttributeNameFilter) {
         if (sessionAttributeNameFilter == null || sessionAttributeNameFilter.length() == 0) {
             sessionAttributeNamePattern = null;
         } else {
@@ -287,13 +279,6 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     }
 
 
-    /**
-     * Provides {@link #getSessionAttributeNameFilter()} as a pre-compiled
-     * regular expression pattern.
-     *
-     * @return The pre-compiled pattern used to filter session attributes based
-     *         on attribute name. {@code null} means no filter is applied.
-     */
     protected Pattern getSessionAttributeNamePattern() {
         return sessionAttributeNamePattern;
     }
@@ -381,23 +366,24 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
 
     @Override
-    public Context getContext() {
-        return context;
+    public Container getContainer() {
+        return this.container;
     }
 
 
     @Override
-    public void setContext(Context context) {
-        if (this.context == context) {
+    public void setContainer(Container container) {
+        if (this.container == container) {
             // NO-OP
             return;
         }
         if (!getState().equals(LifecycleState.NEW)) {
             throw new IllegalStateException(sm.getString("managerBase.setContextNotNew"));
         }
-        Context oldContext = this.context;
-        this.context = context;
-        support.firePropertyChange("context", oldContext, this.context);
+        Container oldContainer = this.container;
+        this.container = container;
+        // TODO - delete the line below in Tomcat 9 onwards
+        support.firePropertyChange("container", oldContainer, this.container);
     }
 
 
@@ -409,15 +395,104 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     }
 
 
+    @Deprecated
     @Override
+    public boolean getDistributable() {
+        Container container = getContainer();
+        if (container instanceof Context) {
+            return ((Context) container).getDistributable();
+        }
+        return false;
+    }
+
+
+    @Deprecated
+    @Override
+    public void setDistributable(boolean distributable) {
+        // NO-OP
+    }
+
+
+    @Deprecated
+    @Override
+    public String getInfo() {
+        return info;
+    }
+
+
+    @Override
+    public int getMaxInactiveInterval() {
+        Container container = getContainer();
+        if (container instanceof Context) {
+            // This method returns seconds, the Context uses minutes
+            return ((Context) container).getSessionTimeout() * 60;
+        }
+        return -1;
+    }
+
+
+    @Deprecated
+    @Override
+    public void setMaxInactiveInterval(int interval) {
+        log.warn(sm.getString("managerBase.setMaxInactiveIntervalUnused"));
+    }
+
+
+    /**
+     * Gets the session id length (in bytes) of Sessions created by
+     * this Manager.
+     *
+     * @deprecated Use {@link SessionIdGenerator#getSessionIdLength()}.
+     *             This method will be removed in Tomcat 9 onwards.
+     *
+     * @return The session id length
+     */
+    @Override
+    @Deprecated
+    public int getSessionIdLength() {
+
+        return (this.sessionIdLength);
+
+    }
+
+
+    /**
+     * Sets the session id length (in bytes) for Sessions created by this
+     * Manager.
+     *
+     * @deprecated Use {@link SessionIdGenerator#setSessionIdLength(int)}.
+     *             This method will be removed in Tomcat 9 onwards.
+     *
+     * @param idLength The session id length
+     */
+    @Override
+    @Deprecated
+    public void setSessionIdLength(int idLength) {
+
+        int oldSessionIdLength = this.sessionIdLength;
+        this.sessionIdLength = idLength;
+        support.firePropertyChange("sessionIdLength",
+                                   Integer.valueOf(oldSessionIdLength),
+                                   Integer.valueOf(this.sessionIdLength));
+
+    }
+
+
+    /**
+     * Gets the session id generator.
+     *
+     * @return The session id generator
+     */
     public SessionIdGenerator getSessionIdGenerator() {
         if (sessionIdGenerator != null) {
             return sessionIdGenerator;
         } else if (sessionIdGeneratorClass != null) {
             try {
-                sessionIdGenerator = sessionIdGeneratorClass.getConstructor().newInstance();
+                sessionIdGenerator = sessionIdGeneratorClass.newInstance();
                 return sessionIdGenerator;
-            } catch(ReflectiveOperationException ex) {
+            } catch(IllegalAccessException ex) {
+                // Ignore
+            } catch(InstantiationException ex) {
                 // Ignore
             }
         }
@@ -425,7 +500,6 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     }
 
 
-    @Override
     public void setSessionIdGenerator(SessionIdGenerator sessionIdGenerator) {
         this.sessionIdGenerator = sessionIdGenerator;
         sessionIdGeneratorClass = sessionIdGenerator.getClass();
@@ -436,14 +510,18 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      * @return The descriptive short name of this Manager implementation.
      */
     public String getName() {
-        return name;
+
+        return (name);
+
     }
 
     /**
      * @return The secure random number generator class name.
      */
     public String getSecureRandomClass() {
-        return this.secureRandomClass;
+
+        return (this.secureRandomClass);
+
     }
 
 
@@ -531,7 +609,9 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      * @return The frequency of manager checks.
      */
     public int getProcessExpiresFrequency() {
-        return this.processExpiresFrequency;
+
+        return (this.processExpiresFrequency);
+
     }
 
     /**
@@ -552,32 +632,8 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
                                    Integer.valueOf(this.processExpiresFrequency));
 
     }
-
-
-    /**
-     * Return whether sessions managed by this manager shall persist authentication
-     * information or not.
-     *
-     * @return {@code true}, sessions managed by this manager shall persist
-     *         authentication information; {@code false} otherwise
-     */
-    public boolean getPersistAuthentication() {
-        return this.persistAuthentication;
-    }
-
-    /**
-     * Set whether sessions managed by this manager shall persist authentication
-     * information or not.
-     *
-     * @param persistAuthentication if {@code true}, sessions managed by this manager
-     *                              shall persist authentication information
-     */
-    public void setPersistAuthentication(boolean persistAuthentication) {
-        this.persistAuthentication = persistAuthentication;
-    }
-
-
     // --------------------------------------------------------- Public Methods
+
 
     /**
      * {@inheritDoc}
@@ -586,7 +642,9 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      */
     @Override
     public void backgroundProcess() {
+        // count从0开始，每6次处理一下过期session
         count = (count + 1) % processExpiresFrequency;
+        // count为0时才会处理过期的Session
         if (count == 0)
             processExpires();
     }
@@ -602,8 +660,10 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
         if(log.isDebugEnabled())
             log.debug("Start expire sessions " + getName() + " at " + timeNow + " sessioncount " + sessions.length);
-        for (Session session : sessions) {
-            if (session != null && !session.isValid()) {
+        for (int i = 0; i < sessions.length; i++) {
+            // isValid放在中会进行过期的销毁处理，消费成功则session不合法
+            if (sessions[i]!=null && !sessions[i].isValid()) {
+                // 过期session个数计数
                 expireHere++;
             }
         }
@@ -619,7 +679,7 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     protected void initInternal() throws LifecycleException {
         super.initInternal();
 
-        if (context == null) {
+        if (!(container instanceof Context)) {
             throw new LifecycleException(sm.getString("managerBase.contextNull"));
         }
     }
@@ -644,6 +704,9 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
             setSessionIdGenerator(sessionIdGenerator);
         }
 
+        if (sessionIdLength != SESSION_ID_LENGTH_UNSET) {
+            sessionIdGenerator.setSessionIdLength(sessionIdLength);
+        }
         sessionIdGenerator.setJvmRoute(getJvmRoute());
         if (sessionIdGenerator instanceof SessionIdGeneratorBase) {
             SessionIdGeneratorBase sig = (SessionIdGeneratorBase)sessionIdGenerator;
@@ -711,7 +774,7 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
         session.setNew(true);
         session.setValid(true);
         session.setCreationTime(System.currentTimeMillis());
-        session.setMaxInactiveInterval(getContext().getSessionTimeout() * 60);
+        session.setMaxInactiveInterval(((Context) getContainer()).getSessionTimeout() * 60);
         String id = sessionId;
         if (id == null) {
             id = generateSessionId();
@@ -724,13 +787,14 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
             sessionCreationTiming.add(timing);
             sessionCreationTiming.poll();
         }
-        return session;
+        return (session);
+
     }
 
 
     @Override
     public Session createEmptySession() {
-        return getNewSession();
+        return (getNewSession());
     }
 
 
@@ -761,17 +825,22 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
         // the manager because it is being persisted - update the expired stats
         if (update) {
             long timeNow = System.currentTimeMillis();
+            // session存活时间，当前是remove方法，不要考虑自动过期的，可能是手到remove
             int timeAlive =
                 (int) (timeNow - session.getCreationTimeInternal())/1000;
+            // 记录一下所有Session中最大的存活时间
             updateSessionMaxAliveTime(timeAlive);
+            // 过期Session数量+1
             expiredSessions.incrementAndGet();
             SessionTiming timing = new SessionTiming(timeNow, timeAlive);
             synchronized (sessionExpirationTiming) {
+                // 添加到尾部，并移除头结点？
                 sessionExpirationTiming.add(timing);
                 sessionExpirationTiming.poll();
             }
         }
 
+        // 根据sessionId进行移除，这里的移除只是将某一个Session对象从ConcurrentHashMap中删除掉，该Session对象仍然存在
         if (session.getIdInternal() != null) {
             sessions.remove(session.getIdInternal());
         }
@@ -786,30 +855,11 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
     @Override
     public void changeSessionId(Session session) {
-        rotateSessionId(session);
-    }
-
-
-    @Override
-    public String rotateSessionId(Session session) {
-        String newId = generateSessionId();
-        changeSessionId(session, newId, true, true);
-        return newId;
-    }
-
-
-    @Override
-    public void changeSessionId(Session session, String newId) {
-        changeSessionId(session, newId, true, true);
-    }
-
-
-    protected void changeSessionId(Session session, String newId,
-            boolean notifySessionListeners, boolean notifyContainerListeners) {
         String oldId = session.getIdInternal();
-        session.setId(newId, false);
-        session.tellChangedSessionId(newId, oldId,
-                notifySessionListeners, notifyContainerListeners);
+        session.setId(generateSessionId(), false);
+        String newId = session.getIdInternal();
+        container.fireContainerEvent(Context.CHANGE_SESSION_ID_EVENT,
+                new String[] {oldId, newId});
     }
 
 
@@ -865,7 +915,6 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
     /**
      * Get new session class to be used in the doLoad() method.
-     * @return a new session for use with this manager
      */
     protected StandardSession getNewSession() {
         return new StandardSession(this);
@@ -874,7 +923,6 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
     /**
      * Generate and return a new session identifier.
-     * @return a new session id
      */
     protected String generateSessionId() {
 
@@ -906,7 +954,7 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      */
     public Engine getEngine() {
         Engine e = null;
-        for (Container c = getContext(); e == null && c != null ; c = c.getParent()) {
+        for (Container c = getContainer(); e == null && c != null ; c = c.getParent()) {
             if (c instanceof Engine) {
                 e = (Engine)c;
             }
@@ -981,7 +1029,9 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      *         limit.
      */
     public int getMaxActiveSessions() {
-        return this.maxActiveSessions;
+
+        return (this.maxActiveSessions);
+
     }
 
 
@@ -1042,17 +1092,19 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
     @Override
     public int getSessionAverageAliveTime() {
         // Copy current stats
-        List<SessionTiming> copy;
+        List<SessionTiming> copy = new ArrayList<SessionTiming>();
         synchronized (sessionExpirationTiming) {
-            copy = new ArrayList<>(sessionExpirationTiming);
+            copy.addAll(sessionExpirationTiming);
         }
 
         // Init
         int counter = 0;
         int result = 0;
+        Iterator<SessionTiming> iter = copy.iterator();
 
         // Calculate average
-        for (SessionTiming timing : copy) {
+        while (iter.hasNext()) {
+            SessionTiming timing = iter.next();
             if (timing != null) {
                 int timeAlive = timing.getDuration();
                 counter++;
@@ -1072,13 +1124,37 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      */
     @Override
     public int getSessionCreateRate() {
+        long now = System.currentTimeMillis();
         // Copy current stats
-        List<SessionTiming> copy;
+        List<SessionTiming> copy = new ArrayList<SessionTiming>();
         synchronized (sessionCreationTiming) {
-            copy = new ArrayList<>(sessionCreationTiming);
+            copy.addAll(sessionCreationTiming);
         }
 
-        return calculateRate(copy);
+        // Init
+        long oldest = now;
+        int counter = 0;
+        int result = 0;
+        Iterator<SessionTiming> iter = copy.iterator();
+
+        // Calculate rate
+        while (iter.hasNext()) {
+            SessionTiming timing = iter.next();
+            if (timing != null) {
+                counter++;
+                if (timing.getTimestamp() < oldest) {
+                    oldest = timing.getTimestamp();
+                }
+            }
+        }
+        if (counter > 0) {
+            if (oldest < now) {
+                result = (1000*60*counter)/(int) (now - oldest);
+            } else {
+                result = Integer.MAX_VALUE;
+            }
+        }
+        return result;
     }
 
 
@@ -1092,25 +1168,22 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      */
     @Override
     public int getSessionExpireRate() {
+        long now = System.currentTimeMillis();
         // Copy current stats
-        List<SessionTiming> copy;
+        List<SessionTiming> copy = new ArrayList<SessionTiming>();
         synchronized (sessionExpirationTiming) {
-            copy = new ArrayList<>(sessionExpirationTiming);
+            copy.addAll(sessionExpirationTiming);
         }
 
-        return calculateRate(copy);
-    }
-
-
-    private static int calculateRate(List<SessionTiming> sessionTiming) {
         // Init
-        long now = System.currentTimeMillis();
         long oldest = now;
         int counter = 0;
         int result = 0;
+        Iterator<SessionTiming> iter = copy.iterator();
 
         // Calculate rate
-        for (SessionTiming timing : sessionTiming) {
+        while (iter.hasNext()) {
+            SessionTiming timing = iter.next();
             if (timing != null) {
                 counter++;
                 if (timing.getTimestamp() < oldest) {
@@ -1137,8 +1210,9 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      */
     public String listSessionIds() {
         StringBuilder sb = new StringBuilder();
-        for (String s : sessions.keySet()) {
-            sb.append(s).append(" ");
+        Iterator<String> keys = sessions.keySet().iterator();
+        while (keys.hasNext()) {
+            sb.append(keys.next()).append(" ");
         }
         return sb.toString();
     }
@@ -1155,10 +1229,9 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
      */
     public String getSessionAttribute( String sessionId, String key ) {
         Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
+        if( s==null ) {
+            if(log.isInfoEnabled())
+                log.info("Session not found " + sessionId);
             return null;
         }
         Object o=s.getSession().getAttribute(key);
@@ -1183,7 +1256,7 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
         Session s = sessions.get(sessionId);
         if (s == null) {
             if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
+                log.info("Session not found " + sessionId);
             }
             return null;
         }
@@ -1193,7 +1266,7 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
             return null;
         }
 
-        HashMap<String, String> map = new HashMap<>();
+        HashMap<String, String> map = new HashMap<String, String>();
         while (ee.hasMoreElements()) {
             String attrName = ee.nextElement();
             map.put(attrName, getSessionAttribute(sessionId, attrName));
@@ -1204,86 +1277,78 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
 
     public void expireSession( String sessionId ) {
-        Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
+        Session s=sessions.get(sessionId);
+        if( s==null ) {
+            if(log.isInfoEnabled())
+                log.info("Session not found " + sessionId);
             return;
         }
         s.expire();
     }
 
     public long getThisAccessedTimestamp( String sessionId ) {
-        Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
-            return -1;
-        }
+        Session s=sessions.get(sessionId);
+        if(s== null)
+            return -1 ;
         return s.getThisAccessedTime();
     }
 
     public String getThisAccessedTime( String sessionId ) {
-        Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
+        Session s=sessions.get(sessionId);
+        if( s==null ) {
+            if(log.isInfoEnabled())
+                log.info("Session not found " + sessionId);
             return "";
         }
         return new Date(s.getThisAccessedTime()).toString();
     }
 
     public long getLastAccessedTimestamp( String sessionId ) {
-        Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
-            return -1;
-        }
+        Session s=sessions.get(sessionId);
+        if(s== null)
+            return -1 ;
         return s.getLastAccessedTime();
     }
 
     public String getLastAccessedTime( String sessionId ) {
-        Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
+        Session s=sessions.get(sessionId);
+        if( s==null ) {
+            if(log.isInfoEnabled())
+                log.info("Session not found " + sessionId);
             return "";
         }
         return new Date(s.getLastAccessedTime()).toString();
     }
 
     public String getCreationTime( String sessionId ) {
-        Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
+        Session s=sessions.get(sessionId);
+        if( s==null ) {
+            if(log.isInfoEnabled())
+                log.info("Session not found " + sessionId);
             return "";
         }
         return new Date(s.getCreationTime()).toString();
     }
 
     public long getCreationTimestamp( String sessionId ) {
-        Session s = sessions.get(sessionId);
-        if (s == null) {
-            if (log.isInfoEnabled()) {
-                log.info(sm.getString("managerBase.sessionNotFound", sessionId));
-            }
-            return -1;
-        }
+        Session s=sessions.get(sessionId);
+        if(s== null)
+            return -1 ;
         return s.getCreationTime();
     }
 
 
     @Override
     public String toString() {
-        return ToStringUtil.toString(this, context);
+        StringBuilder sb = new StringBuilder(this.getClass().getName());
+        sb.append('[');
+        if (container == null) {
+            sb.append("Container is null");
+        } else {
+            sb.append(container.getName());
+        }
+        sb.append(']');
+        return sb.toString();
     }
 
 
@@ -1293,22 +1358,30 @@ public abstract class ManagerBase extends LifecycleMBeanBase implements Manager 
 
         StringBuilder name = new StringBuilder("type=Manager");
 
-        name.append(",host=");
-        name.append(context.getParent().getName());
+        if (container instanceof Context) {
+            name.append(",context=");
+            String contextName = container.getName();
+            if (!contextName.startsWith("/")) {
+                name.append('/');
+            }
+            name.append(contextName);
 
-        name.append(",context=");
-        String contextName = context.getName();
-        if (!contextName.startsWith("/")) {
-            name.append('/');
+            Context context = (Context) container;
+            name.append(",host=");
+            name.append(context.getParent().getName());
+        } else {
+            // Unlikely / impossible? Handle it to be safe
+            name.append(",container=");
+            name.append(container.getName());
         }
-        name.append(contextName);
 
         return name.toString();
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public String getDomainInternal() {
-        return context.getDomain();
+        return MBeanUtils.getDomain(container);
     }
 
 

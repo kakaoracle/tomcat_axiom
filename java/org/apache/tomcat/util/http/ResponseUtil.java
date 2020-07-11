@@ -27,7 +27,7 @@ import java.util.Set;
 
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.tomcat.util.http.parser.TokenList;
+import org.apache.tomcat.util.http.parser.Vary;
 
 public class ResponseUtil {
 
@@ -76,12 +76,12 @@ public class ResponseUtil {
         // the existing values, check if the new value is already present and
         // then add it if not. The good news is field names are tokens which
         // makes parsing simpler.
-        Set<String> fieldNames = new HashSet<>();
+        Set<String> fieldNames = new HashSet<String>();
 
         for (String varyHeader : varyHeaders) {
             StringReader input = new StringReader(varyHeader);
             try {
-                TokenList.parseTokenList(input, fieldNames);
+                Vary.parseVary(input, fieldNames);
             } catch (IOException ioe) {
                 // Should never happen
             }
@@ -126,7 +126,7 @@ public class ResponseUtil {
         @Override
         public Collection<String> getHeaders(String name) {
             Enumeration<String> values = headers.values(name);
-            List<String> result = new ArrayList<>();
+            List<String> result = new ArrayList<String>();
             while (values.hasMoreElements()) {
                 result.add(values.nextElement());
             }

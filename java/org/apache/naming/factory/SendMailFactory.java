@@ -75,7 +75,7 @@ import javax.naming.spi.ObjectFactory;
 public class SendMailFactory implements ObjectFactory
 {
     // The class name for the javamail MimeMessageDataSource
-    protected static final String DataSourceClassName =
+    protected final String DataSourceClassName =
         "javax.mail.internet.MimePartDataSource";
 
     @Override
@@ -124,7 +124,8 @@ public class SendMailFactory implements ObjectFactory
                     return mds;
                 }
             } );
-        } else { // We can't create an instance of the DataSource
+        }
+        else { // We can't create an instance of the DataSource
             return null;
         }
     }

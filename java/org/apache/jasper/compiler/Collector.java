@@ -33,7 +33,7 @@ class Collector {
      * A visitor for collecting information on the page and the body of
      * the custom tags.
      */
-    private static class CollectVisitor extends Node.Visitor {
+    static class CollectVisitor extends Node.Visitor {
 
         private boolean scriptingElementSeen = false;
         private boolean usebeanSeen = false;
@@ -165,8 +165,8 @@ class Collector {
                 scriptingElementSeen = true;
 
             Node.JspAttribute[] attrs = n.getJspAttributes();
-            for (Node.JspAttribute attr : attrs) {
-                if (attr.isExpression()) {
+            for (int i = 0; i < attrs.length; i++) {
+                if (attrs[i].isExpression()) {
                     scriptingElementSeen = true;
                     break;
                 }
@@ -199,7 +199,7 @@ class Collector {
             scriptingElementSeen = true;
         }
 
-        private void updatePageInfo(PageInfo pageInfo) {
+        public void updatePageInfo(PageInfo pageInfo) {
             pageInfo.setScriptless(! scriptingElementSeen);
         }
     }

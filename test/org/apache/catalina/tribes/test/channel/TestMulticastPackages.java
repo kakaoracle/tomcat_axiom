@@ -34,7 +34,7 @@ import org.apache.catalina.tribes.ManagedChannel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
-import org.apache.catalina.tribes.group.interceptors.MessageDispatchInterceptor;
+import org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor;
 import org.apache.catalina.tribes.group.interceptors.ThroughputInterceptor;
 import org.apache.catalina.tribes.io.XByteBuffer;
 import org.apache.catalina.tribes.transport.AbstractSender;
@@ -53,9 +53,9 @@ public class TestMulticastPackages {
     @Before
     public void setUp() throws Exception {
         channel1 = new GroupChannel();
-        channel1.addInterceptor(new MessageDispatchInterceptor());
+        channel1.addInterceptor(new MessageDispatch15Interceptor());
         channel2 = new GroupChannel();
-        channel2.addInterceptor(new MessageDispatchInterceptor());
+        channel2.addInterceptor(new MessageDispatch15Interceptor());
         ThroughputInterceptor tint = new ThroughputInterceptor();
         tint.setInterval(500);
         ThroughputInterceptor tint2 = new ThroughputInterceptor();
@@ -126,16 +126,13 @@ public class TestMulticastPackages {
                         System.out.println("Thread["+this.getName()+"] sent "+msgCount+" messages in "+(System.currentTimeMillis()-start)+" ms.");
                     }catch ( Exception x ) {
                         x.printStackTrace();
+                        return;
                     }
                 }
             };
         }
-        for (Thread thread : threads) {
-            thread.start();
-        }
-        for (Thread thread : threads) {
-            thread.join();
-        }
+        for (int x=0; x<threads.length; x++ ) { threads[x].start();}
+        for (int x=0; x<threads.length; x++ ) { threads[x].join();}
         //sleep for 50 sec, let the other messages in
         long start = System.currentTimeMillis();
         while ( (System.currentTimeMillis()-start)<25000 && msgCount*threadCount!=listener1.count.get()) Thread.sleep(500);
@@ -216,7 +213,7 @@ public class TestMulticastPackages {
         public byte[] data;
         public byte key;
         public boolean hasNr = false;
-        public static final Random r = new Random();
+        public static Random r = new Random();
         public static Data createRandomData() {
             return createRandomData(ChannelReceiver.MAX_UDP_SIZE);
         }

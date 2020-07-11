@@ -14,10 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina.startup;
 
+
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSet;
+import org.apache.tomcat.util.digester.RuleSetBase;
+
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a
@@ -27,24 +31,29 @@ import org.apache.tomcat.util.digester.RuleSet;
  *
  * @author Craig R. McClanahan
  */
-public class HostRuleSet implements RuleSet {
+public class HostRuleSet extends RuleSetBase {
+
 
     // ----------------------------------------------------- Instance Variables
+
 
     /**
      * The matching pattern prefix to use for recognizing our elements.
      */
-    protected final String prefix;
+    protected String prefix = null;
 
 
     // ------------------------------------------------------------ Constructor
+
 
     /**
      * Construct an instance of this <code>RuleSet</code> with the default
      * matching pattern prefix.
      */
     public HostRuleSet() {
+
         this("");
+
     }
 
 
@@ -56,11 +65,16 @@ public class HostRuleSet implements RuleSet {
      *  trailing slash character)
      */
     public HostRuleSet(String prefix) {
+
+        super();
+        this.namespaceURI = null;
         this.prefix = prefix;
+
     }
 
 
     // --------------------------------------------------------- Public Methods
+
 
     /**
      * <p>Add the set of Rule instances defined in this RuleSet to the
@@ -78,6 +92,8 @@ public class HostRuleSet implements RuleSet {
                                  "org.apache.catalina.core.StandardHost",
                                  "className");
         digester.addSetProperties(prefix + "Host");
+
+        // 在解析Host节点的时候，会将Engine节点中ParentClassLoader设置为自己的ParentClassLoader
         digester.addRule(prefix + "Host",
                          new CopyParentClassLoaderRule());
         digester.addRule(prefix + "Host",
@@ -88,6 +104,7 @@ public class HostRuleSet implements RuleSet {
                             "addChild",
                             "org.apache.catalina.Container");
 
+        // 直接调用addAlias(String s)方法
         digester.addCallMethod(prefix + "Host/Alias",
                                "addAlias", 0);
 
@@ -118,5 +135,8 @@ public class HostRuleSet implements RuleSet {
         digester.addSetNext(prefix + "Host/Valve",
                             "addValve",
                             "org.apache.catalina.Valve");
+
     }
+
+
 }

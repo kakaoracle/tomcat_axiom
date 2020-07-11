@@ -18,7 +18,6 @@ package org.apache.jasper.compiler;
 
 import org.apache.jasper.JasperException;
 import org.apache.jasper.Options;
-import org.apache.jasper.TrimSpacesOption;
 
 /**
  */
@@ -27,13 +26,12 @@ public class TextOptimizer {
     /**
      * A visitor to concatenate contiguous template texts.
      */
-    private static class TextCatVisitor extends Node.Visitor {
+    static class TextCatVisitor extends Node.Visitor {
 
         private static final String EMPTY_TEXT = "";
-        private static final String SINGLE_SPACE = " ";
 
-        private final Options options;
-        private final PageInfo pageInfo;
+        private Options options;
+        private PageInfo pageInfo;
         private int textNodeCount = 0;
         private Node.TemplateText firstTextNode = null;
         private StringBuilder textBuffer;
@@ -83,15 +81,10 @@ public class TextOptimizer {
 
         @Override
         public void visit(Node.TemplateText n) throws JasperException {
-            if (n.isAllSpace()) {
-                if ((options.getTrimSpaces() == TrimSpacesOption.TRUE ||
-                        pageInfo.isTrimDirectiveWhitespaces())) {
-                    n.setText(EMPTY_TEXT);
-                    return;
-                } else if (options.getTrimSpaces() == TrimSpacesOption.SINGLE) {
-                    n.setText(SINGLE_SPACE);
-                    return;
-                }
+            if ((options.getTrimSpaces() || pageInfo.isTrimDirectiveWhitespaces())
+                    && n.isAllSpace()) {
+                n.setText(EMPTY_TEXT);
+                return;
             }
 
             if (textNodeCount++ == 0) {

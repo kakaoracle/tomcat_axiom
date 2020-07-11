@@ -24,7 +24,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Properties;
@@ -49,11 +48,29 @@ public class Utils {
     static Properties load(File f) {
         Properties props = new Properties();
 
-        try (FileInputStream fis = new FileInputStream(f);
-                Reader r = new InputStreamReader(fis, StandardCharsets.UTF_8)) {
+        FileInputStream fis = null;
+        Reader r = null;
+        try {
+            fis = new FileInputStream(f);
+            r = new InputStreamReader(fis, "UTF-8");
             props.load(r);
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            if (r != null) {
+                try {
+                    r.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
         }
         return props;
     }
@@ -78,11 +95,7 @@ public class Utils {
 
 
     static void processDirectory(File root, File dir, Map<String,Properties> translations) throws IOException {
-        File[] files = dir.listFiles();
-        if (files == null) {
-            throw new IllegalArgumentException("Not a directory [" + dir.getAbsolutePath() + "]");
-        }
-        for (File f : files) {
+        for (File f : dir.listFiles()) {
             if (f.isDirectory()) {
                 processDirectory(root, f, translations);
             } else if (f.isFile()) {
@@ -135,8 +148,11 @@ public class Utils {
 
     static void export(String language, Properties translation, File storageDir) {
         File out = new File(storageDir, Constants.L10N_PREFIX + language + Constants.L10N_SUFFIX);
-        try (FileOutputStream fos = new FileOutputStream(out);
-                Writer w = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
+        FileOutputStream fos = null;
+        Writer w = null;
+        try {
+            fos = new FileOutputStream(out);
+            w = new OutputStreamWriter(fos, "UTF-8");
             String[] keys = translation.keySet().toArray(new String[0]);
             Arrays.sort(keys);
             for (Object key : keys) {
@@ -144,6 +160,21 @@ public class Utils {
             }
         } catch (IOException ioe) {
             ioe.printStackTrace();
+        } finally {
+            if (w != null) {
+                try {
+                    w.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
         }
     }
 }

@@ -86,26 +86,11 @@ public class TestCharChunk {
     }
 
 
-    public static class Sink implements CharOutputChannel {
+    public class Sink implements CharOutputChannel {
 
         @Override
         public void realWriteChars(char[] cbuf, int off, int len) throws IOException {
             // NO-OP
         }
     }
-
-
-    @Test
-    public void testToString() {
-        CharChunk cc = new CharChunk();
-        Assert.assertNull(cc.toString());
-        char[] data = new char[8];
-        cc.setChars(data, 0, data.length);
-        Assert.assertNotNull(cc.toString());
-        cc.recycle();
-        // toString() should behave consistently for new ByteChunk and
-        // immediately after a call to recycle().
-        Assert.assertNull(cc.toString());
-    }
-
 }

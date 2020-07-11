@@ -21,25 +21,22 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.tomcat.util.res.StringManager;
-
 /**
- * As task queue specifically designed to run with a thread pool executor. The
- * task queue is optimised to properly utilize threads within a thread pool
- * executor. If you use a normal queue, the executor will spawn threads when
- * there are idle threads and you wont be able to force items onto the queue
- * itself.
+ * As task queue specifically designed to run with a thread pool executor.
+ * The task queue is optimised to properly utilize threads within
+ * a thread pool executor. If you use a normal queue, the executor will spawn threads
+ * when there are idle threads and you wont be able to force items unto the queue itself
+ * @author fhanik
+ *
  */
 public class TaskQueue extends LinkedBlockingQueue<Runnable> {
 
     private static final long serialVersionUID = 1L;
-    protected static final StringManager sm = StringManager
-            .getManager("org.apache.tomcat.util.threads.res");
 
-    private transient volatile ThreadPoolExecutor parent = null;
+    private ThreadPoolExecutor parent = null;
 
-    // No need to be volatile. This is written and read in a single thread
-    // (when stopping a context and firing the  listeners)
+    // no need to be volatile, the one times when we change and read it occur in
+    // a single thread (the one that did stop a context and fired listeners)
     private Integer forcedRemainingCapacity = null;
 
     public TaskQueue() {
@@ -59,12 +56,12 @@ public class TaskQueue extends LinkedBlockingQueue<Runnable> {
     }
 
     public boolean force(Runnable o) {
-        if (parent == null || parent.isShutdown()) throw new RejectedExecutionException(sm.getString("taskQueue.notRunning"));
+        if ( parent.isShutdown() ) throw new RejectedExecutionException("Executor not running, can't force a command into the queue");
         return super.offer(o); //forces the item onto the queue, to be used if the task is rejected
     }
 
     public boolean force(Runnable o, long timeout, TimeUnit unit) throws InterruptedException {
-        if (parent == null || parent.isShutdown()) throw new RejectedExecutionException(sm.getString("taskQueue.notRunning"));
+        if ( parent.isShutdown() ) throw new RejectedExecutionException("Executor not running, can't force a command into the queue");
         return super.offer(o,timeout,unit); //forces the item onto the queue, to be used if the task is rejected
     }
 

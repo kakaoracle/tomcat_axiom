@@ -79,7 +79,7 @@ public class TestOrderInterceptor {
         TesterUtil.addRandomDomain(channels);
         for ( int i=0; i<channelCount; i++ ) threads[i].start();
         for ( int i=0; i<channelCount; i++ ) threads[i].join();
-        Thread.sleep(1500);
+        Thread.sleep(1000);
     }
 
     @Test
@@ -90,8 +90,8 @@ public class TestOrderInterceptor {
             channels[0].send(dest,Integer.valueOf(value.getAndAdd(1)),0);
         }
         Thread.sleep(5000);
-        for (TestListener testListener : test) {
-            Assert.assertFalse(testListener.fail);
+        for ( int i=0; i<test.length; i++ ) {
+            Assert.assertFalse(test[i].fail);
         }
     }
 
@@ -99,7 +99,7 @@ public class TestOrderInterceptor {
     public void testOrder2() throws Exception {
         final Member[] dest = channels[0].getMembers();
         final AtomicInteger value = new AtomicInteger(0);
-        final Queue<Exception> exceptionQueue = new ConcurrentLinkedQueue<>();
+        final Queue<Exception> exceptionQueue = new ConcurrentLinkedQueue<Exception>();
         Runnable run = new Runnable() {
             @Override
             public void run() {
@@ -118,19 +118,19 @@ public class TestOrderInterceptor {
         for (int i=0;i<threads.length;i++) {
             threads[i] = new Thread(run);
         }
-        for (Thread thread : threads) {
-            thread.start();
+        for (int i=0;i<threads.length;i++) {
+            threads[i].start();
         }
-        for (Thread thread : threads) {
-            thread.join();
+        for (int i=0;i<threads.length;i++) {
+            threads[i].join();
         }
         if (!exceptionQueue.isEmpty()) {
             Assert.fail("Exception while sending in threads: "
                     + exceptionQueue.remove().toString());
         }
         Thread.sleep(5000);
-        for (TestListener testListener : test) {
-            Assert.assertFalse(testListener.fail);
+        for ( int i=0; i<test.length; i++ ) {
+            Assert.assertFalse(test[i].fail);
         }
     }
 

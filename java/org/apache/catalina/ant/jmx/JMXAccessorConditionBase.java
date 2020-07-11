@@ -150,8 +150,8 @@ public abstract class JMXAccessorConditionBase extends ProjectComponent implemen
      * from jmxOpen Task).
      *
      * @return active JMXConnection
-     * @throws MalformedURLException Invalid URL for JMX server
-     * @throws IOException Connection error
+     * @throws MalformedURLException
+     * @throws IOException
      */
     protected MBeanServerConnection getJMXConnection()
             throws MalformedURLException, IOException {

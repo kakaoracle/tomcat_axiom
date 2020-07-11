@@ -16,6 +16,6 @@
 --%><%@ tag import="java.util.List" import="java.util.ArrayList"%><%@
 tag body-content="empty" %><%
     // Make sure the imports above do work
-    List<String> l = new ArrayList<>();
+    List<String> l = new ArrayList<String>();
     l.add("OK");
     %><p><%=l.get(0)%></p>

@@ -20,28 +20,24 @@ package org.apache.catalina.ssi;
 import java.text.ParseException;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-
-import org.apache.tomcat.util.res.StringManager;
 /**
  * Represents a parsed expression.
  *
  * @author Paul Speed
  */
 public class ExpressionParseTree {
-    private static final StringManager sm = StringManager.getManager(ExpressionParseTree.class);
     /**
      * Contains the current set of completed nodes. This is a workspace for the
      * parser.
      */
-    private final LinkedList<Node> nodeStack = new LinkedList<>();
+    private LinkedList<Node> nodeStack = new LinkedList<Node>();
     /**
      * Contains operator nodes that don't yet have values. This is a workspace
      * for the parser.
      */
-    private final LinkedList<OppNode> oppStack = new LinkedList<>();
+    private LinkedList<OppNode> oppStack = new LinkedList<OppNode>();
     /**
      * The root node after the expression has been parsed.
      */
@@ -49,14 +45,11 @@ public class ExpressionParseTree {
     /**
      * The SSIMediator to use when evaluating the expressions.
      */
-    private final SSIMediator ssiMediator;
+    private SSIMediator ssiMediator;
 
 
     /**
      * Creates a new parse tree for the specified expression.
-     * @param expr The expression string
-     * @param ssiMediator Used to evaluated the expressions
-     * @throws ParseException a parsing error occurred
      */
     public ExpressionParseTree(String expr, SSIMediator ssiMediator)
             throws ParseException {
@@ -68,7 +61,6 @@ public class ExpressionParseTree {
     /**
      * Evaluates the tree and returns true or false. The specified SSIMediator
      * is used to resolve variable references.
-     * @return the evaluation result
      */
     public boolean evaluateTree() {
         return root.evaluate();
@@ -78,7 +70,6 @@ public class ExpressionParseTree {
     /**
      * Pushes a new operator onto the opp stack, resolving existing opps as
      * needed.
-     * @param node The operator node
      */
     private void pushOpp(OppNode node) {
         // If node is null then it's just a group marker
@@ -124,8 +115,6 @@ public class ExpressionParseTree {
 
     /**
      * Parses the specified expression into a tree of parse nodes.
-     * @param expr The expression to parse
-     * @throws ParseException a parsing error occurred
      */
     private void parseExpression(String expr) throws ParseException {
         StringNode currStringNode = null;
@@ -199,13 +188,13 @@ public class ExpressionParseTree {
         // Finish off the rest of the opps
         resolveGroup();
         if (nodeStack.size() == 0) {
-            throw new ParseException(sm.getString("expressionParseTree.noNodes"), et.getIndex());
+            throw new ParseException("No nodes created.", et.getIndex());
         }
         if (nodeStack.size() > 1) {
-            throw new ParseException(sm.getString("expressionParseTree.extraNodes"), et.getIndex());
+            throw new ParseException("Extra nodes created.", et.getIndex());
         }
         if (oppStack.size() != 0) {
-            throw new ParseException(sm.getString("expressionParseTree.unusedOpCodes"), et.getIndex());
+            throw new ParseException("Unused opp nodes exist.", et.getIndex());
         }
         root = nodeStack.get(0);
     }
@@ -215,7 +204,7 @@ public class ExpressionParseTree {
      */
     private abstract class Node {
         /**
-         * @return {@code true} if the node evaluates to true.
+         * Return true if the node evaluates to true.
          */
         public abstract boolean evaluate();
     }
@@ -234,8 +223,6 @@ public class ExpressionParseTree {
 
         /**
          * Resolves any variable references and returns the value string.
-         *
-         * @return the value string
          */
         public String getValue() {
             if (resolved == null)
@@ -278,7 +265,7 @@ public class ExpressionParseTree {
 
 
         /**
-         * @return a precedence level suitable for comparison to other OppNode
+         * Returns a preference level suitable for comparison to other OppNode
          * preference levels.
          */
         public abstract int getPrecedence();
@@ -287,8 +274,6 @@ public class ExpressionParseTree {
         /**
          * Lets the node pop its own branch nodes off the front of the
          * specified list. The default pulls two.
-         *
-         * @param values The list from which to pop the values
          */
         public void popValues(List<Node> values) {
             right = values.remove(0);
@@ -372,20 +357,17 @@ public class ExpressionParseTree {
                     val2.charAt(val2Len - 1) == '/') {
                 // Treat as a regular expression
                 String expr = val2.substring(1, val2Len - 1);
-                ssiMediator.clearMatchGroups();
                 try {
                     Pattern pattern = Pattern.compile(expr);
                     // Regular expressions will only ever be used with EqualNode
                     // so return zero for equal and non-zero for not equal
-                    Matcher matcher = pattern.matcher(val1);
-                    if (matcher.find()) {
-                        ssiMediator.populateMatchGroups(matcher);
+                    if (pattern.matcher(val1).find()) {
                         return 0;
                     } else {
                         return -1;
                     }
                 } catch (PatternSyntaxException pse) {
-                    ssiMediator.log(sm.getString("expressionParseTree.invalidExpression", expr), pse);
+                    ssiMediator.log("Invalid expression: " + expr, pse);
                     return 0;
                 }
             }

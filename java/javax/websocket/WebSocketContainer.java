@@ -55,12 +55,12 @@ public interface WebSocketContainer {
      *
      * @return The WebSocket session for the connection
      *
-     * @throws DeploymentException  If the connection cannot be established
+     * @throws DeploymentException  If the connection can not be established
      * @throws IOException If an I/O occurred while trying to establish the
      *                     connection
      */
     Session connectToServer(Endpoint endpoint,
-            ClientEndpointConfig clientEndpointConfiguration, URI path)
+                            ClientEndpointConfig clientEndpointConfiguration, URI path)
             throws DeploymentException, IOException;
 
     /**
@@ -76,12 +76,12 @@ public interface WebSocketContainer {
      *
      * @return The WebSocket session for the connection
      *
-     * @throws DeploymentException  If the connection cannot be established
+     * @throws DeploymentException  If the connection can not be established
      * @throws IOException If an I/O occurred while trying to establish the
      *                     connection
      */
     Session connectToServer(Class<? extends Endpoint> endpoint,
-            ClientEndpointConfig clientEndpointConfiguration, URI path)
+                            ClientEndpointConfig clientEndpointConfiguration, URI path)
             throws DeploymentException, IOException;
 
     /**

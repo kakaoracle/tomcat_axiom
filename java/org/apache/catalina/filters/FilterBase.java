@@ -67,6 +67,11 @@ public abstract class FilterBase implements Filter {
         }
     }
 
+    @Override
+    public void destroy() {
+        // NOOP
+    }
+
     /**
      * Determines if an exception when calling a setter or an unknown
      * configuration attribute triggers the failure of the this filter which in

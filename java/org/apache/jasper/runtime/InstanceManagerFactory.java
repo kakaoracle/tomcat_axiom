@@ -18,7 +18,6 @@ package org.apache.jasper.runtime;
 
 import javax.servlet.ServletConfig;
 
-import org.apache.jasper.compiler.Localizer;
 import org.apache.tomcat.InstanceManager;
 
 public class InstanceManagerFactory {
@@ -30,7 +29,7 @@ public class InstanceManagerFactory {
         InstanceManager instanceManager =
                 (InstanceManager) config.getServletContext().getAttribute(InstanceManager.class.getName());
         if (instanceManager == null) {
-            throw new IllegalStateException(Localizer.getMessage("jsp.error.noInstanceManager"));
+            throw new IllegalStateException("No org.apache.tomcat.InstanceManager set in ServletContext");
         }
         return instanceManager;
     }

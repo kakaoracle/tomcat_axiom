@@ -30,7 +30,6 @@ import org.apache.catalina.Host;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Session;
 import org.apache.catalina.Store;
-import org.apache.catalina.connector.Connector;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.RequestFacade;
 import org.apache.tomcat.unittest.TesterContext;
@@ -49,7 +48,7 @@ public class TestPersistentManager {
         Context context = new TesterContext();
         context.setParent(host);
 
-        manager.setContext(context);
+        manager.setContainer(context);
 
         manager.setMaxActiveSessions(2);
         manager.setMinIdleSwap(0);
@@ -73,8 +72,8 @@ public class TestPersistentManager {
 
     @Test
     public void testBug62175() throws Exception {
-        PersistentManager manager = new PersistentManager();
-        AtomicInteger sessionExpireCounter = new AtomicInteger();
+        final PersistentManager manager = new PersistentManager();
+        final AtomicInteger sessionExpireCounter = new AtomicInteger();
 
         Store mockStore = EasyMock.createNiceMock(Store.class);
         EasyMock.expect(mockStore.load(EasyMock.anyString())).andAnswer(new IAnswer<Session>() {
@@ -91,9 +90,9 @@ public class TestPersistentManager {
 
         Host host = new TesterHost();
 
-        RequestCachingSessionListener requestCachingSessionListener = new RequestCachingSessionListener();
+        final RequestCachingSessionListener requestCachingSessionListener = new RequestCachingSessionListener();
 
-        Context context = new TesterContext() {
+        final Context context = new TesterContext() {
 
             @Override
             public Object[] getApplicationLifecycleListeners() {
@@ -107,23 +106,18 @@ public class TestPersistentManager {
         };
         context.setParent(host);
 
-        Connector connector = EasyMock.createNiceMock(Connector.class);
-        Request req = new Request(connector) {
-            @Override
-            public Context getContext() {
-                return context;
-            }
-        };
+        Request req = new Request();
+        req.setContext(context);
         req.setRequestedSessionId("invalidSession");
         HttpServletRequest request = new RequestFacade(req);
-        EasyMock.replay(connector);
         requestCachingSessionListener.request = request;
 
-        manager.setContext(context);
+        manager.setContainer(context);
 
         manager.start();
 
         Assert.assertNull(request.getSession(false));
+        EasyMock.verify(mockStore);
         Assert.assertEquals(1, sessionExpireCounter.get());
 
     }
@@ -133,12 +127,17 @@ public class TestPersistentManager {
         private HttpServletRequest request;
 
         @Override
+        public void sessionCreated(HttpSessionEvent se) {
+            // do nothing
+        }
+
+        @Override
         public void sessionDestroyed(HttpSessionEvent se) {
             request.getSession(false);
         }
     }
 
-    private StandardSession timedOutSession(PersistentManager manager, AtomicInteger counter) {
+    private StandardSession timedOutSession(final PersistentManager manager, final AtomicInteger counter) {
         StandardSession timedOutSession = new StandardSession(manager) {
             private static final long serialVersionUID = -5910605558747844210L;
 

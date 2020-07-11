@@ -18,8 +18,6 @@ package javax.servlet.http;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Map;
-import java.util.function.Supplier;
 
 import javax.servlet.ServletResponse;
 
@@ -102,7 +100,8 @@ public interface HttpServletResponse extends ServletResponse {
      *         otherwise.
      * @deprecated As of version 2.1, use encodeURL(String url) instead
      */
-    @Deprecated
+    @SuppressWarnings("dep-ann")
+    // Spec API does not use @Deprecated
     public String encodeUrl(String url);
 
     /**
@@ -112,7 +111,8 @@ public interface HttpServletResponse extends ServletResponse {
      *         otherwise.
      * @deprecated As of version 2.1, use encodeRedirectURL(String url) instead
      */
-    @Deprecated
+    @SuppressWarnings("dep-ann")
+    // Spec API does not use @Deprecated
     public String encodeRedirectUrl(String url);
 
     /**
@@ -291,7 +291,8 @@ public interface HttpServletResponse extends ServletResponse {
      *             <code>setStatus(int)</code>, to send an error with a
      *             description use <code>sendError(int, String)</code>.
      */
-    @Deprecated
+    @SuppressWarnings("dep-ann")
+    // Spec API does not use @Deprecated
     public void setStatus(int sc, String sm);
 
     /**
@@ -341,40 +342,6 @@ public interface HttpServletResponse extends ServletResponse {
      * @since Servlet 3.0
      */
     public Collection<String> getHeaderNames();
-
-    /**
-     * Configure the supplier of the trailer headers. The supplier will be
-     * called in the scope of the thread that completes the response.
-     * <br>
-     * Trailers that don't meet the requirements of RFC 7230, section 4.1.2 will
-     * be ignored.
-     * <br>
-     * The default implementation is a NO-OP.
-     *
-     * @param supplier The supplier for the trailer headers
-     *
-     * @throws IllegalStateException if this method is called when the
-     *         underlying protocol does not support trailer headers or if using
-     *         HTTP/1.1 and the response has already been committed
-     *
-     * @since Servlet 4.0
-     */
-    public default void setTrailerFields(Supplier<Map<String, String>> supplier) {
-        // NO-OP
-    }
-
-    /**
-     * Obtain the supplier of the trailer headers.
-     * <br>
-     * The default implementation returns null.
-     *
-     * @return The supplier for the trailer headers
-     *
-     * @since Servlet 4.0
-     */
-    public default Supplier<Map<String, String>> getTrailerFields() {
-        return null;
-    }
 
     /*
      * Server status codes; see RFC 2068.

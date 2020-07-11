@@ -23,7 +23,6 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Writer;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
 
@@ -250,12 +249,12 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
             } else {
                 w.setMultipartConfigElement(new MultipartConfigElement(""));
             }
-            context.addServletMappingDecoded(URI, servletName);
+            context.addServletMapping(URI, servletName);
             context.setSwallowAbortedUploads(swallow);
 
             Connector c = tomcat.getConnector();
             c.setMaxPostSize(2 * hugeSize);
-            Assert.assertTrue(c.setProperty("maxSwallowSize", Integer.toString(hugeSize)));
+            c.setProperty("maxSwallowSize", Integer.toString(hugeSize));
 
             tomcat.start();
             setPort(c.getLocalPort());
@@ -360,14 +359,14 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
             context = tomcat.addContext("", TEMP_DIR);
             AbortedPOSTServlet servlet = new AbortedPOSTServlet(status);
             Tomcat.addServlet(context, servletName, servlet);
-            context.addServletMappingDecoded(URI, servletName);
+            context.addServletMapping(URI, servletName);
             context.setSwallowAbortedUploads(swallow);
 
             tomcat.start();
 
             Connector c = tomcat.getConnector();
             c.setMaxPostSize(2 * hugeSize);
-            Assert.assertTrue(c.setProperty("maxSwallowSize", Integer.toString(hugeSize)));
+            c.setProperty("maxSwallowSize", Integer.toString(hugeSize));
 
             setPort(c.getLocalPort());
         }
@@ -431,7 +430,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         // No need for target to exist.
 
         if (!limit) {
-            Assert.assertTrue(tomcat.getConnector().setProperty("maxSwallowSize", "-1"));
+            tomcat.getConnector().setAttribute("maxSwallowSize", "-1");
         }
 
         tomcat.start();
@@ -439,10 +438,12 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         Exception writeEx = null;
         Exception readEx = null;
         String responseLine = null;
+        Socket conn = null;
 
-        try (Socket conn = new Socket("localhost", getPort())) {
+        try {
+            conn = new Socket("localhost", getPort());
             Writer writer = new OutputStreamWriter(
-                    conn.getOutputStream(), StandardCharsets.US_ASCII);
+                    conn.getOutputStream(), "US-ASCII");
             writer.write("PUT /does-not-exist HTTP/1.1\r\n");
             writer.write("Host: any\r\n");
             writer.write("Transfer-encoding: chunked\r\n");
@@ -462,11 +463,15 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
 
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(
-                        conn.getInputStream(), StandardCharsets.US_ASCII));
+                        conn.getInputStream(), "US-ASCII"));
 
                 responseLine = reader.readLine();
             } catch (IOException e) {
                 readEx = e;
+            }
+        } finally {
+            if (conn != null) {
+                conn.close();
             }
         }
 

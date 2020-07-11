@@ -35,7 +35,7 @@ public class TesterAccessLogValve extends ValveBase implements AccessLog {
     // Timing tests need an error margin to prevent failures.
     private static final long ERROR_MARGIN = RELAX_TIMING ? 2000 : 100;
 
-    private final Queue<Entry> entries = new ConcurrentLinkedQueue<>();
+    private final Queue<Entry> entries = new ConcurrentLinkedQueue<Entry>();
 
     public TesterAccessLogValve() {
         // Async requests are supported
@@ -66,10 +66,6 @@ public class TesterAccessLogValve extends ValveBase implements AccessLog {
         getNext().invoke(request, response);
     }
 
-    public int getEntryCount() {
-        return entries.size();
-    }
-
     public void validateAccessLog(int count, int status, long minTime,
             long maxTime) throws Exception {
 
@@ -82,7 +78,7 @@ public class TesterAccessLogValve extends ValveBase implements AccessLog {
         StringBuilder entriesLog = new StringBuilder();
         for (Entry entry : entries) {
             entriesLog.append(entry.toString());
-            entriesLog.append(System.lineSeparator());
+            entriesLog.append(System.getProperty("line.separator"));
         }
         Assert.assertEquals(entriesLog.toString(), count, entries.size());
         for (Entry entry : entries) {

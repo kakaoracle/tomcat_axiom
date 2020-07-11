@@ -47,7 +47,7 @@ import org.apache.tools.ant.types.RedirectorElement;
 public abstract class BaseRedirectorHelperTask extends Task {
 
     /** Redirector helper */
-    protected final Redirector redirector = new Redirector(this);
+    protected Redirector redirector = new Redirector(this);
 
     /** Redirector element for this task */
     protected RedirectorElement redirectorElement = null;

@@ -28,7 +28,6 @@ import org.apache.catalina.tribes.ChannelListener;
 import org.apache.catalina.tribes.ErrorHandler;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.UniqueId;
-import org.apache.catalina.tribes.util.StringManager;
 import org.apache.catalina.tribes.util.UUIDGenerator;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -38,7 +37,6 @@ import org.apache.juli.logging.LogFactory;
  */
 public class RpcChannel implements ChannelListener {
     private static final Log log = LogFactory.getLog(RpcChannel.class);
-    protected static final StringManager sm = StringManager.getManager(RpcChannel.class);
 
     public static final int FIRST_REPLY = 1;
     public static final int MAJORITY_REPLY = 2;
@@ -50,7 +48,7 @@ public class RpcChannel implements ChannelListener {
     private byte[] rpcId;
     private int replyMessageOptions = 0;
 
-    private final ConcurrentMap<RpcCollectorKey, RpcCollector> responseMap = new ConcurrentHashMap<>();
+    private ConcurrentMap<RpcCollectorKey, RpcCollector> responseMap = new ConcurrentHashMap<RpcCollectorKey, RpcCollector>();
 
     /**
      * Create an RPC channel. You can have several RPC channels attached to a group
@@ -164,7 +162,7 @@ public class RpcChannel implements ChannelListener {
                 if (excallback != null && !asyncReply) {
                     excallback.replyFailed(rmsg.message, reply, sender, x);
                 } else {
-                    log.error(sm.getString("rpcChannel.replyFailed"),x);
+                    log.error("Unable to send back reply in RpcChannel.",x);
                 }
             }
             if (finished && excallback != null && !asyncReply) {
@@ -178,7 +176,7 @@ public class RpcChannel implements ChannelListener {
     }
 
     @Override
-    protected void finalize() throws Throwable {
+    public void finalize() throws Throwable {
         breakdown();
         super.finalize();
     }
@@ -229,15 +227,30 @@ public class RpcChannel implements ChannelListener {
      * @version 1.0
      */
     public static class RpcCollector {
-        public final ArrayList<Response> responses = new ArrayList<>();
-        public final RpcCollectorKey key;
-        public final int options;
+        public ArrayList<Response> responses = new ArrayList<Response>();
+        public RpcCollectorKey key;
+        public int options;
         public int destcnt;
+        /**
+         * @deprecated  Unused - will be removed in Tomcat 8.0.x
+         */
+        @Deprecated
+        public long timeout;
 
-        public RpcCollector(RpcCollectorKey key, int options, int destcnt) {
+        /**
+         * @deprecated  Use {@link RpcCollector#RpcCollector(RpcCollectorKey, int, int)}
+         */
+        @Deprecated
+        public RpcCollector(RpcCollectorKey key, int options, int destcnt,
+                long timeout) {
             this.key = key;
             this.options = options;
             this.destcnt = destcnt;
+            this.timeout = timeout;
+        }
+
+        public RpcCollector(RpcCollectorKey key, int options, int destcnt) {
+            this(key, options, destcnt, 0);
         }
 
         public void addResponse(Serializable message, Member sender) {
@@ -274,7 +287,7 @@ public class RpcChannel implements ChannelListener {
         }
 
         public Response[] getResponses() {
-            return responses.toArray(new Response[0]);
+            return responses.toArray(new Response[responses.size()]);
         }
     }
 
@@ -298,4 +311,18 @@ public class RpcChannel implements ChannelListener {
         }
 
     }
+
+    /**
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Deprecated
+    protected static String bToS(byte[] data) {
+        StringBuilder buf = new StringBuilder(4*16);
+        buf.append("{");
+        for (int i=0; data!=null && i<data.length; i++ ) buf.append(String.valueOf(data[i])).append(" ");
+        buf.append("}");
+        return buf.toString();
+    }
+
+
 }

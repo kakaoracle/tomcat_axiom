@@ -25,11 +25,6 @@ import org.apache.tomcat.util.buf.MessageBytes;
 
 public class Host {
 
-    private Host() {
-        // Utility class. Hide default constructor.
-    }
-
-
     /**
      * Parse the given input as an HTTP Host header value.
      *

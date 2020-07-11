@@ -16,11 +16,7 @@
  */
 package org.apache.catalina.connector;
 
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -55,7 +51,7 @@ public class TestCoyoteAdapterRequestFuzzing extends TomcatBaseTest {
 
     @Parameterized.Parameters(name = "{index}: requestline[{0}], expected[{2}]")
     public static Collection<Object[]> parameters() {
-        List<Object[]> parameterSets = new ArrayList<>();
+        List<Object[]> parameterSets = new ArrayList<Object[]>();
 
         parameterSets.add(new Object[] { "GET /00 HTTP/1.1",
                                          "Host: lÿ#" + CRLF,
@@ -110,12 +106,12 @@ public class TestCoyoteAdapterRequestFuzzing extends TomcatBaseTest {
     @Test
     public void doTest() throws Exception {
         Tomcat tomcat = getTomcatInstance();
-        Assert.assertTrue(tomcat.getConnector().setProperty("restrictedUserAgents", "value-not-important"));
+        tomcat.getConnector().setAttribute("restrictedUserAgents", "value-not-important");
 
         File appDir = new File("test/webapp");
         Context ctxt = tomcat.addContext("", appDir.getAbsolutePath());
         Tomcat.addServlet(ctxt, "default", DefaultServlet.class.getName());
-        ctxt.addServletMappingDecoded("/", "default");
+        ctxt.addServletMapping("/", "default");
 
         tomcat.start();
 
@@ -136,19 +132,6 @@ public class TestCoyoteAdapterRequestFuzzing extends TomcatBaseTest {
         public Client(int port) {
             setPort(port);
             setRequestPause(0);
-        }
-
-        @Override
-        protected OutputStream createOutputStream(Socket socket) throws IOException {
-            // Override the default implementation so we can create a large
-            // enough buffer to hold the entire request.
-            // The default implementation uses the 8k buffer in the
-            // StreamEncoder. Since some requests are larger than this, those
-            // requests will be sent in several parts. If the first part is
-            // sufficient for Tomcat to determine the request is invalid, Tomcat
-            // will close the connection, causing the write of the remaining
-            // parts to fail which in turn causes the test to fail.
-            return new BufferedOutputStream(super.createOutputStream(socket), 32 * 1024);
         }
 
         @Override

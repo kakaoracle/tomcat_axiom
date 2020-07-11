@@ -28,14 +28,14 @@ public interface BIOCallback {
      * @param buf containing the bytes to write.
      * @return Number of characters written.
      */
-    public int write(byte [] buf);
+    public int write(byte[] buf);
 
     /**
      * Read data
      * @param buf buffer to store the read bytes.
      * @return number of bytes read.
      */
-    public int read(byte [] buf);
+    public int read(byte[] buf);
 
     /**
      * Puts string

@@ -18,65 +18,71 @@ package org.apache.tomcat.util.compat;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.AccessibleObject;
-import java.lang.reflect.InvocationTargetException;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLConnection;
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Statement;
 import java.util.Deque;
+import java.util.Locale;
+import java.util.concurrent.Executor;
 import java.util.jar.JarFile;
+import java.util.zip.GZIPOutputStream;
 
+import javax.annotation.Resource;
 import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLServerSocket;
 
 import org.apache.tomcat.util.res.StringManager;
 
 /**
  * This is the base implementation class for JRE compatibility and provides an
- * implementation based on Java 8. Sub-classes may extend this class and provide
+ * implementation based on Java 6. Sub-classes may extend this class and provide
  * alternative implementations for later JRE versions
  */
 public class JreCompat {
 
-    private static final int RUNTIME_MAJOR_VERSION = 8;
+    private static final int RUNTIME_MAJOR_VERSION = 6;
 
     private static final JreCompat instance;
-    private static final boolean graalAvailable;
-    private static final boolean jre11Available;
+    private static StringManager sm =
+            StringManager.getManager(JreCompat.class.getPackage().getName());
     private static final boolean jre9Available;
-    private static final StringManager sm = StringManager.getManager(JreCompat.class);
+    private static final boolean jre8Available;
+    private static final boolean jre7Available;
 
-    protected static final Method setApplicationProtocolsMethod;
-    protected static final Method getApplicationProtocolMethod;
 
     static {
-        // This is Tomcat 9 with a minimum Java version of Java 8.
+        // This is Tomcat 7 with a minimum Java version of Java 6. The latest
+        // Java version the optional features require is Java 9.
         // Look for the highest supported JVM first
-        if (GraalCompat.isSupported()) {
-            instance = new GraalCompat();
-            graalAvailable = true;
-            jre9Available = Jre9Compat.isSupported();
-        } else if (Jre9Compat.isSupported()) {
+        if (Jre9Compat.isSupported()) {
             instance = new Jre9Compat();
-            graalAvailable = false;
             jre9Available = true;
+            jre8Available = true;
+            jre7Available = true;
+        } else if (Jre8Compat.isSupported()) {
+            instance = new Jre8Compat();
+            jre9Available = false;
+            jre8Available = true;
+            jre7Available = true;
+        } else if (Jre7Compat.isSupported()) {
+            instance = new Jre7Compat();
+            jre9Available = false;
+            jre8Available = false;
+            jre7Available = true;
         } else {
             instance = new JreCompat();
-            graalAvailable = false;
             jre9Available = false;
+            jre8Available = false;
+            jre7Available = false;
         }
-        jre11Available = instance.jarFileRuntimeMajorVersion() >= 11;
-
-        Method m1 = null;
-        Method m2 = null;
-        try {
-            m1 = SSLParameters.class.getMethod("setApplicationProtocols", String[].class);
-            m2 = SSLEngine.class.getMethod("getApplicationProtocol");
-        } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            // Only the newest Java 8 have the ALPN API, so ignore
-        }
-        setApplicationProtocolsMethod = m1;
-        getApplicationProtocolMethod = m2;
     }
 
 
@@ -85,27 +91,173 @@ public class JreCompat {
     }
 
 
-    public static boolean isGraalAvailable() {
-        return graalAvailable;
+    // Java 6 implementation of Java 7 methods
+
+    public static boolean isJre7Available() {
+        return jre7Available;
     }
 
 
-    public static boolean isAlpnSupported() {
-        return setApplicationProtocolsMethod != null && getApplicationProtocolMethod != null;
+    public Locale forLanguageTag(String languageTag) {
+        // Extract the language and country for this entry
+        String language = null;
+        String country = null;
+        String variant = null;
+        int dash = languageTag.indexOf('-');
+        if (dash < 0) {
+            language = languageTag;
+            country = "";
+            variant = "";
+        } else {
+            language = languageTag.substring(0, dash);
+            country = languageTag.substring(dash + 1);
+            int vDash = country.indexOf('-');
+            if (vDash > 0) {
+                String cTemp = country.substring(0, vDash);
+                variant = country.substring(vDash + 1);
+                country = cTemp;
+            } else {
+                variant = "";
+            }
+        }
+        if (!isAlpha(language) || !isAlpha(country) || !isAlpha(variant)) {
+            return null;
+        }
+
+        return new Locale(language, country, variant);
     }
 
+
+    private static final boolean isAlpha(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    @SuppressWarnings("unused")
+    public GZIPOutputStream getFlushableGZipOutputStream(OutputStream os) {
+        throw new UnsupportedOperationException(
+                sm.getString("jreCompat.noFlushableGzipOutputStream"));
+    }
+
+
+    @SuppressWarnings("unused")
+    public <T> T getObject(CallableStatement callableStatement, int parameterIndex, Class<T> type)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public <T> T getObject(CallableStatement callableStatement, String parameterName, Class<T> type)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public void setSchema(Connection connection, String schema) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public String getSchema(Connection connection) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public void abort(Connection connection, Executor executor) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public void setNetworkTimeout(Connection connection, Executor executor, int milliseconds)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public int getNetworkTimeout(Connection connection) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public ResultSet getPseudoColumns(DatabaseMetaData databaseMetaData, String catalog,
+            String schemaPattern, String tableNamePattern, String columnNamePattern)
+                    throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public boolean generatedKeyAlwaysReturned(DatabaseMetaData databaseMetaData) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public <T> T getObject(ResultSet resultSet, int parameterIndex, Class<T> type)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public <T> T getObject(ResultSet resultSet, String parameterName, Class<T> type)
+            throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public void closeOnCompletion(Statement statement) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    @SuppressWarnings("unused")
+    public boolean isCloseOnCompletion(Statement statement) throws SQLException {
+        throw new SQLFeatureNotSupportedException();
+    }
+
+
+    // Java 6 implementation of Java 8 methods
+
+    public static boolean isJre8Available() {
+        return jre8Available;
+    }
+
+
+    @SuppressWarnings("unused")
+    public void setUseServerCipherSuitesOrder(SSLServerSocket socket,
+            boolean useCipherSuitesOrder) {
+        throw new UnsupportedOperationException(sm.getString("jreCompat.noServerCipherSuiteOrder"));
+    }
+
+
+    @SuppressWarnings("unused")
+    public void setUseServerCipherSuitesOrder(SSLEngine engine,
+            boolean useCipherSuitesOrder) {
+        throw new UnsupportedOperationException(sm.getString("jreCompat.noServerCipherSuiteOrder"));
+    }
+
+
+    // Java 6 implementation of Java 9 methods
 
     public static boolean isJre9Available() {
         return jre9Available;
     }
 
-
-    public static boolean isJre11Available() {
-        return jre11Available;
-    }
-
-
-    // Java 8 implementation of Java 9 methods
 
     /**
      * Test if the provided exception is an instance of
@@ -119,48 +271,6 @@ public class JreCompat {
     public boolean isInstanceOfInaccessibleObjectException(Throwable t) {
         // Exception does not exist prior to Java 9
         return false;
-    }
-
-
-    /**
-     * Set the application protocols the server will accept for ALPN
-     *
-     * @param sslParameters The SSL parameters for a connection
-     * @param protocols     The application protocols to be allowed for that
-     *                      connection
-     */
-    public void setApplicationProtocols(SSLParameters sslParameters, String[] protocols) {
-        if (setApplicationProtocolsMethod != null) {
-            try {
-                setApplicationProtocolsMethod.invoke(sslParameters, (Object) protocols);
-            } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-                throw new UnsupportedOperationException(e);
-            }
-        } else {
-            throw new UnsupportedOperationException(sm.getString("jreCompat.noApplicationProtocols"));
-        }
-    }
-
-
-    /**
-     * Get the application protocol that has been negotiated for connection
-     * associated with the given SSLEngine.
-     *
-     * @param sslEngine The SSLEngine for which to obtain the negotiated
-     *                  protocol
-     *
-     * @return The name of the negotiated protocol
-     */
-    public String getApplicationProtocol(SSLEngine sslEngine) {
-        if (getApplicationProtocolMethod != null) {
-            try {
-                return (String) getApplicationProtocolMethod.invoke(sslEngine);
-            } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-                throw new UnsupportedOperationException(e);
-            }
-        } else {
-            throw new UnsupportedOperationException(sm.getString("jreCompat.noApplicationProtocol"));
-        }
     }
 
 
@@ -180,30 +290,14 @@ public class JreCompat {
 
 
     /**
-     * Obtains the URLs for all the JARs on the module path when the JVM starts
+     * Obtains the URls for all the JARs on the module path when the JVM starts
      * and adds them to the provided Deque.
      *
      * @param classPathUrlsToProcess    The Deque to which the modules should be
      *                                  added
      */
     public void addBootModulePath(Deque<URL> classPathUrlsToProcess) {
-        // NO-OP for Java 8. There is no module path.
-    }
-
-
-    /**
-     * Creates a new JarFile instance. When running on Java 9 and later, the
-     * JarFile will be multi-release JAR aware. While this isn't strictly
-     * required to be in this package, it is provided as a convenience method.
-     *
-     * @param s The JAR file to open
-     *
-     * @return A JarFile instance based on the provided path
-     *
-     * @throws IOException  If an I/O error occurs creating the JarFile instance
-     */
-    public final JarFile jarFileNewInstance(String s) throws IOException {
-        return jarFileNewInstance(new File(s));
+        // NO-OP. There is no module path prior to Java 9.
     }
 
 
@@ -231,7 +325,7 @@ public class JreCompat {
      *         to behave as such.
      */
     public boolean jarFileIsMultiRelease(JarFile jarFile) {
-        // Java 8 doesn't support multi-release so default to false
+        // There is no multi-release JAR support prior to Java 9
         return false;
     }
 
@@ -241,31 +335,14 @@ public class JreCompat {
     }
 
 
-    /**
-     * Is the accessibleObject accessible (as a result of appropriate module
-     * exports) on the provided instance?
-     *
-     * @param base  The specific instance to be tested.
-     * @param accessibleObject  The method/field/constructor to be tested.
-     *
-     * @return {code true} if the AccessibleObject can be accessed otherwise
-     *         {code false}
-     */
-    public boolean canAcccess(Object base, AccessibleObject accessibleObject) {
-        // Java 8 doesn't support modules so default to true
-        return true;
-    }
-
-
-    /**
-     * Is the given class in an exported package?
-     *
-     * @param type  The class to test
-     *
-     * @return Always {@code true} for Java 8. {@code true} if the enclosing
-     *         package is exported for Java 9+
-     */
-    public boolean isExported(Class<?> type) {
-        return true;
+    public boolean isCommonsAnnotations1_1Available() {
+        Class<Resource> clazz = Resource.class;
+        Method[] methods = clazz.getDeclaredMethods();
+        for (Method method : methods) {
+            if (method.getName().equals("lookup")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

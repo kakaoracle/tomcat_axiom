@@ -25,8 +25,8 @@ import java.lang.annotation.Target;
 /**
  * The annotation used to declare an initialization parameter on a
  * {@link javax.servlet.Servlet} or {@link javax.servlet.Filter}, within a
- * {@link javax.servlet.annotation.WebFilter} or
- * {@link javax.servlet.annotation.WebServlet} annotation.<br>
+ * {@link WebFilter} or
+ * {@link WebServlet} annotation.<br>
  * <br>
  *
  * E.g.

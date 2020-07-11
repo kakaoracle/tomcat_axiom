@@ -30,6 +30,7 @@ import org.apache.tomcat.util.res.StringManager;
  * directory (adding new WAR files-&gt;deploy or remove WAR files-&gt;undeploy)
  * and notifies a listener of the changes made.
  *
+ * @author Filip Hanik
  * @author Peter Rossbach
  * @version 1.1
  */
@@ -43,19 +44,23 @@ public class WarWatcher {
     /**
      * Directory to watch for war files
      */
-    protected final File watchDir;
+    protected File watchDir = null;
 
     /**
      * Parent to be notified of changes
      */
-    protected final FileChangeListener listener;
+    protected FileChangeListener listener = null;
 
     /**
      * Currently deployed files
      */
-    protected final Map<String, WarInfo> currentStatus = new HashMap<>();
+    protected Map<String, WarInfo> currentStatus =
+        new HashMap<String, WarInfo>();
 
     /*--Constructor---------------------------------------------*/
+
+    public WarWatcher() {
+    }
 
     public WarWatcher(FileChangeListener listener, File watchDir) {
         this.listener = listener;
@@ -78,12 +83,12 @@ public class WarWatcher {
             list = new File[0];
         }
         //first make sure all the files are listed in our current status
-        for (File file : list) {
-            if (!file.exists())
+        for (int i = 0; i < list.length; i++) {
+            if(!list[i].exists())
                 log.warn(sm.getString("warWatcher.listedFileDoesNotExist",
-                        file, watchDir));
+                                      list[i], watchDir));
 
-            addWarInfo(file);
+            addWarInfo(list[i]);
         }
 
         // Check all the status codes and update the FarmDeployer
@@ -130,6 +135,35 @@ public class WarWatcher {
         currentStatus.clear();
     }
 
+    /**
+     * @return Returns the watchDir.
+     */
+    public File getWatchDir() {
+        return watchDir;
+    }
+
+    /**
+     * @param watchDir
+     *            The watchDir to set.
+     */
+    public void setWatchDir(File watchDir) {
+        this.watchDir = watchDir;
+    }
+
+    /**
+     * @return Returns the listener.
+     */
+    public FileChangeListener getListener() {
+        return listener;
+    }
+
+    /**
+     * @param listener
+     *            The listener to set.
+     */
+    public void setListener(FileChangeListener listener) {
+        this.listener = listener;
+    }
 
     /*--Inner classes-------------------------------------------*/
 
@@ -149,7 +183,7 @@ public class WarWatcher {
      * File information on existing WAR files
      */
     protected static class WarInfo {
-        protected final File war;
+        protected File war = null;
 
         protected long lastChecked = 0;
 

@@ -43,15 +43,15 @@ import java.util.TimeZone;
  */
 public class DateFormatCache {
 
-    public static final char MSEC_PATTERN = '#';
+    private static final String msecPattern = "#";
 
     /* Timestamp format */
     private final String format;
 
     /* Number of cached entries */
-    private final int cacheSize;
+    private int cacheSize = 0;
 
-    private final Cache cache;
+    private Cache cache;
 
     /**
      * Replace the millisecond formatting character 'S' by
@@ -70,7 +70,7 @@ public class DateFormatCache {
             if (escape || x != 'S') {
                 result.append(x);
             } else {
-                result.append(MSEC_PATTERN);
+                result.append(msecPattern);
             }
             if (x == '\'') {
                 escape = !escape;
@@ -122,6 +122,9 @@ public class DateFormatCache {
 
         private Cache(Cache parent) {
             cache = new String[cacheSize];
+            for (int i = 0; i < cacheSize; i++) {
+                cache[i] = null;
+            }
             formatter = new SimpleDateFormat(format, Locale.US);
             formatter.setTimeZone(TimeZone.getDefault());
             this.parent = parent;

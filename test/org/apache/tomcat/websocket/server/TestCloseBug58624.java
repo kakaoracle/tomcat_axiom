@@ -50,7 +50,7 @@ public class TestCloseBug58624 extends WebSocketBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(Bug58624ServerConfig.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
 
         WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
 
@@ -89,7 +89,7 @@ public class TestCloseBug58624 extends WebSocketBaseTest {
     }
 
     @ClientEndpoint
-    public static class Bug58624ClientEndpoint {
+    public class Bug58624ClientEndpoint {
 
         private volatile Throwable t;
 
@@ -107,7 +107,7 @@ public class TestCloseBug58624 extends WebSocketBaseTest {
 
     public static class Bug58624ServerConfig extends WsContextListener {
 
-        public static final String PATH = "/bug58624";
+        public static String PATH = "/bug58624";
 
 
         @Override

@@ -18,12 +18,13 @@
 
 package org.apache.catalina.ha.backend;
 
+import org.apache.catalina.ContainerEvent;
+import org.apache.catalina.ContainerListener;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.res.StringManager;
 
 /*
  * Listener to provider informations to mod_heartbeat.c
@@ -32,135 +33,50 @@ import org.apache.tomcat.util.res.StringManager;
  * what about the bind(IP. port) only IP makes sense (for the moment).
  * BTW:v  = version :-)
  */
-public class HeartbeatListener implements LifecycleListener {
+public class HeartbeatListener
+    implements LifecycleListener, ContainerListener {
 
     private static final Log log = LogFactory.getLog(HeartbeatListener.class);
-    private static final StringManager sm = StringManager.getManager(HeartbeatListener.class);
 
     /* To allow to select the connector */
-    protected int port = 8009;
-    protected String host = null;
-
-    /**
-     * @return the host corresponding to the connector
-     * we want to proxy.
-     */
-    public String getHost() {
-        return this.host;
-    }
-
-    /**
-     * Set the host corresponding to the connector.
-     *
-     * @param host the hostname or ip string.
-     */
-    public void setHost(String host) {
-        this.host = host;
-    }
-
-    /**
-     * @return the port of the connector we want to proxy.
-     */
-    public int getPort() {
-        return this.port;
-    }
-
-    /**
-     * Set the port corresponding to the connector.
-     *
-     * @param port default 8009 the ajp one.
-     */
-    public void setPort(int port) {
-        this.port = port;
-    }
+    int port = 0;
+    String host = null;
+    public void setHost(String host) { this.host = host; }
+    public void setPort(int port) { this.port = port; }
 
     /* for multicasting stuff */
-    protected String ip = "224.0.1.105"; /* Multicast IP */
-    protected int multiport = 23364;     /* Multicast Port */
-    protected int ttl = 16;
+    String ip = "224.0.1.105"; /* Multicast IP */
+    int multiport = 23364;     /* Multicast Port */
+    int ttl = 16;
 
-    /* corresponding setters and getters */
-
-    /**
-     * @return the Multicast IP we are using for Multicast
-     */
+    public void setGroup(String ip) { this.ip = ip; }
     public String getGroup() { return ip; }
-
-    /**
-     * Set the Multicast IP to use for Multicast
-     *
-     * @param group the multi address to use.
-     */
-    public void setGroup(String group) { this.ip = group; }
-
-    /**
-     * @return the Multicast Port we are using for Multicast.
-     */
+    public void setMultiport(int multiport) { this.multiport = multiport; }
     public int getMultiport() { return multiport; }
-
-    /**
-     * Set the Port to use for Multicast
-     *
-     * @param port the port to use.
-     */
-    public void setMultiport(int port) { this.multiport=port; }
-
-    /**
-     * @return the TTL for Multicast packets.
-     */
+    public void setTtl(int ttl) { this.ttl = ttl; }
     public int getTtl() { return ttl; }
-
-    /**
-     * Set the TTL for Multicast packets.
-     *
-     * @param ttl value for TTL.
-     */
-    public void setTtl(int ttl) { this.ttl=ttl; }
 
     /**
      * Proxy list, format "address:port,address:port".
      */
     protected String proxyList = null;
-
-    /**
-     * @return the list of proxies that send us requests.
-     */
     public String getProxyList() { return proxyList; }
-
-    /**
-     * Set the list of Proxies that send is requests, when not empty it toogles
-     * the multi to off. A SetHandler heartbeat must be existing in httpd.conf.
-     *
-     * @param proxyList the list of proxy, format "address:port,address:port".
-     */
     public void setProxyList(String proxyList) { this.proxyList = proxyList; }
 
     /**
      * URL prefix.
      */
     protected String proxyURL = "/HeartbeatListener";
-
-    /**
-     * @return the URL specified in &lt;Location/&gt; for the SetHandler heartbeat.
-     */
     public String getProxyURL() { return proxyURL; }
-
-    /**
-     * Set the URL of receiver in httpd. That is the location used in
-     * <pre>
-     * &lt;Location "/HeartbeatListener"&gt;
-     *    SetHandler heartbeat
-     * &lt;/Location&gt;
-     * </pre>
-     * All proxies MUST use the same location.
-     *
-     * @param proxyURL a String with the URL starting with /
-     */
-    public void setProxyURLString(String proxyURL) { this.proxyURL = proxyURL; }
+    public void setProxyURL(String proxyURL) { this.proxyURL = proxyURL; }
 
     private CollectedInfo coll = null;
 
     private Sender sender = null;
+
+    @Override
+    public void containerEvent(ContainerEvent event) {
+    }
 
     @Override
     public void lifecycleEvent(LifecycleEvent event) {
@@ -180,7 +96,7 @@ public class HeartbeatListener implements LifecycleListener {
                     this.port = coll.port;
                     this.host = coll.host;
                 } catch (Exception ex) {
-                    log.error(sm.getString("heartbeatListener.errorCollectingInfo"), ex);
+                    log.error("Unable to initialize info collection: " + ex);
                     coll = null;
                     return;
                 }
@@ -190,7 +106,7 @@ public class HeartbeatListener implements LifecycleListener {
             try {
                 sender.init(this);
             } catch (Exception ex) {
-                log.error(sm.getString("heartbeatListener.senderInitError"), ex);
+                log.error("Unable to initialize Sender: " + ex);
                 sender = null;
                 return;
             }
@@ -199,7 +115,7 @@ public class HeartbeatListener implements LifecycleListener {
             try {
                 coll.refresh();
             } catch (Exception ex) {
-                log.error(sm.getString("heartbeatListener.refreshError"), ex);
+                log.error("Unable to collect load information: " + ex);
                 coll = null;
                 return;
             }
@@ -208,7 +124,7 @@ public class HeartbeatListener implements LifecycleListener {
             try {
                 sender.send(output);
             } catch (Exception ex) {
-                log.error(sm.getString("heartbeatListener.sendError"), ex);
+                log.error("Unable to send collected load information: " + ex);
             }
         }
     }

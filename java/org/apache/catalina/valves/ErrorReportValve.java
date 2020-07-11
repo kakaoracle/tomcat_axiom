@@ -16,14 +16,9 @@
  */
 package org.apache.catalina.valves;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.Writer;
 import java.util.Scanner;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
@@ -31,15 +26,12 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
-import org.apache.catalina.util.ErrorPageSupport;
-import org.apache.catalina.util.IOTools;
+import org.apache.catalina.util.RequestUtil;
 import org.apache.catalina.util.ServerInfo;
 import org.apache.catalina.util.TomcatCSS;
 import org.apache.coyote.ActionCode;
 import org.apache.tomcat.util.ExceptionUtils;
-import org.apache.tomcat.util.descriptor.web.ErrorPage;
 import org.apache.tomcat.util.res.StringManager;
-import org.apache.tomcat.util.security.Escape;
 
 /**
  * <p>Implementation of a Valve that outputs HTML error pages.</p>
@@ -61,17 +53,37 @@ public class ErrorReportValve extends ValveBase {
 
     private boolean showServerInfo = true;
 
-    private final ErrorPageSupport errorPageSupport = new ErrorPageSupport();
-
-
     //------------------------------------------------------ Constructor
-
     public ErrorReportValve() {
         super(true);
     }
 
+    // ----------------------------------------------------- Instance Variables
+
+
+    /**
+     * The descriptive information related to this implementation.
+     */
+    private static final String info =
+        "org.apache.catalina.valves.ErrorReportValve/1.0";
+
+
+    // ------------------------------------------------------------- Properties
+
+
+    /**
+     * Return descriptive information about this Valve implementation.
+     */
+    @Override
+    public String getInfo() {
+
+        return (info);
+
+    }
+
 
     // --------------------------------------------------------- Public Methods
+
 
     /**
      * Invoke the next Valve in the sequence. When the invoke returns, check
@@ -162,44 +174,12 @@ public class ErrorReportValve extends ValveBase {
         if (statusCode < 400 || response.getContentWritten() > 0 || !response.setErrorReported()) {
             return;
         }
-
-        // If an error has occurred that prevents further I/O, don't waste time
-        // producing an error report that will never be read
-        AtomicBoolean result = new AtomicBoolean(false);
-        response.getCoyoteResponse().action(ActionCode.IS_IO_ALLOWED, result);
-        if (!result.get()) {
-            return;
-        }
-
-        ErrorPage errorPage = null;
-        if (throwable != null) {
-            errorPage = errorPageSupport.find(throwable);
-        }
-        if (errorPage == null) {
-            errorPage = errorPageSupport.find(statusCode);
-        }
-        if (errorPage == null) {
-            // Default error page
-            errorPage = errorPageSupport.find(0);
-        }
-
-
-        if (errorPage != null) {
-            if (sendErrorPage(errorPage.getLocation(), response)) {
-                // If the page was sent successfully, don't write the standard
-                // error page.
-                return;
-            }
-        }
-
-        String message = Escape.htmlElementContent(response.getMessage());
+        String message = RequestUtil.filter(response.getMessage());
         if (message == null) {
             if (throwable != null) {
                 String exceptionMessage = throwable.getMessage();
                 if (exceptionMessage != null && exceptionMessage.length() > 0) {
-                    try (Scanner scanner = new Scanner(exceptionMessage)) {
-                        message = Escape.htmlElementContent(scanner.nextLine());
-                    }
+                    message = RequestUtil.filter((new Scanner(exceptionMessage)).nextLine());
                 }
             }
             if (message == null) {
@@ -271,9 +251,9 @@ public class ErrorReportValve extends ValveBase {
                 String stackTrace = getPartialServletStackTrace(throwable);
                 sb.append("<p><b>");
                 sb.append(smClient.getString("errorReportValve.exception"));
-                sb.append("</b></p><pre>");
-                sb.append(Escape.htmlElementContent(stackTrace));
-                sb.append("</pre>");
+                sb.append("</b> <pre>");
+                sb.append(RequestUtil.filter(stackTrace));
+                sb.append("</pre></p>");
 
                 int loops = 0;
                 Throwable rootCause = throwable.getCause();
@@ -281,9 +261,9 @@ public class ErrorReportValve extends ValveBase {
                     stackTrace = getPartialServletStackTrace(rootCause);
                     sb.append("<p><b>");
                     sb.append(smClient.getString("errorReportValve.rootCause"));
-                    sb.append("</b></p><pre>");
-                    sb.append(Escape.htmlElementContent(stackTrace));
-                    sb.append("</pre>");
+                    sb.append("</b> <pre>");
+                    sb.append(RequestUtil.filter(stackTrace));
+                    sb.append("</pre></p>");
                     // In case root cause is somehow heavily nested
                     rootCause = rootCause.getCause();
                     loops++;
@@ -332,12 +312,10 @@ public class ErrorReportValve extends ValveBase {
     /**
      * Print out a partial servlet stack trace (truncating at the last
      * occurrence of javax.servlet.).
-     * @param t The stack trace to process
-     * @return the stack trace relative to the application layer
      */
     protected String getPartialServletStackTrace(Throwable t) {
         StringBuilder trace = new StringBuilder();
-        trace.append(t.toString()).append(System.lineSeparator());
+        trace.append(t.toString()).append('\n');
         StackTraceElement[] elements = t.getStackTrace();
         int pos = elements.length;
         for (int i = elements.length - 1; i >= 0; i--) {
@@ -351,46 +329,16 @@ public class ErrorReportValve extends ValveBase {
         for (int i = 0; i < pos; i++) {
             if (!(elements[i].getClassName().startsWith
                   ("org.apache.catalina.core."))) {
-                trace.append('\t').append(elements[i].toString()).append(System.lineSeparator());
+                trace.append('\t').append(elements[i].toString()).append('\n');
             }
         }
         return trace.toString();
     }
 
-
-    private boolean sendErrorPage(String location, Response response) {
-        File file = new File(location);
-        if (!file.isAbsolute()) {
-            file = new File(getContainer().getCatalinaBase(), location);
-        }
-        if (!file.isFile() || !file.canRead()) {
-            getContainer().getLogger().warn(
-                    sm.getString("errorReportValve.errorPageNotFound", location));
-            return false;
-        }
-
-        // Hard coded for now. Consider making this optional. At Valve level or
-        // page level?
-        response.setContentType("text/html");
-        response.setCharacterEncoding("UTF-8");
-
-        try (OutputStream os = response.getOutputStream();
-                InputStream is = new FileInputStream(file);){
-            IOTools.flow(is, os);
-        } catch (IOException e) {
-            getContainer().getLogger().warn(
-                    sm.getString("errorReportValve.errorPageIOException", location), e);
-            return false;
-        }
-
-        return true;
-    }
-
-
     /**
      * Enables/Disables full error reports
      *
-     * @param showReport <code>true</code> to show full error data
+     * @param showReport
      */
     public void setShowReport(boolean showReport) {
         this.showReport = showReport;
@@ -403,7 +351,7 @@ public class ErrorReportValve extends ValveBase {
     /**
      * Enables/Disables server info on error pages
      *
-     * @param showServerInfo <code>true</code> to show server info
+     * @param showServerInfo
      */
     public void setShowServerInfo(boolean showServerInfo) {
         this.showServerInfo = showServerInfo;
@@ -411,49 +359,5 @@ public class ErrorReportValve extends ValveBase {
 
     public boolean isShowServerInfo() {
         return showServerInfo;
-    }
-
-
-    public boolean setProperty(String name, String value) {
-        if (name.startsWith("errorCode.")) {
-            int code = Integer.parseInt(name.substring(10));
-            ErrorPage ep = new ErrorPage();
-            ep.setErrorCode(code);
-            ep.setLocation(value);
-            errorPageSupport.add(ep);
-            return true;
-        } else if (name.startsWith("exceptionType.")) {
-            String className = name.substring(14);
-            ErrorPage ep = new ErrorPage();
-            ep.setExceptionType(className);
-            ep.setLocation(value);
-            errorPageSupport.add(ep);
-            return true;
-        }
-        return false;
-    }
-
-    public String getProperty(String name) {
-        String result;
-        if (name.startsWith("errorCode.")) {
-            int code = Integer.parseInt(name.substring(10));
-            ErrorPage ep = errorPageSupport.find(code);
-            if (ep == null) {
-                result = null;
-            } else {
-                result = ep.getLocation();
-            }
-        } else if (name.startsWith("exceptionType.")) {
-            String className = name.substring(14);
-            ErrorPage ep = errorPageSupport.find(className);
-            if (ep == null) {
-                result = null;
-            } else {
-                result = ep.getLocation();
-            }
-        } else {
-            result = null;
-        }
-        return result;
     }
 }

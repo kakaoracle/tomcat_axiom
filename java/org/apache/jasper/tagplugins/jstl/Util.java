@@ -26,7 +26,6 @@ import java.io.UnsupportedEncodingException;
 import java.util.Locale;
 
 import javax.servlet.ServletOutputStream;
-import javax.servlet.WriteListener;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
@@ -35,7 +34,6 @@ import javax.servlet.jsp.JspTagException;
 import javax.servlet.jsp.PageContext;
 
 import org.apache.jasper.Constants;
-import org.apache.jasper.compiler.Localizer;
 
 /**
  * Util contains some often used consts, static methods and embedded class
@@ -44,16 +42,15 @@ import org.apache.jasper.compiler.Localizer;
 
 public class Util {
 
-    private static final String VALID_SCHEME_CHAR =
+    public static final String VALID_SCHEME_CHAR =
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+.-";
 
     public static final String DEFAULT_ENCODING =
         "ISO-8859-1";
 
-    private static final int HIGHEST_SPECIAL = '>';
+    public static final int HIGHEST_SPECIAL = '>';
 
-    private static final char[][] specialCharactersRepresentation =
-            new char[HIGHEST_SPECIAL + 1][];
+    private static char[][] specialCharactersRepresentation = new char[HIGHEST_SPECIAL + 1][];
 
     static {
         specialCharactersRepresentation['&'] = "&amp;".toCharArray();
@@ -255,12 +252,13 @@ public class Util {
             (HttpServletRequest) pageContext.getRequest();
         if (context == null) {
             if (url.startsWith("/"))
-                return request.getContextPath() + url;
+                return (request.getContextPath() + url);
             else
                 return url;
         } else {
             if (!context.startsWith("/") || !url.startsWith("/")) {
-                throw new JspTagException(Localizer.getMessage("jstl.urlMustStartWithSlash"));
+                throw new JspTagException(
+                "In URL tags, when the \"context\" attribute is specified, values of both \"context\" and \"url\" must start with \"/\".");
             }
             if (context.equals("/")) {
                 // Don't produce string starting with '//', many
@@ -268,7 +266,7 @@ public class Util {
                 // path on same host.
                 return url;
             } else {
-                return context + url;
+                return (context + url);
             }
         }
     }
@@ -285,21 +283,6 @@ public class Util {
             public void write(int b) throws IOException {
                 bos.write(b);
             }
-
-            @Override
-            public boolean isReady() {
-                // Non-blocking IO not supported
-                return false;
-            }
-
-            @Override
-            public void setWriteListener(WriteListener listener) {
-                // Non-blocking IO not supported
-                throw new UnsupportedOperationException();
-            }
-
-
-
         };
         private boolean isWriterUsed;
         private boolean isStreamUsed;
@@ -313,7 +296,8 @@ public class Util {
         @Override
         public PrintWriter getWriter() {
             if (isStreamUsed)
-                throw new IllegalStateException(Localizer.getMessage("jstl.writerAfterOS"));
+                throw new IllegalStateException("Unexpected internal error during &lt;import&gt: " +
+                "Target servlet called getWriter(), then getOutputStream()");
             isWriterUsed = true;
             return new PrintWriter(sw);
         }
@@ -321,7 +305,8 @@ public class Util {
         @Override
         public ServletOutputStream getOutputStream() {
             if (isWriterUsed)
-                throw new IllegalStateException(Localizer.getMessage("jstl.OSAfterWriter"));
+                throw new IllegalStateException("Unexpected internal error during &lt;import&gt: " +
+                "Target servlet called getOutputStream(), then getWriter()");
             isStreamUsed = true;
             return sos;
         }

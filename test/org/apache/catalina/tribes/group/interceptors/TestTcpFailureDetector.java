@@ -32,6 +32,16 @@ import org.apache.catalina.tribes.MembershipListener;
 import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
 
+/**
+ * <p>Title: </p>
+ *
+ * <p>Description: </p>
+ *
+ * <p>Company: </p>
+ *
+ * @author not attributable
+ * @version 1.0
+ */
 public class TestTcpFailureDetector {
     private TcpFailureDetector tcpFailureDetector1 = null;
     private TcpFailureDetector tcpFailureDetector2 = null;
@@ -73,16 +83,7 @@ public class TestTcpFailureDetector {
         channel2.stop(Channel.SND_RX_SEQ);
         ByteMessage msg = new ByteMessage(new byte[1024]);
         try {
-            int msgCount = 0;
-            // Normally the first message sent should fail but occasional
-            // failures are observed on CI systems so messages are sent in a
-            // loop with a delay between them to try and account for timing
-            // differences.
-            while (msgCount < 5) {
-                channel1.send(channel1.getMembers(), msg, 0);
-                msgCount++;
-                Thread.sleep(500);
-            }
+            channel1.send(channel1.getMembers(), msg, 0);
             Assert.fail("Message send should have failed.");
         } catch ( ChannelException x ) {
             // Ignore
@@ -152,7 +153,7 @@ public class TestTcpFailureDetector {
         public TestMbrListener(String name) {
             this.name = name;
         }
-        public ArrayList<Member> members = new ArrayList<>();
+        public ArrayList<Member> members = new ArrayList<Member>();
         @Override
         public void memberAdded(Member member) {
             if ( !members.contains(member) ) {

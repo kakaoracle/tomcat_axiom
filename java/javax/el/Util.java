@@ -33,6 +33,7 @@ import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -84,7 +85,8 @@ class Util {
 
 
     private static final CacheValue nullTcclFactory = new CacheValue();
-    private static final Map<CacheKey, CacheValue> factoryCache = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<CacheKey, CacheValue> factoryCache =
+            new ConcurrentHashMap<CacheKey, CacheValue>();
 
     /**
      * Provides a per class loader cache of ExpressionFactory instances without
@@ -148,7 +150,7 @@ class Util {
 
         public CacheKey(ClassLoader key) {
             hash = key.hashCode();
-            ref = new WeakReference<>(key);
+            ref = new WeakReference<ClassLoader>(key);
         }
 
         @Override
@@ -188,7 +190,7 @@ class Util {
         }
 
         public void setExpressionFactory(ExpressionFactory factory) {
-            ref = new WeakReference<>(factory);
+            ref = new WeakReference<ExpressionFactory>(factory);
         }
     }
 
@@ -197,7 +199,7 @@ class Util {
      * This method duplicates code in org.apache.el.util.ReflectionUtil. When
      * making changes keep the code in sync.
      */
-    static Method findMethod(Class<?> clazz, Object base, String methodName,
+    static Method findMethod(Class<?> clazz, String methodName,
             Class<?>[] paramTypes, Object[] paramValues) {
 
         if (clazz == null || methodName == null) {
@@ -212,11 +214,11 @@ class Util {
 
         Method[] methods = clazz.getMethods();
 
-        List<Wrapper<Method>> wrappers = Wrapper.wrap(methods, methodName);
+        List<Wrapper> wrappers = Wrapper.wrap(methods, methodName);
 
-        Wrapper<Method> result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
+        Wrapper result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
 
-        return getMethod(clazz, base, result.unWrap());
+        return getMethod(clazz, (Method) result.unWrap());
     }
 
     /*
@@ -224,14 +226,14 @@ class Util {
      * making changes keep the code in sync.
      */
     @SuppressWarnings("null")
-    private static <T> Wrapper<T> findWrapper(Class<?> clazz, List<Wrapper<T>> wrappers,
+    private static Wrapper findWrapper(Class<?> clazz, List<Wrapper> wrappers,
             String name, Class<?>[] paramTypes, Object[] paramValues) {
 
-        Map<Wrapper<T>,MatchResult> candidates = new HashMap<>();
+        Map<Wrapper,MatchResult> candidates = new HashMap<Wrapper,MatchResult>();
 
         int paramCount = paramTypes.length;
 
-        for (Wrapper<T> w : wrappers) {
+        for (Wrapper w : wrappers) {
             Class<?>[] mParamTypes = w.getParameterTypes();
             int mParamCount;
             if (mParamTypes == null) {
@@ -336,9 +338,9 @@ class Util {
         // Look for the method that has the highest number of parameters where
         // the type matches exactly
         MatchResult bestMatch = new MatchResult(0, 0, 0, false);
-        Wrapper<T> match = null;
+        Wrapper match = null;
         boolean multiple = false;
-        for (Map.Entry<Wrapper<T>, MatchResult> entry : candidates.entrySet()) {
+        for (Map.Entry<Wrapper, MatchResult> entry : candidates.entrySet()) {
             int cmp = entry.getValue().compareTo(bestMatch);
             if (cmp > 0 || match == null) {
                 bestMatch = entry.getValue();
@@ -380,11 +382,11 @@ class Util {
     private static final String paramString(Class<?>[] types) {
         if (types != null) {
             StringBuilder sb = new StringBuilder();
-            for (Class<?> type : types) {
-                if (type == null) {
+            for (int i = 0; i < types.length; i++) {
+                if (types[i] == null) {
                     sb.append("null, ");
                 } else {
-                    sb.append(type.getName()).append(", ");
+                    sb.append(types[i].getName()).append(", ");
                 }
             }
             if (sb.length() > 2) {
@@ -400,10 +402,10 @@ class Util {
      * This method duplicates code in org.apache.el.util.ReflectionUtil. When
      * making changes keep the code in sync.
      */
-    private static <T> Wrapper<T> resolveAmbiguousWrapper(Set<Wrapper<T>> candidates,
+    private static Wrapper resolveAmbiguousWrapper(Set<Wrapper> candidates,
             Class<?>[] paramTypes) {
         // Identify which parameter isn't an exact match
-        Wrapper<T> w = candidates.iterator().next();
+        Wrapper w = candidates.iterator().next();
 
         int nonMatchIndex = 0;
         Class<?> nonMatchClass = null;
@@ -421,7 +423,7 @@ class Util {
             return null;
         }
 
-        for (Wrapper<T> c : candidates) {
+        for (Wrapper c : candidates) {
            if (c.getParameterTypes()[nonMatchIndex] ==
                    paramTypes[nonMatchIndex]) {
                // Methods have different non-matching parameters
@@ -433,7 +435,7 @@ class Util {
         // Can't be null
         Class<?> superClass = nonMatchClass.getSuperclass();
         while (superClass != null) {
-            for (Wrapper<T> c : candidates) {
+            for (Wrapper c : candidates) {
                 if (c.getParameterTypes()[nonMatchIndex].equals(superClass)) {
                     // Found a match
                     return c;
@@ -443,9 +445,9 @@ class Util {
         }
 
         // Treat instances of Number as a special case
-        Wrapper<T> match = null;
+        Wrapper match = null;
         if (Number.class.isAssignableFrom(nonMatchClass)) {
-            for (Wrapper<T> c : candidates) {
+            for (Wrapper c : candidates) {
                 Class<?> candidateType = c.getParameterTypes()[nonMatchIndex];
                 if (Number.class.isAssignableFrom(candidateType) ||
                         candidateType.isPrimitive()) {
@@ -539,21 +541,16 @@ class Util {
      * This method duplicates code in org.apache.el.util.ReflectionUtil. When
      * making changes keep the code in sync.
      */
-    static Method getMethod(Class<?> type, Object base, Method m) {
-        JreCompat jreCompat = JreCompat.getInstance();
-        // If base is null, method MUST be static
-        // If base is non-null, method may be static or non-static
-        if (m == null ||
-                (Modifier.isPublic(type.getModifiers()) &&
-                        (jreCompat.canAcccess(base, m) || base != null && jreCompat.canAcccess(null, m)))) {
+    static Method getMethod(Class<?> type, Method m) {
+        if (m == null || Modifier.isPublic(type.getModifiers())) {
             return m;
         }
-        Class<?>[] interfaces = type.getInterfaces();
+        Class<?>[] inf = type.getInterfaces();
         Method mp = null;
-        for (Class<?> iface : interfaces) {
+        for (int i = 0; i < inf.length; i++) {
             try {
-                mp = iface.getMethod(m.getName(), m.getParameterTypes());
-                mp = getMethod(mp.getDeclaringClass(), base, mp);
+                mp = inf[i].getMethod(m.getName(), m.getParameterTypes());
+                mp = getMethod(mp.getDeclaringClass(), mp);
                 if (mp != null) {
                     return mp;
                 }
@@ -565,7 +562,7 @@ class Util {
         if (sup != null) {
             try {
                 mp = sup.getMethod(m.getName(), m.getParameterTypes());
-                mp = getMethod(mp.getDeclaringClass(), base, mp);
+                mp = getMethod(mp.getDeclaringClass(), mp);
                 if (mp != null) {
                     return mp;
                 }
@@ -594,20 +591,32 @@ class Util {
 
         Constructor<?>[] constructors = clazz.getConstructors();
 
-        List<Wrapper<Constructor<?>>> wrappers = Wrapper.wrap(constructors);
+        List<Wrapper> wrappers = Wrapper.wrap(constructors);
 
-        Wrapper<Constructor<?>> wrapper = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
+        Wrapper result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
 
-        Constructor<?> constructor = wrapper.unWrap();
+        return getConstructor(clazz, (Constructor<?>) result.unWrap());
+    }
 
-        JreCompat jreCompat = JreCompat.getInstance();
-        if (!Modifier.isPublic(clazz.getModifiers()) || !jreCompat.canAcccess(null, constructor)) {
-            throw new MethodNotFoundException(message(
-                    null, "util.method.notfound", clazz, methodName,
-                    paramString(paramTypes)));
+
+    static Constructor<?> getConstructor(Class<?> type, Constructor<?> c) {
+        if (c == null || Modifier.isPublic(type.getModifiers())) {
+            return c;
         }
-
-        return constructor;
+        Constructor<?> cp = null;
+        Class<?> sup = type.getSuperclass();
+        if (sup != null) {
+            try {
+                cp = sup.getConstructor(c.getParameterTypes());
+                cp = getConstructor(cp.getDeclaringClass(), cp);
+                if (cp != null) {
+                    return cp;
+                }
+            } catch (NoSuchMethodException e) {
+                // Ignore
+            }
+        }
+        return null;
     }
 
 
@@ -665,10 +674,10 @@ class Util {
     }
 
 
-    private abstract static class Wrapper<T> {
+    private abstract static class Wrapper {
 
-        public static List<Wrapper<Method>> wrap(Method[] methods, String name) {
-            List<Wrapper<Method>> result = new ArrayList<>();
+        public static List<Wrapper> wrap(Method[] methods, String name) {
+            List<Wrapper> result = new ArrayList<Wrapper>();
             for (Method method : methods) {
                 if (method.getName().equals(name)) {
                     result.add(new MethodWrapper(method));
@@ -677,22 +686,22 @@ class Util {
             return result;
         }
 
-        public static List<Wrapper<Constructor<?>>> wrap(Constructor<?>[] constructors) {
-            List<Wrapper<Constructor<?>>> result = new ArrayList<>();
+        public static List<Wrapper> wrap(Constructor<?>[] constructors) {
+            List<Wrapper> result = new ArrayList<Wrapper>();
             for (Constructor<?> constructor : constructors) {
                 result.add(new ConstructorWrapper(constructor));
             }
             return result;
         }
 
-        public abstract T unWrap();
+        public abstract Object unWrap();
         public abstract Class<?>[] getParameterTypes();
         public abstract boolean isVarArgs();
         public abstract boolean isBridge();
     }
 
 
-    private static class MethodWrapper extends Wrapper<Method> {
+    private static class MethodWrapper extends Wrapper {
         private final Method m;
 
         public MethodWrapper(Method m) {
@@ -700,7 +709,7 @@ class Util {
         }
 
         @Override
-        public Method unWrap() {
+        public Object unWrap() {
             return m;
         }
 
@@ -720,7 +729,7 @@ class Util {
         }
     }
 
-    private static class ConstructorWrapper extends Wrapper<Constructor<?>> {
+    private static class ConstructorWrapper extends Wrapper {
         private final Constructor<?> c;
 
         public ConstructorWrapper(Constructor<?> c) {
@@ -728,7 +737,7 @@ class Util {
         }
 
         @Override
-        public Constructor<?> unWrap() {
+        public Object unWrap() {
             return c;
         }
 
@@ -784,21 +793,35 @@ class Util {
 
         @Override
         public int compareTo(MatchResult o) {
-            int cmp = Integer.compare(this.getExact(), o.getExact());
-            if (cmp == 0) {
-                cmp = Integer.compare(this.getAssignable(), o.getAssignable());
-                if (cmp == 0) {
-                    cmp = Integer.compare(this.getCoercible(), o.getCoercible());
-                    if (cmp == 0) {
+            if (this.getExact() < o.getExact()) {
+                return -1;
+            } else if (this.getExact() > o.getExact()) {
+                return 1;
+            } else {
+                if (this.getAssignable() < o.getAssignable()) {
+                    return -1;
+                } else if (this.getAssignable() > o.getAssignable()) {
+                    return 1;
+                } else {
+                    if (this.getCoercible() < o.getCoercible()) {
+                        return -1;
+                    } else if (this.getCoercible() > o.getCoercible()) {
+                        return 1;
+                    } else {
                         // The nature of bridge methods is such that it actually
                         // doesn't matter which one we pick as long as we pick
                         // one. That said, pick the 'right' one (the non-bridge
                         // one) anyway.
-                        cmp = Boolean.compare(o.isBridge(), this.isBridge());
+                        if (o.isBridge() && !this.isBridge()) {
+                            return 1;
+                        } else if (!o.isBridge() && this.isBridge()) {
+                            return -1;
+                        } else {
+                            return 0;
+                        }
                     }
                 }
             }
-            return cmp;
         }
 
         @Override

@@ -92,14 +92,12 @@ import org.apache.tomcat.util.http.parser.Host;
  * in the <code>proxiesHeader</code> value</td>
  * <td>RemoteIPInternalProxy</td>
  * <td>Regular expression (in the syntax supported by
- * {@link java.util.regex.Pattern java.util.regex})</td>
+ * {@link Pattern java.util.regex})</td>
  * <td>10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|
  *     169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|
- *     172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|
- *     172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}|
  *     0:0:0:0:0:0:0:1|::1
  *     <br>
- * By default, 10/8, 192.168/16, 169.254/16, 127/8, 172.16/12, and ::1 are allowed.</td>
+ * By default, 10/8, 192.168/16, 169.254/16, 127/8 and ::1 are allowed.</td>
  * </tr>
  * <tr>
  * <td>proxiesHeader</td>
@@ -116,7 +114,7 @@ import org.apache.tomcat.util.http.parser.Host;
  * trusted and will appear in the <code>proxiesHeader</code> value</td>
  * <td>RemoteIPTrustedProxy</td>
  * <td>Regular expression (in the syntax supported by
- * {@link java.util.regex.Pattern java.util.regex})</td>
+ * {@link Pattern java.util.regex})</td>
  * <td>&nbsp;</td>
  * </tr>
  * <tr>
@@ -359,6 +357,11 @@ public class RemoteIpValve extends ValveBase {
     private static final Pattern commaSeparatedValuesPattern = Pattern.compile("\\s*,\\s*");
 
     /**
+     * The descriptive information related to this implementation.
+     */
+    private static final String info = "org.apache.catalina.valves.RemoteIpValve/1.0";
+
+    /**
      * Logger
      */
     private static final Log log = LogFactory.getLog(RemoteIpValve.class);
@@ -421,9 +424,6 @@ public class RemoteIpValve extends ValveBase {
             "192\\.168\\.\\d{1,3}\\.\\d{1,3}|" +
             "169\\.254\\.\\d{1,3}\\.\\d{1,3}|" +
             "127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|" +
-            "172\\.1[6-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" +
-            "172\\.2[0-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" +
-            "172\\.3[0-1]{1}\\.\\d{1,3}\\.\\d{1,3}|" +
             "0:0:0:0:0:0:0:1|::1");
 
     /**
@@ -535,6 +535,14 @@ public class RemoteIpValve extends ValveBase {
     }
 
     /**
+     * Return descriptive information about this Valve implementation.
+     */
+    @Override
+    public String getInfo() {
+        return info;
+    }
+
+    /**
      * @see #setInternalProxies(String)
      * @return Regular expression that defines the internal proxies
      */
@@ -619,7 +627,7 @@ public class RemoteIpValve extends ValveBase {
                 trustedProxies.matcher(originalRemoteAddr).matches())) {
             String remoteIp = null;
             // In java 6, proxiesHeaderValue should be declared as a java.util.Deque
-            LinkedList<String> proxiesHeaderValue = new LinkedList<>();
+            LinkedList<String> proxiesHeaderValue = new LinkedList<String>();
             StringBuilder concatRemoteIpHeaderValue = new StringBuilder();
 
             for (Enumeration<String> e = request.getHeaders(remoteIpHeader); e.hasMoreElements();) {
@@ -650,7 +658,7 @@ public class RemoteIpValve extends ValveBase {
                 }
             }
             // continue to loop on remoteIpHeaderValue to build the new value of the remoteIpHeader
-            LinkedList<String> newRemoteIpHeaderValue = new LinkedList<>();
+            LinkedList<String> newRemoteIpHeaderValue = new LinkedList<String>();
             for (; idx >= 0; idx--) {
                 String currentRemoteIp = remoteIpHeaderValue[idx];
                 newRemoteIpHeaderValue.addFirst(currentRemoteIp);
@@ -782,8 +790,8 @@ public class RemoteIpValve extends ValveBase {
         if (forwardedProtocols.length == 0) {
             return false;
         }
-        for (String forwardedProtocol : forwardedProtocols) {
-            if (!protocolHeaderHttpsValue.equalsIgnoreCase(forwardedProtocol)) {
+        for (int i = 0; i < forwardedProtocols.length; i++) {
+            if (!protocolHeaderHttpsValue.equalsIgnoreCase(forwardedProtocols[i])) {
                 return false;
             }
         }

@@ -64,34 +64,22 @@ public class TestGroupChannelMemberArrival {
             };
             threads[i] = t;
         }
-        for (Thread thread : threads) {
-            thread.start();
+        for (int i = 0; i < threads.length; i++) {
+            threads[i].start();
         }
-        for (Thread thread : threads) {
-            thread.join();
+        for (int i = 0; i < threads.length; i++) {
+            threads[i].join();
         }
         Thread.sleep(5000);
         System.out.println(System.currentTimeMillis()
                 + " All channels started.");
-        StringBuilder arrivalLengthErrors = new StringBuilder();
         for (int i = listeners.length - 1; i >= 0; i--) {
             TestMbrListener listener = listeners[i];
             synchronized (listener.members) {
-                if (channels.length - 1 != listener.members.size()) {
-                    arrivalLengthErrors.append("Checking member arrival length for [");
-                    arrivalLengthErrors.append(listener.name);
-                    arrivalLengthErrors.append("]. Was [");
-                    arrivalLengthErrors.append(listener.members.size());
-                    arrivalLengthErrors.append("] but should have been [");
-                    arrivalLengthErrors.append(channels.length - 1);
-                    arrivalLengthErrors.append("]");
-                    arrivalLengthErrors.append('\n');
-                }
+                Assert.assertEquals("Checking member arrival length (" + listener.name
+                        + ")", channels.length - 1, listener.members.size());
             }
         }
-        // Note if this fails for all listeners check multicast is working with
-        // org.apache.catalina.tribes.TesterMulticast
-        Assert.assertTrue(arrivalLengthErrors.toString(), arrivalLengthErrors.length() == 0);
         System.out.println(System.currentTimeMillis()
                 + " Members arrival counts checked.");
     }
@@ -99,9 +87,9 @@ public class TestGroupChannelMemberArrival {
     @After
     public void tearDown() throws Exception {
 
-        for (ManagedChannel channel : channels) {
+        for (int i = 0; i < channels.length; i++) {
             try {
-                channel.stop(Channel.DEFAULT);
+                channels[i].stop(Channel.DEFAULT);
             } catch (Exception ignore) {
                 // Ignore
             }
@@ -115,7 +103,7 @@ public class TestGroupChannelMemberArrival {
             this.name = name;
         }
 
-        public ArrayList<Member> members = new ArrayList<>(1);
+        public ArrayList<Member> members = new ArrayList<Member>(1);
 
         @Override
         public void memberAdded(Member member) {

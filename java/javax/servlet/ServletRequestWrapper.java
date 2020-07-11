@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.util.Enumeration;
 import java.util.Locale;
 import java.util.Map;
-import java.util.ResourceBundle;
 
 /**
  * Provides a convenient implementation of the ServletRequest interface that can
@@ -30,13 +29,9 @@ import java.util.ResourceBundle;
  * through to the wrapped request object.
  *
  * @since Servlet 2.3
- * @see javax.servlet.ServletRequest
+ * @see ServletRequest
  */
 public class ServletRequestWrapper implements ServletRequest {
-    private static final String LSTRING_FILE = "javax.servlet.LocalStrings";
-    private static final ResourceBundle lStrings =
-        ResourceBundle.getBundle(LSTRING_FILE);
-
     private ServletRequest request;
 
     /**
@@ -48,7 +43,7 @@ public class ServletRequestWrapper implements ServletRequest {
      */
     public ServletRequestWrapper(ServletRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException(lStrings.getString("wrapper.nullRequest"));
+            throw new IllegalArgumentException("Request cannot be null");
         }
         this.request = request;
     }
@@ -69,7 +64,7 @@ public class ServletRequestWrapper implements ServletRequest {
      */
     public void setRequest(ServletRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException(lStrings.getString("wrapper.nullRequest"));
+            throw new IllegalArgumentException("Request cannot be null");
         }
         this.request = request;
     }
@@ -118,17 +113,6 @@ public class ServletRequestWrapper implements ServletRequest {
     @Override
     public int getContentLength() {
         return this.request.getContentLength();
-    }
-
-    /**
-     * The default behavior of this method is to return getContentLengthLong()
-     * on the wrapped request object.
-     *
-     * @since Servlet 3.1
-     */
-    @Override
-    public long getContentLengthLong() {
-        return this.request.getContentLengthLong();
     }
 
     /**
@@ -309,7 +293,8 @@ public class ServletRequestWrapper implements ServletRequest {
      * @deprecated As of Version 3.0 of the Java Servlet API
      */
     @Override
-    @Deprecated
+    @SuppressWarnings("dep-ann")
+    // Spec API does not use @Deprecated
     public String getRealPath(String path) {
         return this.request.getRealPath(path);
     }
@@ -379,7 +364,7 @@ public class ServletRequestWrapper implements ServletRequest {
      * @since Servlet 3.0
      */
     @Override
-    public AsyncContext startAsync() throws IllegalStateException {
+    public AsyncContext startAsync() {
         return request.startAsync();
     }
 
@@ -462,7 +447,9 @@ public class ServletRequestWrapper implements ServletRequest {
      *         otherwise <code>false</code>
      * @since Servlet 3.0
      */
-    public boolean isWrapperFor(Class<?> wrappedType) {
+    @SuppressWarnings("unchecked")
+    // Spec API does not use generics
+    public boolean isWrapperFor(@SuppressWarnings("rawtypes") Class wrappedType) {
         if (wrappedType.isAssignableFrom(request.getClass())) {
             return true;
         }

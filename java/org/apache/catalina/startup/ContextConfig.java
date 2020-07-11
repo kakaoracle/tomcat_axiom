@@ -21,12 +21,14 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.JarURLConnection;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -34,15 +36,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.servlet.MultipartConfigElement;
+import javax.naming.Binding;
+import javax.naming.NameNotFoundException;
+import javax.naming.NamingEnumeration;
+import javax.naming.NamingException;
 import javax.servlet.ServletContainerInitializer;
 import javax.servlet.ServletContext;
-import javax.servlet.SessionCookieConfig;
 import javax.servlet.annotation.HandlesTypes;
 
 import org.apache.catalina.Authenticator;
@@ -58,18 +62,27 @@ import org.apache.catalina.Pipeline;
 import org.apache.catalina.Server;
 import org.apache.catalina.Service;
 import org.apache.catalina.Valve;
-import org.apache.catalina.WebResource;
-import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.Wrapper;
+import org.apache.catalina.core.ContainerBase;
 import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.core.StandardEngine;
 import org.apache.catalina.core.StandardHost;
+import org.apache.catalina.deploy.ErrorPage;
+import org.apache.catalina.deploy.FilterDef;
+import org.apache.catalina.deploy.FilterMap;
+import org.apache.catalina.deploy.LoginConfig;
+import org.apache.catalina.deploy.SecurityConstraint;
+import org.apache.catalina.deploy.ServletDef;
+import org.apache.catalina.deploy.WebXml;
 import org.apache.catalina.util.ContextName;
 import org.apache.catalina.util.Introspection;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.Jar;
-import org.apache.tomcat.JarScanType;
+import org.apache.naming.resources.DirContextURLConnection;
+import org.apache.naming.resources.FileDirContext;
+import org.apache.naming.resources.ResourceAttributes;
 import org.apache.tomcat.JarScanner;
+import org.apache.tomcat.JarScannerCallback;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.bcel.classfile.AnnotationElementValue;
 import org.apache.tomcat.util.bcel.classfile.AnnotationEntry;
@@ -80,33 +93,13 @@ import org.apache.tomcat.util.bcel.classfile.ElementValue;
 import org.apache.tomcat.util.bcel.classfile.ElementValuePair;
 import org.apache.tomcat.util.bcel.classfile.JavaClass;
 import org.apache.tomcat.util.buf.UriUtil;
+import org.apache.tomcat.util.descriptor.DigesterFactory;
 import org.apache.tomcat.util.descriptor.InputSourceUtil;
 import org.apache.tomcat.util.descriptor.XmlErrorHandler;
-import org.apache.tomcat.util.descriptor.web.ContextEjb;
-import org.apache.tomcat.util.descriptor.web.ContextEnvironment;
-import org.apache.tomcat.util.descriptor.web.ContextLocalEjb;
-import org.apache.tomcat.util.descriptor.web.ContextResource;
-import org.apache.tomcat.util.descriptor.web.ContextResourceEnvRef;
-import org.apache.tomcat.util.descriptor.web.ContextService;
-import org.apache.tomcat.util.descriptor.web.ErrorPage;
-import org.apache.tomcat.util.descriptor.web.FilterDef;
-import org.apache.tomcat.util.descriptor.web.FilterMap;
-import org.apache.tomcat.util.descriptor.web.FragmentJarScannerCallback;
-import org.apache.tomcat.util.descriptor.web.JspPropertyGroup;
-import org.apache.tomcat.util.descriptor.web.LoginConfig;
-import org.apache.tomcat.util.descriptor.web.MessageDestinationRef;
-import org.apache.tomcat.util.descriptor.web.MultipartDef;
-import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
-import org.apache.tomcat.util.descriptor.web.SecurityRoleRef;
-import org.apache.tomcat.util.descriptor.web.ServletDef;
-import org.apache.tomcat.util.descriptor.web.SessionConfig;
-import org.apache.tomcat.util.descriptor.web.WebXml;
-import org.apache.tomcat.util.descriptor.web.WebXmlParser;
 import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.digester.RuleSet;
-import org.apache.tomcat.util.file.ConfigFileLoader;
-import org.apache.tomcat.util.file.ConfigurationSource;
 import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.scan.Jar;
 import org.apache.tomcat.util.scan.JarFactory;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXParseException;
@@ -116,10 +109,11 @@ import org.xml.sax.SAXParseException;
  * of that Context, and the associated defined servlets.
  *
  * @author Craig R. McClanahan
+ * @author Jean-Francois Arcand
  */
 public class ContextConfig implements LifecycleListener {
 
-    private static final Log log = LogFactory.getLog(ContextConfig.class);
+    private static final Log log = LogFactory.getLog( ContextConfig.class );
 
 
     /**
@@ -133,6 +127,7 @@ public class ContextConfig implements LifecycleListener {
         new LoginConfig("NONE", null, null, null);
 
 
+
     /**
      * The set of Authenticators that we know how to configure.  The key is
      * the name of the implemented authentication method, and the value is
@@ -140,18 +135,52 @@ public class ContextConfig implements LifecycleListener {
      */
     protected static final Properties authenticators;
 
+    /**
+     * The list of JARs that will be skipped when scanning a web application
+     * for JARs. This means the JAR will not be scanned for web fragments, SCIs,
+     * annotations or classes that match @HandlesTypes.
+     */
+    private static final Set<String> pluggabilityJarsToSkip =
+            new HashSet<String>();
+
     static {
         // Load our mapping properties for the standard authenticators
         Properties props = new Properties();
-        try (InputStream is = ContextConfig.class.getClassLoader().getResourceAsStream(
-                "org/apache/catalina/startup/Authenticators.properties")) {
+        InputStream is = null;
+        try {
+            is = ContextConfig.class.getClassLoader().getResourceAsStream(
+                    "org/apache/catalina/startup/Authenticators.properties");
             if (is != null) {
                 props.load(is);
             }
         } catch (IOException ioe) {
             props = null;
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch (IOException e) {
+                }
+            }
         }
         authenticators = props;
+        // Load the list of JARS to skip
+        addJarsToSkip(Constants.DEFAULT_JARS_TO_SKIP);
+        addJarsToSkip(Constants.PLUGGABILITY_JARS_TO_SKIP);
+    }
+
+    private static void addJarsToSkip(String systemPropertyName) {
+        String jarList = System.getProperty(systemPropertyName);
+        if (jarList != null) {
+            StringTokenizer tokenizer = new StringTokenizer(jarList, ",");
+            while (tokenizer.hasMoreElements()) {
+                String token = tokenizer.nextToken().trim();
+                if (token.length() > 0) {
+                    pluggabilityJarsToSkip.add(token);
+                }
+            }
+        }
+
     }
 
     /**
@@ -164,7 +193,7 @@ public class ContextConfig implements LifecycleListener {
      * Cache of default web.xml fragments per Host
      */
     protected static final Map<Host,DefaultWebXmlCacheEntry> hostWebXmlCache =
-            new ConcurrentHashMap<>();
+        new ConcurrentHashMap<Host,DefaultWebXmlCacheEntry>();
 
 
     /**
@@ -184,7 +213,15 @@ public class ContextConfig implements LifecycleListener {
     /**
      * The Context we are associated with.
      */
-    protected volatile Context context = null;
+    protected Context context = null;
+
+
+    /**
+     * The default web application's context file location.
+     * @deprecated Unnecessary
+     */
+    @Deprecated
+    protected String defaultContextXml = null;
 
 
     /**
@@ -216,14 +253,22 @@ public class ContextConfig implements LifecycleListener {
      * Map of ServletContainerInitializer to classes they expressed interest in.
      */
     protected final Map<ServletContainerInitializer, Set<Class<?>>> initializerClassMap =
-            new LinkedHashMap<>();
+            new LinkedHashMap<ServletContainerInitializer, Set<Class<?>>>();
 
     /**
      * Map of Types to ServletContainerInitializer that are interested in those
      * types.
      */
     protected final Map<Class<?>, Set<ServletContainerInitializer>> typeInitializerMap =
-            new HashMap<>();
+            new HashMap<Class<?>, Set<ServletContainerInitializer>>();
+
+    /**
+     * Cache of JavaClass objects (byte code) by fully qualified class name.
+     * Only populated if it is necessary to scan the super types and interfaces
+     * as part of the processing for {@link HandlesTypes}.
+     */
+    protected final Map<String,JavaClassCacheEntry> javaClassCache =
+            new HashMap<String,JavaClassCacheEntry>();
 
     /**
      * Flag that indicates if at least one {@link HandlesTypes} entry is present
@@ -237,31 +282,73 @@ public class ContextConfig implements LifecycleListener {
      */
     protected boolean handlesTypesNonAnnotations = false;
 
-
-    // ------------------------------------------------------------- Properties
+    /**
+     * The <code>Digester</code> we will use to process web application
+     * deployment descriptor files.
+     */
+    protected Digester webDigester = null;
+    protected WebRuleSet webRuleSet = null;
 
     /**
-     * Obtain the location of the default deployment descriptor.
-     *
-     * @return The path to the default web.xml. If not absolute, it is relative
-     *         to CATALINA_BASE.
+     * The <code>Digester</code> we will use to process web fragment
+     * deployment descriptor files.
+     */
+    protected Digester webFragmentDigester = null;
+    protected WebRuleSet webFragmentRuleSet = null;
+
+
+    // ------------------------------------------------------------- Properties
+    /**
+     * Return the location of the default deployment descriptor
      */
     public String getDefaultWebXml() {
-        if (defaultWebXml == null) {
-            defaultWebXml = Constants.DefaultWebXml;
+        if( defaultWebXml == null ) {
+            defaultWebXml=Constants.DefaultWebXml;
         }
-        return defaultWebXml;
+
+        return (this.defaultWebXml);
+
     }
 
 
     /**
-     * Set the location of the default deployment descriptor.
+     * Set the location of the default deployment descriptor
      *
-     * @param path The path to the default web.xml. If not absolute, it is
-     *             relative to CATALINA_BASE.
+     * @param path Absolute/relative path to the default web.xml
      */
     public void setDefaultWebXml(String path) {
+
         this.defaultWebXml = path;
+
+    }
+
+
+    /**
+     * Return the location of the default context file
+     * @deprecated Never changed from default
+     */
+    @Deprecated
+    public String getDefaultContextXml() {
+        if( defaultContextXml == null ) {
+            defaultContextXml=Constants.DefaultContextXml;
+        }
+
+        return (this.defaultContextXml);
+
+    }
+
+
+    /**
+     * Set the location of the default context file
+     *
+     * @param path Absolute/relative path to the default context.xml
+     * @deprecated Unused
+     */
+    @Deprecated
+    public void setDefaultContextXml(String path) {
+
+        this.defaultContextXml = path;
+
     }
 
 
@@ -298,19 +385,25 @@ public class ContextConfig implements LifecycleListener {
 
         // Process the event that has occurred
         if (event.getType().equals(Lifecycle.CONFIGURE_START_EVENT)) {
+            // StandardContext启动过程中触发，解析web.xml文件，将Servlet、Filter等添加到Context中
             configureStart();
         } else if (event.getType().equals(Lifecycle.BEFORE_START_EVENT)) {
+            // StandardContext启动之前触发
             beforeStart();
         } else if (event.getType().equals(Lifecycle.AFTER_START_EVENT)) {
+            // StandardContext启动之后触发
             // Restore docBase for management tools
             if (originalDocBase != null) {
                 context.setDocBase(originalDocBase);
             }
         } else if (event.getType().equals(Lifecycle.CONFIGURE_STOP_EVENT)) {
+            // StandardContext停止过程中触发，将Servlet、Filter等从Context中移除
             configureStop();
         } else if (event.getType().equals(Lifecycle.AFTER_INIT_EVENT)) {
+            // StandardContext初始化后触发，创建context.xml文件的解析器contextDigester，并解析context.xml文件，并且创建web.xml文件的解析器webDigester
             init();
         } else if (event.getType().equals(Lifecycle.AFTER_DESTROY_EVENT)) {
+            // StandardContext销毁后触发，删除workDir
             destroy();
         }
 
@@ -351,8 +444,11 @@ public class ContextConfig implements LifecycleListener {
         }
 
         // Has an authenticator been configured already?
-        if (context.getAuthenticator() != null) {
+        if (context.getAuthenticator() != null)
             return;
+
+        if (!(context instanceof ContainerBase)) {
+            return;     // Cannot install a Valve even if it would be needed
         }
 
         // Has a Realm been configured for us to authenticate against?
@@ -369,9 +465,9 @@ public class ContextConfig implements LifecycleListener {
          */
         Valve authenticator = null;
         if (customAuthenticators != null) {
-            authenticator = (Valve) customAuthenticators.get(loginConfig.getAuthMethod());
+            authenticator = (Valve)
+                customAuthenticators.get(loginConfig.getAuthMethod());
         }
-
         if (authenticator == null) {
             if (authenticators == null) {
                 log.error(sm.getString("contextConfig.authenticatorResources"));
@@ -380,7 +476,9 @@ public class ContextConfig implements LifecycleListener {
             }
 
             // Identify the class name of the Valve we should configure
-            String authenticatorName = authenticators.getProperty(loginConfig.getAuthMethod());
+            String authenticatorName = null;
+            authenticatorName =
+                    authenticators.getProperty(loginConfig.getAuthMethod());
             if (authenticatorName == null) {
                 log.error(sm.getString("contextConfig.authenticatorMissing",
                                  loginConfig.getAuthMethod()));
@@ -391,7 +489,7 @@ public class ContextConfig implements LifecycleListener {
             // Instantiate and install an Authenticator of the requested class
             try {
                 Class<?> authenticatorClass = Class.forName(authenticatorName);
-                authenticator = (Valve) authenticatorClass.getConstructor().newInstance();
+                authenticator = (Valve) authenticatorClass.newInstance();
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
                 log.error(sm.getString(
@@ -402,10 +500,10 @@ public class ContextConfig implements LifecycleListener {
             }
         }
 
-        if (authenticator != null) {
-            Pipeline pipeline = context.getPipeline();
+        if (authenticator != null && context instanceof ContainerBase) {
+            Pipeline pipeline = ((ContainerBase) context).getPipeline();
             if (pipeline != null) {
-                pipeline.addValve(authenticator);
+                ((ContainerBase) context).getPipeline().addValve(authenticator);
                 if (log.isDebugEnabled()) {
                     log.debug(sm.getString(
                                     "contextConfig.authenticatorConfigured",
@@ -413,24 +511,45 @@ public class ContextConfig implements LifecycleListener {
                 }
             }
         }
+
+    }
+
+
+    /**
+     * Create and return a Digester configured to process the
+     * web application deployment descriptor (web.xml).
+     */
+    public void createWebXmlDigester(boolean namespaceAware,
+            boolean validation) {
+
+        boolean blockExternal = context.getXmlBlockExternal();
+
+        webRuleSet = new WebRuleSet(false);
+        webDigester = DigesterFactory.newDigester(validation,
+                namespaceAware, webRuleSet, blockExternal);
+        webDigester.getParser();
+
+        webFragmentRuleSet = new WebRuleSet(true);
+        webFragmentDigester = DigesterFactory.newDigester(validation,
+                namespaceAware, webFragmentRuleSet, blockExternal);
+        webFragmentDigester.getParser();
     }
 
 
     /**
      * Create (if necessary) and return a Digester configured to process the
      * context configuration descriptor for an application.
-     * @return the digester for context.xml files
      */
     protected Digester createContextDigester() {
         Digester digester = new Digester();
         digester.setValidating(false);
         digester.setRulesValidation(true);
-        Map<Class<?>, List<String>> fakeAttributes = new HashMap<>();
-        List<String> objectAttrs = new ArrayList<>();
+        Map<Class<?>, List<String>> fakeAttributes = new HashMap<Class<?>, List<String>>();
+        List<String> objectAttrs = new ArrayList<String>();
         objectAttrs.add("className");
         fakeAttributes.put(Object.class, objectAttrs);
         // Ignore attribute added by Eclipse for its internal tracking
-        List<String> contextAttrs = new ArrayList<>();
+        List<String> contextAttrs = new ArrayList<String>();
         contextAttrs.add("source");
         fakeAttributes.put(StandardContext.class, contextAttrs);
         digester.setFakeAttributes(fakeAttributes);
@@ -442,82 +561,105 @@ public class ContextConfig implements LifecycleListener {
     }
 
 
+    // 先获取Engine上配置的baseDir
+    // 如果Engine上没有配置baseDir，那么则获取环境变量catalina.base所指定的路径
+    // 如果catalina.base没有指定路径，那么则获取环境变量catalina.home所指定的路径
+    protected String getBaseDir() {
+        Container engineC=context.getParent().getParent();
+        if( engineC instanceof StandardEngine ) {
+            // 注意getBaseDir()方法内的实现
+            return ((StandardEngine)engineC).getBaseDir();
+        }
+        return System.getProperty(Globals.CATALINA_BASE_PROP);
+    }
+
+
     /**
      * Process the default configuration file, if it exists.
-     * @param digester The digester that will be used for XML parsing
      */
     protected void contextConfig(Digester digester) {
-
-        String defaultContextXml = null;
+        // 可以单独使用文件的方式配置Context的属性
+        // 1. 在Context节点上可以配置defaultContextXml属性，指明配置context.xml文件的位置
+        // 2. 默认情况下会取catalina.base/conf/context.xml
+        // 3. 默认情况下也会取catalina.base/conf/engine名称/host名称/context.xml.default文件
+        // 4. 取catalina.base/conf/engine名称/host名称/Context名称.xml
 
         // Open the default context.xml file, if it exists
-        if (context instanceof StandardContext) {
+        // 先看Context节点上是否配置了defaultContextXml属性
+        if( defaultContextXml==null && context instanceof StandardContext ) {
             defaultContextXml = ((StandardContext)context).getDefaultContextXml();
         }
         // set the default if we don't have any overrides
-        if (defaultContextXml == null) {
-            defaultContextXml = Constants.DefaultContextXml;
-        }
+        // 如果Context节点上没有配置defaultContextXml属性的话，那么则取默认值conf/context.xml
+        if( defaultContextXml==null ) getDefaultContextXml();
 
+        // 如果
         if (!context.getOverride()) {
-            try (ConfigurationSource.Resource contextXmlResource =
-                    ConfigFileLoader.getSource().getResource(defaultContextXml)) {
-                URL defaultContextUrl = contextXmlResource.getURI().toURL();
-                processContextConfig(digester, defaultContextUrl, contextXmlResource.getInputStream());
-            } catch (MalformedURLException e) {
-                log.error(sm.getString("contextConfig.badUrl", defaultContextXml), e);
-            } catch (IOException e) {
-                // Not found
+            File defaultContextFile = new File(defaultContextXml);
+            // defaultContextXml如果是相对于路径，那么则相对于getBaseDir()
+            // 所以默认请求情况下就是取得catalina.base路径下得conf/context.xml
+            if (!defaultContextFile.isAbsolute()) {
+                defaultContextFile =new File(getBaseDir(), defaultContextXml);
             }
 
-            String hostContextFile = Container.getConfigPath(context, Constants.HostContextXml);
-            try (ConfigurationSource.Resource contextXmlResource =
-                    ConfigFileLoader.getSource().getResource(hostContextFile)) {
-                URL defaultContextUrl = contextXmlResource.getURI().toURL();
-                processContextConfig(digester, defaultContextUrl, contextXmlResource.getInputStream());
-            } catch (MalformedURLException e) {
-                log.error(sm.getString("contextConfig.badUrl", hostContextFile), e);
-            } catch (IOException e) {
-                // Not found
+            // 解析context.xml文件
+            if (defaultContextFile.exists()) {
+                try {
+                    URL defaultContextUrl = defaultContextFile.toURI().toURL();
+                    processContextConfig(digester, defaultContextUrl);
+                } catch (MalformedURLException e) {
+                    log.error(sm.getString(
+                            "contextConfig.badUrl", defaultContextFile), e);
+                }
+            }
+
+            // 取Host级别下的context.xml.default文件
+            File hostContextFile = new File(getHostConfigBase(), Constants.HostContextXml);
+            // 解析context.xml.default文件
+            if (hostContextFile.exists()) {
+                try {
+                    URL hostContextUrl = hostContextFile.toURI().toURL();
+                    processContextConfig(digester, hostContextUrl);
+                } catch (MalformedURLException e) {
+                    log.error(sm.getString(
+                            "contextConfig.badUrl", hostContextFile), e);
+                }
             }
         }
+
+        // configFile属性是在Tomcat部署应用时设置的，对应的文件比如：catalina.base\conf\Catalina\localhost\ContextName.xml
+        // 解析configFile文件
         if (context.getConfigFile() != null) {
-            processContextConfig(digester, context.getConfigFile(), null);
+            System.out.println(context.getConfigFile());
+            processContextConfig(digester, context.getConfigFile());
         }
-
     }
 
 
     /**
      * Process a context.xml.
-     * @param digester The digester that will be used for XML parsing
-     * @param contextXml The URL to the context.xml configuration
-     * @param stream The XML resource stream
      */
-    protected void processContextConfig(Digester digester, URL contextXml, InputStream stream) {
+    protected void processContextConfig(Digester digester, URL contextXml) {
 
-        if (log.isDebugEnabled()) {
+        if (log.isDebugEnabled())
             log.debug("Processing context [" + context.getName()
                     + "] configuration file [" + contextXml + "]");
-        }
 
         InputSource source = null;
+        InputStream stream = null;
 
         try {
             source = new InputSource(contextXml.toString());
-            if (stream == null) {
-                URLConnection xmlConn = contextXml.openConnection();
-                xmlConn.setUseCaches(false);
-                stream = xmlConn.getInputStream();
-            }
+            URLConnection xmlConn = contextXml.openConnection();
+            xmlConn.setUseCaches(false);
+            stream = xmlConn.getInputStream();
         } catch (Exception e) {
             log.error(sm.getString("contextConfig.contextMissing",
                       contextXml) , e);
         }
 
-        if (source == null) {
+        if (source == null)
             return;
-        }
 
         try {
             source.setByteStream(stream);
@@ -562,38 +704,44 @@ public class ContextConfig implements LifecycleListener {
 
     /**
      * Adjust docBase.
-     * @throws IOException cannot access the context base path
      */
-    protected void fixDocBase() throws IOException {
+    protected void fixDocBase()
+        throws IOException {
 
         Host host = (Host) context.getParent();
-        File appBase = host.getAppBaseFile();
+        String appBase = host.getAppBase();
 
-        // This could be blank, relative, absolute or canonical
-        String docBaseConfigured = context.getDocBase();
-        // If there is no explicit docBase, derive it from the path and version
-        if (docBaseConfigured == null) {
+        File canonicalAppBase = new File(appBase);
+        if (canonicalAppBase.isAbsolute()) {
+            canonicalAppBase = canonicalAppBase.getCanonicalFile();
+        } else {
+            canonicalAppBase =
+                new File(getBaseDir(), appBase)
+                .getCanonicalFile();
+        }
+
+        String docBase = context.getDocBase();
+        if (docBase == null) {
             // Trying to guess the docBase according to the path
             String path = context.getPath();
             if (path == null) {
                 return;
             }
             ContextName cn = new ContextName(path, context.getWebappVersion());
-            docBaseConfigured = cn.getBaseName();
+            docBase = cn.getBaseName();
         }
 
-        // Obtain the absolute docBase in String and File form
-        String docBaseAbsolute;
-        File docBaseConfiguredFile = new File(docBaseConfigured);
-        if (!docBaseConfiguredFile.isAbsolute()) {
-            docBaseAbsolute = (new File(appBase, docBaseConfigured)).getAbsolutePath();
+        File file = new File(docBase);
+        if (!file.isAbsolute()) {
+            docBase = (new File(canonicalAppBase, docBase)).getCanonicalPath();
         } else {
-            docBaseAbsolute = docBaseConfiguredFile.getAbsolutePath();
+            docBase = file.getCanonicalPath();
         }
-        File docBaseAbsoluteFile = new File(docBaseAbsolute);
-        String originalDocBase = docBaseAbsolute;
+        file = new File(docBase);
+        String origDocBase = docBase;
 
-        ContextName cn = new ContextName(context.getPath(), context.getWebappVersion());
+        ContextName cn = new ContextName(context.getPath(),
+                context.getWebappVersion());
         String pathName = cn.getBaseName();
 
         boolean unpackWARs = true;
@@ -604,68 +752,51 @@ public class ContextConfig implements LifecycleListener {
             }
         }
 
-        // At this point we need to determine if we have a WAR file in the
-        // appBase that needs to be expanded. Therefore we consider the absolute
-        // docBase NOT the canonical docBase. This is because some users symlink
-        // WAR files into the appBase and we want this to work correctly.
-        boolean docBaseAbsoluteInAppBase = docBaseAbsolute.startsWith(appBase.getPath() + File.separatorChar);
-        if (docBaseAbsolute.toLowerCase(Locale.ENGLISH).endsWith(".war") && !docBaseAbsoluteFile.isDirectory()) {
-            URL war = UriUtil.buildJarUrl(docBaseAbsoluteFile);
+        if (docBase.toLowerCase(Locale.ENGLISH).endsWith(".war") && !file.isDirectory()) {
+            URL war = UriUtil.buildJarUrl(new File(docBase));
             if (unpackWARs) {
-                docBaseAbsolute = ExpandWar.expand(host, war, pathName);
-                docBaseAbsoluteFile = new File(docBaseAbsolute);
+                docBase = ExpandWar.expand(host, war, pathName);
+                file = new File(docBase);
+                docBase = file.getCanonicalPath();
                 if (context instanceof StandardContext) {
-                    ((StandardContext) context).setOriginalDocBase(originalDocBase);
+                    ((StandardContext) context).setOriginalDocBase(origDocBase);
                 }
             } else {
                 ExpandWar.validate(host, war, pathName);
             }
         } else {
-            File docBaseAbsoluteFileWar = new File(docBaseAbsolute + ".war");
-            URL war = null;
-            if (docBaseAbsoluteFileWar.exists() && docBaseAbsoluteInAppBase) {
-                war = UriUtil.buildJarUrl(docBaseAbsoluteFileWar);
-            }
-            if (docBaseAbsoluteFile.exists()) {
-                if (war != null && unpackWARs) {
-                    // Check if WAR needs to be re-expanded (e.g. if it has
-                    // changed). Note: HostConfig.deployWar() takes care of
-                    // ensuring that the correct XML file is used.
-                    // This will be a NO-OP if the WAR is unchanged.
-                    ExpandWar.expand(host, war, pathName);
-                }
-            } else {
-                if (war != null) {
+            File docDir = new File(docBase);
+            if (!docDir.exists()) {
+                File warFile = new File(docBase + ".war");
+                if (warFile.exists()) {
+                    URL war = UriUtil.buildJarUrl(warFile);
                     if (unpackWARs) {
-                        docBaseAbsolute = ExpandWar.expand(host, war, pathName);
-                        docBaseAbsoluteFile = new File(docBaseAbsolute);
+                        docBase = ExpandWar.expand(host, war, pathName);
+                        file = new File(docBase);
+                        docBase = file.getCanonicalPath();
                     } else {
-                        docBaseAbsoluteFile = docBaseAbsoluteFileWar;
+                        docBase = warFile.getCanonicalPath();
                         ExpandWar.validate(host, war, pathName);
                     }
                 }
                 if (context instanceof StandardContext) {
-                    ((StandardContext) context).setOriginalDocBase(originalDocBase);
+                    ((StandardContext) context).setOriginalDocBase(origDocBase);
                 }
             }
         }
 
-        String docBaseCanonical = docBaseAbsoluteFile.getCanonicalPath();
-
-        // Re-calculate now docBase is a canonical path
-        boolean docBaseCanonicalInAppBase = docBaseCanonical.startsWith(appBase.getPath() + File.separatorChar);
-        String docBase;
-        if (docBaseCanonicalInAppBase) {
-            docBase = docBaseCanonical.substring(appBase.getPath().length());
+        if (docBase.startsWith(canonicalAppBase.getPath() + File.separatorChar)) {
+            docBase = docBase.substring(canonicalAppBase.getPath().length());
             docBase = docBase.replace(File.separatorChar, '/');
             if (docBase.startsWith("/")) {
                 docBase = docBase.substring(1);
             }
         } else {
-            docBase = docBaseCanonical.replace(File.separatorChar, '/');
+            docBase = docBase.replace(File.separatorChar, '/');
         }
 
         context.setDocBase(docBase);
+
     }
 
 
@@ -675,15 +806,19 @@ public class ContextConfig implements LifecycleListener {
             && ((StandardContext) context).getAntiResourceLocking()) {
 
             Host host = (Host) context.getParent();
+            String appBase = host.getAppBase();
             String docBase = context.getDocBase();
-            if (docBase == null) {
+            if (docBase == null)
                 return;
-            }
             originalDocBase = docBase;
 
             File docBaseFile = new File(docBase);
             if (!docBaseFile.isAbsolute()) {
-                docBaseFile = new File(host.getAppBaseFile(), docBase);
+                File file = new File(appBase);
+                if (!file.isAbsolute()) {
+                    file = new File(getBaseDir(), appBase);
+                }
+                docBaseFile = new File(file, docBase);
             }
 
             String path = context.getPath();
@@ -704,11 +839,10 @@ public class ContextConfig implements LifecycleListener {
             }
             antiLockingDocBase = antiLockingDocBase.getAbsoluteFile();
 
-            if (log.isDebugEnabled()) {
+            if (log.isDebugEnabled())
                 log.debug("Anti locking context[" + context.getName()
                         + "] setting docBase to " +
                         antiLockingDocBase.getPath());
-            }
 
             // Cleanup just in case an old deployment is lying around
             ExpandWar.delete(antiLockingDocBase);
@@ -722,19 +856,23 @@ public class ContextConfig implements LifecycleListener {
     /**
      * Process a "init" event for this Context.
      */
-    protected synchronized void init() {
+    protected void init() {
         // Called from StandardContext.init()
 
         Digester contextDigester = createContextDigester();
         contextDigester.getParser();
 
-        if (log.isDebugEnabled()) {
+        if (log.isDebugEnabled())
             log.debug(sm.getString("contextConfig.init"));
-        }
         context.setConfigured(false);
         ok = true;
 
+        // 解析context.xml文件，注意，并不是<Context>节点，<Context>节点在解析Server.xml的时候就被解析了
         contextConfig(contextDigester);
+
+        // 创建解析web.xml文件的wDigester
+        createWebXmlDigester(context.getXmlNamespaceAware(),
+                context.getXmlValidation());
     }
 
 
@@ -760,9 +898,8 @@ public class ContextConfig implements LifecycleListener {
     protected synchronized void configureStart() {
         // Called from StandardContext.start()
 
-        if (log.isDebugEnabled()) {
+        if (log.isDebugEnabled())
             log.debug(sm.getString("contextConfig.start"));
-        }
 
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("contextConfig.xmlSettings",
@@ -771,6 +908,7 @@ public class ContextConfig implements LifecycleListener {
                     Boolean.valueOf(context.getXmlNamespaceAware())));
         }
 
+        // 根据web.xml文件对Context进行配置
         webConfig();
 
         if (!context.getIgnoreAnnotations()) {
@@ -781,30 +919,30 @@ public class ContextConfig implements LifecycleListener {
         }
 
         // Configure an authenticator if we need one
-        if (ok) {
+        // 用户验证配置
+        if (ok)
             authenticatorConfig();
-        }
 
         // Dump the contents of this pipeline if requested
-        if (log.isDebugEnabled()) {
+        if ((log.isDebugEnabled()) && (context instanceof ContainerBase)) {
             log.debug("Pipeline Configuration:");
-            Pipeline pipeline = context.getPipeline();
+            Pipeline pipeline = ((ContainerBase) context).getPipeline();
             Valve valves[] = null;
-            if (pipeline != null) {
+            if (pipeline != null)
                 valves = pipeline.getValves();
-            }
             if (valves != null) {
-                for (Valve valve : valves) {
-                    log.debug("  " + valve.getClass().getName());
+                for (int i = 0; i < valves.length; i++) {
+                    log.debug("  " + valves[i].getInfo());
                 }
             }
             log.debug("======================");
         }
 
         // Make our application available if no problems were encountered
-        if (ok) {
+        // Context已经配置成功，可以使用了
+        if (ok)
             context.setConfigured(true);
-        } else {
+        else {
             log.error(sm.getString("contextConfig.unavailable"));
             context.setConfigured(false);
         }
@@ -817,9 +955,8 @@ public class ContextConfig implements LifecycleListener {
      */
     protected synchronized void configureStop() {
 
-        if (log.isDebugEnabled()) {
+        if (log.isDebugEnabled())
             log.debug(sm.getString("contextConfig.stop"));
-        }
 
         int i;
 
@@ -976,9 +1113,8 @@ public class ContextConfig implements LifecycleListener {
      */
     protected synchronized void destroy() {
         // Called from StandardContext.destroy()
-        if (log.isDebugEnabled()) {
+        if (log.isDebugEnabled())
             log.debug(sm.getString("contextConfig.destroy"));
-        }
 
         // Skip clearing the work directory if Tomcat is being shutdown
         Server s = getServer();
@@ -1026,29 +1162,29 @@ public class ContextConfig implements LifecycleListener {
 
         // Check role names used in <security-constraint> elements
         SecurityConstraint constraints[] = context.findConstraints();
-        for (SecurityConstraint constraint : constraints) {
-            String roles[] = constraint.findAuthRoles();
-            for (String role : roles) {
-                if (!"*".equals(role) &&
-                        !context.findSecurityRole(role)) {
-                    log.warn(sm.getString("contextConfig.role.auth", role));
-                    context.addSecurityRole(role);
+        for (int i = 0; i < constraints.length; i++) {
+            String roles[] = constraints[i].findAuthRoles();
+            for (int j = 0; j < roles.length; j++) {
+                if (!"*".equals(roles[j]) &&
+                    !context.findSecurityRole(roles[j])) {
+                    log.warn(sm.getString("contextConfig.role.auth", roles[j]));
+                    context.addSecurityRole(roles[j]);
                 }
             }
         }
 
         // Check role names used in <servlet> elements
         Container wrappers[] = context.findChildren();
-        for (Container container : wrappers) {
-            Wrapper wrapper = (Wrapper) container;
+        for (int i = 0; i < wrappers.length; i++) {
+            Wrapper wrapper = (Wrapper) wrappers[i];
             String runAs = wrapper.getRunAs();
             if ((runAs != null) && !context.findSecurityRole(runAs)) {
                 log.warn(sm.getString("contextConfig.role.runas", runAs));
                 context.addSecurityRole(runAs);
             }
             String names[] = wrapper.findSecurityReferences();
-            for (String name : names) {
-                String link = wrapper.findSecurityReference(name);
+            for (int j = 0; j < names.length; j++) {
+                String link = wrapper.findSecurityReference(names[j]);
                 if ((link != null) && !context.findSecurityRole(link)) {
                     log.warn(sm.getString("contextConfig.role.link", link));
                     context.addSecurityRole(link);
@@ -1059,12 +1195,63 @@ public class ContextConfig implements LifecycleListener {
     }
 
 
+    /**
+     * Get config base.
+     *
+     * @deprecated  Unused - will be removed in 8.0.x
+     */
+    @Deprecated
+    protected File getConfigBase() {
+        File configBase = new File(getBaseDir(), "conf");
+        if (!configBase.exists()) {
+            return null;
+        }
+        return configBase;
+    }
+
+    // 确定Host配置文件基本路径----就是我要找某个配置文件时，要从这个目录下去找
+    // 步骤如下：
+    // 1. 如果Host上配置了xmlBase属性，并且该属性是绝对路径的话，将直接以该路径作为基本路径
+    // 2. 如果Host上配置的xmlBase属性是相对路径，那么将以getBaseDir()+xmlBase做为基本路径
+    // 3. 如果Host上没有配置xmlBase属性，那么将以getBaseDir() + "/conf" + engine名字 + "/" + host名字作为基本路径
     protected File getHostConfigBase() {
         File file = null;
-        if (context.getParent() instanceof Host) {
-            file = ((Host)context.getParent()).getConfigBaseFile();
+        Container container = context;
+        Host host = null;
+        Engine engine = null;
+        // 赋值host和engine
+        while (container != null) {
+            if (container instanceof Host) {
+                host = (Host)container;
+            }
+            if (container instanceof Engine) {
+                engine = (Engine)container;
+            }
+            container = container.getParent();
         }
-        return file;
+        // 如果host配置了xmlBase
+        if (host != null && host.getXmlBase()!=null) {
+            String xmlBase = host.getXmlBase();
+            file = new File(xmlBase);
+            if (!file.isAbsolute())
+                file = new File(getBaseDir(), xmlBase);
+        } else {
+            StringBuilder result = new StringBuilder();
+            if (engine != null) {
+                result.append(engine.getName()).append('/');
+            }
+            if (host != null) {
+                result.append(host.getName()).append('/');
+            }
+            // 如果host没有配置xmlBase，那么则获取getBaseDir()下conf目录下的--engine名字+"/"+host名字--的配置文件
+            file = new File (getConfigBase(), result.toString());
+        }
+        try {
+            // 返回绝对路径
+            return file.getCanonicalFile();
+        } catch (IOException e) {
+            return file;
+        }
     }
 
     /**
@@ -1073,6 +1260,8 @@ public class ContextConfig implements LifecycleListener {
      * where there is duplicate configuration, the most specific level wins. ie
      * an application's web.xml takes precedence over the host level or global
      * web.xml file.
+     *
+     * 应用程序的web.xml优先于主机级别或全局级别的
      */
     protected void webConfig() {
         /*
@@ -1100,32 +1289,25 @@ public class ContextConfig implements LifecycleListener {
          *   those in JARs excluded from an absolute ordering) need to be
          *   scanned to check if they match.
          */
-        WebXmlParser webXmlParser = new WebXmlParser(context.getXmlNamespaceAware(),
-                context.getXmlValidation(), context.getXmlBlockExternal());
-
-        Set<WebXml> defaults = new HashSet<>();
-        defaults.add(getDefaultWebXmlFragment(webXmlParser));
-
-        Set<WebXml> tomcatWebXml = new HashSet<>();
-        tomcatWebXml.add(getTomcatWebXmlFragment(webXmlParser));
+        Set<WebXml> defaults = new HashSet<WebXml>();
+        defaults.add(getDefaultWebXmlFragment());
 
         WebXml webXml = createWebXml();
 
         // Parse context level web.xml
+        // 解析Context级别的web.xml
         InputSource contextWebXml = getContextWebXmlSource();
-        if (!webXmlParser.parseWebXml(contextWebXml, webXml, false)) {
-            ok = false;
-        }
+        // 解析web.xml文件
+        parseWebXml(contextWebXml, webXml, false);
 
         ServletContext sContext = context.getServletContext();
 
         // Ordering is important here
 
-        // Step 1. Identify all the JARs packaged with the application and those
-        // provided by the container. If any of the application JARs have a
-        // web-fragment.xml it will be parsed at this point. web-fragment.xml
-        // files are ignored for container provided JARs.
-        Map<String,WebXml> fragments = processJarsForWebFragments(webXml, webXmlParser);
+        // Step 1. Identify all the JARs packaged with the application
+        // If the JARs have a web-fragment.xml it will be parsed at this
+        // point.
+        Map<String,WebXml> fragments = processJarsForWebFragments(webXml);
 
         // Step 2. Order the fragments.
         Set<WebXml> orderedFragments = null;
@@ -1133,6 +1315,7 @@ public class ContextConfig implements LifecycleListener {
                 WebXml.orderWebFragments(webXml, fragments, sContext);
 
         // Step 3. Look for ServletContainerInitializer implementations
+        // 处理ServletContainerInitializers
         if (ok) {
             processServletContainerInitializers();
         }
@@ -1149,11 +1332,7 @@ public class ContextConfig implements LifecycleListener {
                 ok = webXml.merge(orderedFragments);
             }
 
-            // Step 7a
-            // merge tomcat-web.xml
-            webXml.merge(tomcatWebXml);
-
-            // Step 7b. Apply global defaults
+            // Step 7. Apply global defaults
             // Have to merge defaults before JSP conversion since defaults
             // provide JSP servlet definition.
             webXml.merge(defaults);
@@ -1165,17 +1344,25 @@ public class ContextConfig implements LifecycleListener {
 
             // Step 9. Apply merged web.xml to Context
             if (ok) {
-                configureContext(webXml);
+                //
+                webXml.configureContext(context);
             }
         } else {
-            webXml.merge(tomcatWebXml);
-            webXml.merge(defaults);
-            convertJsps(webXml);
-            configureContext(webXml);
+            webXml.merge(defaults); // 默认情况下, defaults就是conf/web.xml文件对应的WebXml对象
+            convertJsps(webXml);    // 将jsp转化为Servlet
+            webXml.configureContext(context);   // 根据webxml配置context，比如把定义的servlet转化为wrapper,然后添加到StandardContext中，还包括很多其他的
         }
 
+        // Step 9a. Make the merged web.xml available to other
+        // components, specifically Jasper, to save those components
+        // from having to re-generate it.
+        // TODO Use a ServletContainerInitializer for Jasper
+        String mergedWebXml = webXml.toXml();
+        sContext.setAttribute(
+               org.apache.tomcat.util.scan.Constants.MERGED_WEB_XML,
+               mergedWebXml);
         if (context.getLogEffectiveWebXml()) {
-            log.info(sm.getString("contextConfig.effectiveWebXml", webXml.toXml()));
+            log.info("web.xml:\n" + mergedWebXml);
         }
 
         // Always need to look for static resources
@@ -1183,7 +1370,10 @@ public class ContextConfig implements LifecycleListener {
         if (ok) {
             // Spec does not define an order.
             // Use ordered JARs followed by remaining JARs
-            Set<WebXml> resourceJars = new LinkedHashSet<>(orderedFragments);
+            Set<WebXml> resourceJars = new LinkedHashSet<WebXml>();
+            for (WebXml fragment : orderedFragments) {
+                resourceJars.add(fragment);
+            }
             for (WebXml fragment : fragments.values()) {
                 if (!resourceJars.contains(fragment)) {
                     resourceJars.add(fragment);
@@ -1213,303 +1403,78 @@ public class ContextConfig implements LifecycleListener {
 
 
     protected void processClasses(WebXml webXml, Set<WebXml> orderedFragments) {
-        // Step 4. Process /WEB-INF/classes for annotations and
-        // @HandlesTypes matches
-        Map<String, JavaClassCacheEntry> javaClassCache = new HashMap<>();
-
+        // Step 4. Process /WEB-INF/classes for annotations
         if (ok) {
-            WebResource[] webResources =
-                    context.getResources().listResources("/WEB-INF/classes");
-
-            for (WebResource webResource : webResources) {
-                // Skip the META-INF directory from any JARs that have been
-                // expanded in to WEB-INF/classes (sometimes IDEs do this).
-                if ("META-INF".equals(webResource.getName())) {
-                    continue;
+            // Hack required by Eclipse's "serve modules without
+            // publishing" feature since this backs WEB-INF/classes by
+            // multiple locations rather than one.
+            NamingEnumeration<Binding> listBindings = null;
+            try {
+                try {
+                    listBindings = context.getResources().listBindings(
+                            "/WEB-INF/classes");
+                } catch (NameNotFoundException ignore) {
+                    // Safe to ignore
                 }
-                processAnnotationsWebResource(webResource, webXml,
-                        webXml.isMetadataComplete(), javaClassCache);
+                while (listBindings != null &&
+                        listBindings.hasMoreElements()) {
+                    Binding binding = listBindings.nextElement();
+                    if (binding.getObject() instanceof FileDirContext) {
+                        File webInfClassDir = new File(
+                                ((FileDirContext) binding.getObject()).getDocBase());
+                        processAnnotationsFile(webInfClassDir, webXml,
+                                webXml.isMetadataComplete());
+                    } else if ("META-INF".equals(binding.getName())) {
+                        // Skip the META-INF directory from any JARs that have been
+                        // expanded in to WEB-INF/classes (sometimes IDEs do this).
+                    } else {
+                        String resource =
+                                "/WEB-INF/classes/" + binding.getName();
+                        try {
+                            URL url = context.getServletContext().getResource(resource);
+                            processAnnotationsUrl(url, webXml,
+                                    webXml.isMetadataComplete());
+                        } catch (MalformedURLException e) {
+                            log.error(sm.getString(
+                                    "contextConfig.webinfClassesUrl",
+                                    resource), e);
+                        }
+                    }
+                }
+            } catch (NamingException e) {
+                log.error(sm.getString(
+                        "contextConfig.webinfClassesUrl",
+                        "/WEB-INF/classes"), e);
             }
         }
 
-        // Step 5. Process JARs for annotations and
-        // @HandlesTypes matches - only need to process those fragments we
-        // are going to use (remember orderedFragments includes any
-        // container fragments)
+        // Step 5. Process JARs for annotations - only need to process
+        // those fragments we are going to use
         if (ok) {
             processAnnotations(
-                    orderedFragments, webXml.isMetadataComplete(), javaClassCache);
+                    orderedFragments, webXml.isMetadataComplete());
         }
 
         // Cache, if used, is no longer required so clear it
         javaClassCache.clear();
     }
 
-
-    private void configureContext(WebXml webxml) {
-        // As far as possible, process in alphabetical order so it is easy to
-        // check everything is present
-        // Some validation depends on correct public ID
-        context.setPublicId(webxml.getPublicId());
-
-        // Everything else in order
-        context.setEffectiveMajorVersion(webxml.getMajorVersion());
-        context.setEffectiveMinorVersion(webxml.getMinorVersion());
-
-        for (Entry<String, String> entry : webxml.getContextParams().entrySet()) {
-            context.addParameter(entry.getKey(), entry.getValue());
-        }
-        context.setDenyUncoveredHttpMethods(
-                webxml.getDenyUncoveredHttpMethods());
-        context.setDisplayName(webxml.getDisplayName());
-        context.setDistributable(webxml.isDistributable());
-        for (ContextLocalEjb ejbLocalRef : webxml.getEjbLocalRefs().values()) {
-            context.getNamingResources().addLocalEjb(ejbLocalRef);
-        }
-        for (ContextEjb ejbRef : webxml.getEjbRefs().values()) {
-            context.getNamingResources().addEjb(ejbRef);
-        }
-        for (ContextEnvironment environment : webxml.getEnvEntries().values()) {
-            context.getNamingResources().addEnvironment(environment);
-        }
-        for (ErrorPage errorPage : webxml.getErrorPages().values()) {
-            context.addErrorPage(errorPage);
-        }
-        for (FilterDef filter : webxml.getFilters().values()) {
-            if (filter.getAsyncSupported() == null) {
-                filter.setAsyncSupported("false");
-            }
-            context.addFilterDef(filter);
-        }
-        for (FilterMap filterMap : webxml.getFilterMappings()) {
-            context.addFilterMap(filterMap);
-        }
-        context.setJspConfigDescriptor(webxml.getJspConfigDescriptor());
-        for (String listener : webxml.getListeners()) {
-            context.addApplicationListener(listener);
-        }
-        for (Entry<String, String> entry :
-                webxml.getLocaleEncodingMappings().entrySet()) {
-            context.addLocaleEncodingMappingParameter(entry.getKey(),
-                    entry.getValue());
-        }
-        // Prevents IAE
-        if (webxml.getLoginConfig() != null) {
-            context.setLoginConfig(webxml.getLoginConfig());
-        }
-        for (MessageDestinationRef mdr :
-                webxml.getMessageDestinationRefs().values()) {
-            context.getNamingResources().addMessageDestinationRef(mdr);
-        }
-
-        // messageDestinations were ignored in Tomcat 6, so ignore here
-
-        context.setIgnoreAnnotations(webxml.isMetadataComplete());
-        for (Entry<String, String> entry :
-                webxml.getMimeMappings().entrySet()) {
-            context.addMimeMapping(entry.getKey(), entry.getValue());
-        }
-        context.setRequestCharacterEncoding(webxml.getRequestCharacterEncoding());
-        // Name is just used for ordering
-        for (ContextResourceEnvRef resource :
-                webxml.getResourceEnvRefs().values()) {
-            context.getNamingResources().addResourceEnvRef(resource);
-        }
-        for (ContextResource resource : webxml.getResourceRefs().values()) {
-            context.getNamingResources().addResource(resource);
-        }
-        context.setResponseCharacterEncoding(webxml.getResponseCharacterEncoding());
-        boolean allAuthenticatedUsersIsAppRole =
-                webxml.getSecurityRoles().contains(
-                        SecurityConstraint.ROLE_ALL_AUTHENTICATED_USERS);
-        for (SecurityConstraint constraint : webxml.getSecurityConstraints()) {
-            if (allAuthenticatedUsersIsAppRole) {
-                constraint.treatAllAuthenticatedUsersAsApplicationRole();
-            }
-            context.addConstraint(constraint);
-        }
-        for (String role : webxml.getSecurityRoles()) {
-            context.addSecurityRole(role);
-        }
-        for (ContextService service : webxml.getServiceRefs().values()) {
-            context.getNamingResources().addService(service);
-        }
-        for (ServletDef servlet : webxml.getServlets().values()) {
-            Wrapper wrapper = context.createWrapper();
-            // Description is ignored
-            // Display name is ignored
-            // Icons are ignored
-
-            // jsp-file gets passed to the JSP Servlet as an init-param
-
-            if (servlet.getLoadOnStartup() != null) {
-                wrapper.setLoadOnStartup(servlet.getLoadOnStartup().intValue());
-            }
-            if (servlet.getEnabled() != null) {
-                wrapper.setEnabled(servlet.getEnabled().booleanValue());
-            }
-            wrapper.setName(servlet.getServletName());
-            Map<String,String> params = servlet.getParameterMap();
-            for (Entry<String, String> entry : params.entrySet()) {
-                wrapper.addInitParameter(entry.getKey(), entry.getValue());
-            }
-            wrapper.setRunAs(servlet.getRunAs());
-            Set<SecurityRoleRef> roleRefs = servlet.getSecurityRoleRefs();
-            for (SecurityRoleRef roleRef : roleRefs) {
-                wrapper.addSecurityReference(
-                        roleRef.getName(), roleRef.getLink());
-            }
-            wrapper.setServletClass(servlet.getServletClass());
-            MultipartDef multipartdef = servlet.getMultipartDef();
-            if (multipartdef != null) {
-                long maxFileSize = -1;
-                long maxRequestSize = -1;
-                int fileSizeThreshold = 0;
-
-                if(null != multipartdef.getMaxFileSize()) {
-                    maxFileSize = Long.parseLong(multipartdef.getMaxFileSize());
-                }
-                if(null != multipartdef.getMaxRequestSize()) {
-                    maxRequestSize = Long.parseLong(multipartdef.getMaxRequestSize());
-                }
-                if(null != multipartdef.getFileSizeThreshold()) {
-                    fileSizeThreshold = Integer.parseInt(multipartdef.getFileSizeThreshold());
-                }
-
-                wrapper.setMultipartConfigElement(new MultipartConfigElement(
-                        multipartdef.getLocation(),
-                        maxFileSize,
-                        maxRequestSize,
-                        fileSizeThreshold));
-            }
-            if (servlet.getAsyncSupported() != null) {
-                wrapper.setAsyncSupported(
-                        servlet.getAsyncSupported().booleanValue());
-            }
-            wrapper.setOverridable(servlet.isOverridable());
-            context.addChild(wrapper);
-        }
-        for (Entry<String, String> entry :
-                webxml.getServletMappings().entrySet()) {
-            context.addServletMappingDecoded(entry.getKey(), entry.getValue());
-        }
-        SessionConfig sessionConfig = webxml.getSessionConfig();
-        if (sessionConfig != null) {
-            if (sessionConfig.getSessionTimeout() != null) {
-                context.setSessionTimeout(
-                        sessionConfig.getSessionTimeout().intValue());
-            }
-            SessionCookieConfig scc =
-                context.getServletContext().getSessionCookieConfig();
-            scc.setName(sessionConfig.getCookieName());
-            scc.setDomain(sessionConfig.getCookieDomain());
-            scc.setPath(sessionConfig.getCookiePath());
-            scc.setComment(sessionConfig.getCookieComment());
-            if (sessionConfig.getCookieHttpOnly() != null) {
-                scc.setHttpOnly(sessionConfig.getCookieHttpOnly().booleanValue());
-            }
-            if (sessionConfig.getCookieSecure() != null) {
-                scc.setSecure(sessionConfig.getCookieSecure().booleanValue());
-            }
-            if (sessionConfig.getCookieMaxAge() != null) {
-                scc.setMaxAge(sessionConfig.getCookieMaxAge().intValue());
-            }
-            if (sessionConfig.getSessionTrackingModes().size() > 0) {
-                context.getServletContext().setSessionTrackingModes(
-                        sessionConfig.getSessionTrackingModes());
-            }
-        }
-
-        // Context doesn't use version directly
-
-        for (String welcomeFile : webxml.getWelcomeFiles()) {
-            /*
-             * The following will result in a welcome file of "" so don't add
-             * that to the context
-             * <welcome-file-list>
-             *   <welcome-file/>
-             * </welcome-file-list>
-             */
-            if (welcomeFile != null && welcomeFile.length() > 0) {
-                context.addWelcomeFile(welcomeFile);
-            }
-        }
-
-        // Do this last as it depends on servlets
-        for (JspPropertyGroup jspPropertyGroup :
-                webxml.getJspPropertyGroups()) {
-            String jspServletName = context.findServletMapping("*.jsp");
-            if (jspServletName == null) {
-                jspServletName = "jsp";
-            }
-            if (context.findChild(jspServletName) != null) {
-                for (String urlPattern : jspPropertyGroup.getUrlPatterns()) {
-                    context.addServletMappingDecoded(urlPattern, jspServletName, true);
-                }
-            } else {
-                if(log.isDebugEnabled()) {
-                    for (String urlPattern : jspPropertyGroup.getUrlPatterns()) {
-                        log.debug("Skipping " + urlPattern + " , no servlet " +
-                                jspServletName);
-                    }
-                }
-            }
-        }
-
-        for (Entry<String, String> entry :
-                webxml.getPostConstructMethods().entrySet()) {
-            context.addPostConstructMethod(entry.getKey(), entry.getValue());
-        }
-
-        for (Entry<String, String> entry :
-            webxml.getPreDestroyMethods().entrySet()) {
-            context.addPreDestroyMethod(entry.getKey(), entry.getValue());
-        }
-    }
-
-
-    private WebXml getTomcatWebXmlFragment(WebXmlParser webXmlParser) {
-
-        WebXml webXmlTomcatFragment = createWebXml();
-        webXmlTomcatFragment.setOverridable(true);
-
-        // Set to distributable else every app will be prevented from being
-        // distributable when the Tomcat fragment is merged with the main
-        // web.xml
-        webXmlTomcatFragment.setDistributable(true);
-        // When merging, the default welcome files are only used if the app has
-        // not defined any welcomes files.
-        webXmlTomcatFragment.setAlwaysAddWelcomeFiles(false);
-
-        WebResource resource = context.getResources().getResource(Constants.TomcatWebXml);
-        if (resource.isFile()) {
-            try {
-                InputSource source = new InputSource(resource.getURL().toURI().toString());
-                source.setByteStream(resource.getInputStream());
-                if (!webXmlParser.parseWebXml(source, webXmlTomcatFragment, false)) {
-                    ok = false;
-                }
-            } catch (URISyntaxException e) {
-                log.error(sm.getString("contextConfig.tomcatWebXmlError"), e);
-            }
-        }
-        return webXmlTomcatFragment;
-    }
-
-
-    private WebXml getDefaultWebXmlFragment(WebXmlParser webXmlParser) {
+    // 获取默认的WebXml对象
+    private WebXml getDefaultWebXmlFragment() {
 
         // Host should never be null
         Host host = (Host) context.getParent();
 
+        // 从缓存里面获取WebXml对象
         DefaultWebXmlCacheEntry entry = hostWebXmlCache.get(host);
 
-        InputSource globalWebXml = getGlobalWebXmlSource();
-        InputSource hostWebXml = getHostWebXmlSource();
+        InputSource globalWebXml = getGlobalWebXmlSource(); // 获取全局范围内的web.xml文件InputSource，在默认情况下就是取catalina.base目录下的conf/web.xml文件
+        InputSource hostWebXml = getHostWebXmlSource();     // 获取Host范围内的web.xml文件InputSource，在默认情况下就是取catalina.base目录下的conf/engine名字/host名字/web.xml.default
 
         long globalTimeStamp = 0;
         long hostTimeStamp = 0;
 
+        // 寻找globalWebXml文件的最近修改时间
         if (globalWebXml != null) {
             URLConnection uc = null;
             try {
@@ -1530,6 +1495,7 @@ public class ContextConfig implements LifecycleListener {
             }
         }
 
+        // 寻找hostWebXml文件的最近修改时间
         if (hostWebXml != null) {
             URLConnection uc = null;
             try {
@@ -1550,6 +1516,7 @@ public class ContextConfig implements LifecycleListener {
             }
         }
 
+        // 如果发现找出来的webxml文件和缓存中的webxml文件最近的修改时间相等，就代表没有修改过，那么直接返回缓存中的WebXml对象
         if (entry != null && entry.getGlobalTimeStamp() == globalTimeStamp &&
                 entry.getHostTimeStamp() == hostTimeStamp) {
             InputSourceUtil.close(globalWebXml);
@@ -1560,13 +1527,16 @@ public class ContextConfig implements LifecycleListener {
         // Parsing global web.xml is relatively expensive. Use a sync block to
         // make sure it only happens once. Use the pipeline since a lock will
         // already be held on the host by another thread
+        // 解析web.xml文件比较耗时。使用同步块确保只会执行一次。为什么用host.getPipeline()作为锁？
         synchronized (host.getPipeline()) {
+            // 再一次判断是不是可以直接返回缓存中的WebXML对象，这里使用的是双重判断检查
             entry = hostWebXmlCache.get(host);
             if (entry != null && entry.getGlobalTimeStamp() == globalTimeStamp &&
                     entry.getHostTimeStamp() == hostTimeStamp) {
                 return entry.getWebXml();
             }
 
+            // 解析web.xml为WebXml对象
             WebXml webXmlDefaultFragment = createWebXml();
             webXmlDefaultFragment.setOverridable(true);
             // Set to distributable else every app will be prevented from being
@@ -1582,29 +1552,20 @@ public class ContextConfig implements LifecycleListener {
                 // This is unusual enough to log
                 log.info(sm.getString("contextConfig.defaultMissing"));
             } else {
-                if (!webXmlParser.parseWebXml(
-                        globalWebXml, webXmlDefaultFragment, false)) {
-                    ok = false;
-                }
+                parseWebXml(globalWebXml, webXmlDefaultFragment, false);
             }
 
             // Parse host level web.xml if present
             // Additive apart from welcome pages
             webXmlDefaultFragment.setReplaceWelcomeFiles(true);
 
-            if (!webXmlParser.parseWebXml(
-                    hostWebXml, webXmlDefaultFragment, false)) {
-                ok = false;
-            }
+            parseWebXml(hostWebXml, webXmlDefaultFragment, false);
 
             // Don't update the cache if an error occurs
             if (globalTimeStamp != -1 && hostTimeStamp != -1) {
                 entry = new DefaultWebXmlCacheEntry(webXmlDefaultFragment,
                         globalTimeStamp, hostTimeStamp);
                 hostWebXmlCache.put(host, entry);
-                // Add a Lifecycle listener to the Host that will remove it from
-                // the hostWebXmlCache once the Host is destroyed
-                host.addLifecycleListener(new HostWebXmlCacheCleaner());
             }
 
             return webXmlDefaultFragment;
@@ -1616,7 +1577,7 @@ public class ContextConfig implements LifecycleListener {
         Map<String,String> jspInitParams;
         ServletDef jspServlet = webXml.getServlets().get("jsp");
         if (jspServlet == null) {
-            jspInitParams = new HashMap<>();
+            jspInitParams = new HashMap<String,String>();
             Wrapper w = (Wrapper) context.findChild("jsp");
             if (w != null) {
                 String[] params = w.findInitParameters();
@@ -1640,10 +1601,9 @@ public class ContextConfig implements LifecycleListener {
         String jspFile = servletDef.getJspFile();
         if ((jspFile != null) && !jspFile.startsWith("/")) {
             if (context.isServlet22()) {
-                if(log.isDebugEnabled()) {
+                if(log.isDebugEnabled())
                     log.debug(sm.getString("contextConfig.jspFile.warning",
                                        jspFile));
-                }
                 jspFile = "/" + jspFile;
             } else {
                 throw new IllegalArgumentException
@@ -1668,7 +1628,9 @@ public class ContextConfig implements LifecycleListener {
 
         List<ServletContainerInitializer> detectedScis;
         try {
-            WebappServiceLoader<ServletContainerInitializer> loader = new WebappServiceLoader<>(context);
+            WebappServiceLoader<ServletContainerInitializer> loader =
+                    new WebappServiceLoader<ServletContainerInitializer>(
+                            context);
             detectedScis = loader.load(ServletContainerInitializer.class);
         } catch (IOException e) {
             log.error(sm.getString(
@@ -1713,7 +1675,7 @@ public class ContextConfig implements LifecycleListener {
                 Set<ServletContainerInitializer> scis =
                         typeInitializerMap.get(type);
                 if (scis == null) {
-                    scis = new HashSet<>();
+                    scis = new HashSet<ServletContainerInitializer>();
                     typeInitializerMap.put(type, scis);
                 }
                 scis.add(sci);
@@ -1727,35 +1689,36 @@ public class ContextConfig implements LifecycleListener {
      * configure this application to see if they also contain static resources.
      * If static resources are found, add them to the context. Resources are
      * added in web-fragment.xml priority order.
-     * @param fragments The set of fragments that will be scanned for
-     *  static resources
      */
     protected void processResourceJARs(Set<WebXml> fragments) {
         for (WebXml fragment : fragments) {
             URL url = fragment.getURL();
+            Jar jar = null;
             try {
-                if ("jar".equals(url.getProtocol()) || url.toString().endsWith(".jar")) {
-                    try (Jar jar = JarFactory.newInstance(url)) {
-                        jar.nextEntry();
-                        String entryName = jar.getEntryName();
-                        while (entryName != null) {
-                            if (entryName.startsWith("META-INF/resources/")) {
-                                context.getResources().createWebResourceSet(
-                                        WebResourceRoot.ResourceSetType.RESOURCE_JAR,
-                                        "/", url, "/META-INF/resources");
-                                break;
-                            }
-                            jar.nextEntry();
-                            entryName = jar.getEntryName();
+                // Note: Ignore file URLs for now since only jar URLs will be accepted
+                if ("jar".equals(url.getProtocol())) {
+                    jar = JarFactory.newInstance(url);
+                    jar.nextEntry();
+                    String entryName = jar.getEntryName();
+                    while (entryName != null) {
+                        if (entryName.startsWith("META-INF/resources/")) {
+                            context.addResourceJarUrl(url);
+                            break;
                         }
+                        jar.nextEntry();
+                        entryName = jar.getEntryName();
                     }
                 } else if ("file".equals(url.getProtocol())) {
-                    File file = new File(url.toURI());
-                    File resources = new File(file, "META-INF/resources/");
-                    if (resources.isDirectory()) {
-                        context.getResources().createWebResourceSet(
-                                WebResourceRoot.ResourceSetType.RESOURCE_JAR,
-                                "/", resources.getAbsolutePath(), null, "/");
+                    FileDirContext fileDirContext = new FileDirContext();
+                    fileDirContext.setDocBase(new File(url.toURI()).getAbsolutePath());
+                    try {
+                        fileDirContext.lookup("META-INF/resources/");
+                        //lookup succeeded
+                        if(context instanceof StandardContext){
+                            ((StandardContext)context).addResourcesDirContext(fileDirContext);
+                        }
+                    } catch (NamingException e) {
+                        //not found, ignore
                     }
                 }
             } catch (IOException ioe) {
@@ -1764,6 +1727,10 @@ public class ContextConfig implements LifecycleListener {
             } catch (URISyntaxException e) {
                 log.error(sm.getString("contextConfig.resourceJarFail", url,
                     context.getName()));
+            } finally {
+                if (jar != null) {
+                    jar.close();
+                }
             }
         }
     }
@@ -1772,43 +1739,60 @@ public class ContextConfig implements LifecycleListener {
     /**
      * Identify the default web.xml to be used and obtain an input source for
      * it.
-     * @return an input source to the default web.xml
+     *
+     * 查找全局webxml文件的流程:
+     * 1. 先确定查找的目录
+     * 2. 再确定查找的文件名
+     *
+     * 确定查找目录：
+     * 1. 如果在Engine上配置了baseDir属性，那么将直接在属性对应的目录下查找
+     * 2. 如果在Engine上没有配置baseDir属性，那么将在catalina.base所对应的目录下查找
+     * 3. 如果catalina.base为空，那么将在catalina.home所对应的目录下查找
+     *
+     * 查找并不是直接找目录下的web.xml文件，而是：
+     * 1. 如果Context配置了defaultWebXml属性，那么将查找该属性所对应的文件，前提是该属性配置的是相对路径
+     * 2. 如果Context配置的defaultWebXml属性是绝对路径，那么将直接取该绝对路径所对应的文件
+     * 3. 如果Context没有配置defaultWebXml属性，那么将查找conf/web.xml
+     *
      */
     protected InputSource getGlobalWebXmlSource() {
+        // 首先获取Context上有没有指定defaultWebXml
+        // 如果没有，则获取conf/web.xml目录下的文件
+        // 将文件转化为InputSource，后续会解析xml
+
         // Is a default web.xml specified for the Context?
         if (defaultWebXml == null && context instanceof StandardContext) {
             defaultWebXml = ((StandardContext) context).getDefaultWebXml();
         }
         // Set the default if we don't have any overrides
-        if (defaultWebXml == null) {
-            getDefaultWebXml();
-        }
+        if (defaultWebXml == null) getDefaultWebXml();
 
         // Is it explicitly suppressed, e.g. in embedded environment?
         if (Constants.NoDefaultWebXml.equals(defaultWebXml)) {
             return null;
         }
-        return getWebXmlSource(defaultWebXml, true);
+        return getWebXmlSource(defaultWebXml, getBaseDir());
     }
 
 
     /**
      * Identify the host web.xml to be used and obtain an input source for
      * it.
-     * @return an input source to the default per host web.xml
+     *  1. 如果Host上配置了xmlBase属性，并且该属性是绝对路径的话，将直接把该路径下的web.xml.default文件返回
+     *  2. 如果Host上配置的xmlBase属性是相对路径，那么将把getBaseDir()+xmlBase路径下的web.xml.default文件返回
+     *  3. 如果Host上没有配置xmlBase属性，那么将把getBaseDir() + "/conf" + engine名字 + "/" + host名字路径下的web.xml.default文件返回
      */
     protected InputSource getHostWebXmlSource() {
         File hostConfigBase = getHostConfigBase();
-        if (hostConfigBase == null)
+        if (!hostConfigBase.exists())
             return null;
-
-        return getWebXmlSource(hostConfigBase.getPath(), false);
+        // 获取hostConfigBase下的web.xml.default
+        return getWebXmlSource(Constants.HostWebXml, hostConfigBase.getPath());
     }
 
     /**
      * Identify the application web.xml to be used and obtain an input source
      * for it.
-     * @return an input source to the context web.xml
      */
     protected InputSource getContextWebXmlSource() {
         InputStream stream = null;
@@ -1832,7 +1816,8 @@ public class ContextConfig implements LifecycleListener {
                     } catch (MalformedURLException e) {
                         log.error(sm.getString("contextConfig.applicationUrl"));
                     }
-                } else {
+                }
+                else {
                     stream = servletContext.getResourceAsStream
                         (Constants.ApplicationWebXml);
                     try {
@@ -1864,64 +1849,43 @@ public class ContextConfig implements LifecycleListener {
         return source;
     }
 
-    public String getConfigBasePath() {
-        String path = null;
-        if (context.getParent() instanceof Host) {
-            Host host = (Host) context.getParent();
-            if (host.getXmlBase() != null) {
-                path = host.getXmlBase();
-            } else {
-                StringBuilder xmlDir = new StringBuilder("conf");
-                Container parent = host.getParent();
-                if (parent instanceof Engine) {
-                    xmlDir.append('/');
-                    xmlDir.append(parent.getName());
-                }
-                xmlDir.append('/');
-                xmlDir.append(host.getName());
-                path = xmlDir.toString();
-            }
-        }
-        return path;
-    }
-
     /**
-     * Utility method to create an input source from the specified XML file.
+     *
      * @param filename  Name of the file (possibly with one or more leading path
      *                  segments) to read
-     * @param global true if processing a shared resource, false if processing
-     *        a host based resource
-     * @return the input source
+     * @param path      Location that filename is relative to
      */
-    protected InputSource getWebXmlSource(String filename, boolean global) {
-        ConfigurationSource.Resource webXmlResource = null;
-        try {
-            if (global) {
-                if (Constants.DefaultWebXml.equals(filename)) {
-                    webXmlResource = ConfigFileLoader.getSource().getSharedWebXml();
-                } else {
-                    webXmlResource = ConfigFileLoader.getSource().getResource(filename);
-                }
-            } else {
-                String hostWebXml = Container.getConfigPath(context, Constants.HostWebXml);
-                webXmlResource = ConfigFileLoader.getSource().getResource(hostWebXml);
-            }
-        } catch (IOException e) {
-            // Ignore if not found
-            return null;
+    protected InputSource getWebXmlSource(String filename, String path) {
+        File file = new File(filename);
+        // 如果filename是相对路径
+        if (!file.isAbsolute()) {
+            file = new File(path, filename);
         }
 
         InputStream stream = null;
         InputSource source = null;
 
         try {
-            stream = webXmlResource.getInputStream();
-            source = new InputSource(webXmlResource.getURI().toString());
-            if (stream != null) {
+            if (!file.exists()) {
+                // Use getResource and getResourceAsStream
+                stream =
+                    getClass().getClassLoader().getResourceAsStream(filename);
+                if(stream != null) {
+                    source =
+                        new InputSource(getClass().getClassLoader().getResource(
+                                filename).toURI().toString());
+                }
+            } else {
+                source = new InputSource(file.getAbsoluteFile().toURI().toString());
+                stream = new FileInputStream(file);
+            }
+
+            if (stream != null && source != null) {
                 source.setByteStream(stream);
             }
         } catch (Exception e) {
-            log.error(sm.getString("contextConfig.defaultError", filename, webXmlResource.getURI()), e);
+            log.error(sm.getString(
+                    "contextConfig.defaultError", filename, file), e);
         } finally {
             if (source == null && stream != null) {
                 try {
@@ -1937,24 +1901,81 @@ public class ContextConfig implements LifecycleListener {
 
 
     /**
+     * Parses the given source and stores the parsed data in the given web.xml
+     * representation. The byte stream will be closed at the end of the parse
+     * operation.
+     *
+     * @param source Input source containing the XML data to be parsed
+     * @param dest The object representation of common elements of web.xml and
+     *             web-fragment.xml
+     * @param fragment Specifies whether the source is web-fragment.xml or
+     *                 web.xml
+     */
+    protected void parseWebXml(InputSource source, WebXml dest,
+            boolean fragment) {
+
+        if (source == null) return;
+
+        XmlErrorHandler handler = new XmlErrorHandler();
+
+        Digester digester;
+        WebRuleSet ruleSet;
+        if (fragment) {
+            digester = webFragmentDigester;
+            ruleSet = webFragmentRuleSet;
+        } else {
+            digester = webDigester;
+            ruleSet = webRuleSet;
+        }
+
+        digester.push(dest);
+        digester.setErrorHandler(handler);
+
+        if(log.isDebugEnabled()) {
+            log.debug(sm.getString("contextConfig.applicationStart",
+                    source.getSystemId()));
+        }
+
+        try {
+            digester.parse(source);
+
+            if (handler.getWarnings().size() > 0 ||
+                    handler.getErrors().size() > 0) {
+                ok = false;
+                handler.logFindings(log, source.getSystemId());
+            }
+        } catch (SAXParseException e) {
+            log.error(sm.getString("contextConfig.applicationParse",
+                    source.getSystemId()), e);
+            log.error(sm.getString("contextConfig.applicationPosition",
+                             "" + e.getLineNumber(),
+                             "" + e.getColumnNumber()));
+            ok = false;
+        } catch (Exception e) {
+            log.error(sm.getString("contextConfig.applicationParse",
+                    source.getSystemId()), e);
+            ok = false;
+        } finally {
+            digester.reset();
+            ruleSet.recycle();
+            InputSourceUtil.close(source);
+        }
+    }
+
+
+    /**
      * Scan /WEB-INF/lib for JARs and for each one found add it and any
      * /META-INF/web-fragment.xml to the resulting Map. web-fragment.xml files
      * will be parsed before being added to the map. Every JAR will be added and
      * <code>null</code> will be used if no web-fragment.xml was found. Any JARs
      * known not contain fragments will be skipped.
      *
-     * @param application The main web.xml metadata
-     * @param webXmlParser The parser to use to process the web.xml file
      * @return A map of JAR name to processed web fragment (if any)
      */
-    protected Map<String,WebXml> processJarsForWebFragments(WebXml application,
-            WebXmlParser webXmlParser) {
+    protected Map<String,WebXml> processJarsForWebFragments(WebXml application) {
 
         JarScanner jarScanner = context.getJarScanner();
-        boolean delegate = false;
-        if (context instanceof StandardContext) {
-            delegate = ((StandardContext) context).getDelegate();
-        }
+
         boolean parseRequired = true;
         Set<String> absoluteOrder = application.getAbsoluteOrdering();
         if (absoluteOrder != null && absoluteOrder.isEmpty() &&
@@ -1965,85 +1986,44 @@ public class ContextConfig implements LifecycleListener {
         }
 
         FragmentJarScannerCallback callback =
-                new FragmentJarScannerCallback(webXmlParser, delegate, parseRequired);
+                new FragmentJarScannerCallback(parseRequired);
 
-        jarScanner.scan(JarScanType.PLUGGABILITY,
-                context.getServletContext(), callback);
+        jarScanner.scan(context.getServletContext(),
+                context.getLoader().getClassLoader(), callback,
+                pluggabilityJarsToSkip);
 
-        if (!callback.isOk()) {
-            ok = false;
-        }
         return callback.getFragments();
     }
 
     protected void processAnnotations(Set<WebXml> fragments,
-            boolean handlesTypesOnly, Map<String,JavaClassCacheEntry> javaClassCache) {
+            boolean handlesTypesOnly) {
         for(WebXml fragment : fragments) {
-            // Only need to scan for @HandlesTypes matches if any of the
-            // following are true:
-            // - it has already been determined only @HandlesTypes is required
-            //   (e.g. main web.xml has metadata-complete="true"
-            // - this fragment is for a container JAR (Servlet 3.1 section 8.1)
-            // - this fragment has metadata-complete="true"
-            boolean htOnly = handlesTypesOnly || !fragment.getWebappJar() ||
-                    fragment.isMetadataComplete();
-
             WebXml annotations = new WebXml();
             // no impact on distributable
             annotations.setDistributable(true);
             URL url = fragment.getURL();
-            processAnnotationsUrl(url, annotations, htOnly, javaClassCache);
-            Set<WebXml> set = new HashSet<>();
+            processAnnotationsUrl(url, annotations,
+                    (handlesTypesOnly || fragment.isMetadataComplete()));
+            Set<WebXml> set = new HashSet<WebXml>();
             set.add(annotations);
             // Merge annotations into fragment - fragment takes priority
             fragment.merge(set);
         }
     }
 
-    protected void processAnnotationsWebResource(WebResource webResource,
-            WebXml fragment, boolean handlesTypesOnly,
-            Map<String,JavaClassCacheEntry> javaClassCache) {
-
-        if (webResource.isDirectory()) {
-            WebResource[] webResources =
-                    webResource.getWebResourceRoot().listResources(
-                            webResource.getWebappPath());
-            if (webResources.length > 0) {
-                if (log.isDebugEnabled()) {
-                    log.debug(sm.getString(
-                            "contextConfig.processAnnotationsWebDir.debug",
-                            webResource.getURL()));
-                }
-                for (WebResource r : webResources) {
-                    processAnnotationsWebResource(r, fragment, handlesTypesOnly, javaClassCache);
-                }
-            }
-        } else if (webResource.isFile() &&
-                webResource.getName().endsWith(".class")) {
-            try (InputStream is = webResource.getInputStream()) {
-                processAnnotationsStream(is, fragment, handlesTypesOnly, javaClassCache);
-            } catch (IOException e) {
-                log.error(sm.getString("contextConfig.inputStreamWebResource",
-                        webResource.getWebappPath()),e);
-            } catch (ClassFormatException e) {
-                log.error(sm.getString("contextConfig.inputStreamWebResource",
-                        webResource.getWebappPath()),e);
-            }
-        }
-    }
-
-
     protected void processAnnotationsUrl(URL url, WebXml fragment,
-            boolean handlesTypesOnly, Map<String,JavaClassCacheEntry> javaClassCache) {
+            boolean handlesTypesOnly) {
         if (url == null) {
             // Nothing to do.
             return;
-        } else if ("jar".equals(url.getProtocol()) || url.toString().endsWith(".jar")) {
-            processAnnotationsJar(url, fragment, handlesTypesOnly, javaClassCache);
+        } else if ("jar".equals(url.getProtocol())) {
+            processAnnotationsJar(url, fragment, handlesTypesOnly);
+        } else if ("jndi".equals(url.getProtocol())) {
+            processAnnotationsJndi(url, fragment, handlesTypesOnly);
         } else if ("file".equals(url.getProtocol())) {
             try {
                 processAnnotationsFile(
-                        new File(url.toURI()), fragment, handlesTypesOnly, javaClassCache);
+                        new File(url.toURI()), fragment, handlesTypesOnly);
             } catch (URISyntaxException e) {
                 log.error(sm.getString("contextConfig.fileUrl", url), e);
             }
@@ -2056,9 +2036,14 @@ public class ContextConfig implements LifecycleListener {
 
 
     protected void processAnnotationsJar(URL url, WebXml fragment,
-            boolean handlesTypesOnly, Map<String,JavaClassCacheEntry> javaClassCache) {
+            boolean handlesTypesOnly) {
 
-        try (Jar jar = JarFactory.newInstance(url)) {
+        Jar jar = null;
+        InputStream is;
+
+        try {
+            jar = JarFactory.newInstance(url);
+
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString(
                         "contextConfig.processAnnotationsJar.debug", url));
@@ -2068,14 +2053,25 @@ public class ContextConfig implements LifecycleListener {
             String entryName = jar.getEntryName();
             while (entryName != null) {
                 if (entryName.endsWith(".class")) {
-                    try (InputStream is = jar.getEntryInputStream()) {
-                        processAnnotationsStream(is, fragment, handlesTypesOnly, javaClassCache);
+                    is = null;
+                    try {
+                        is = jar.getEntryInputStream();
+                        processAnnotationsStream(
+                                is, fragment, handlesTypesOnly);
                     } catch (IOException e) {
                         log.error(sm.getString("contextConfig.inputStreamJar",
                                 entryName, url),e);
                     } catch (ClassFormatException e) {
                         log.error(sm.getString("contextConfig.inputStreamJar",
                                 entryName, url),e);
+                    } finally {
+                        if (is != null) {
+                            try {
+                                is.close();
+                            } catch (IOException ioe) {
+                                // Ignore
+                            }
+                        }
                     }
                 }
                 jar.nextEntry();
@@ -2083,12 +2079,78 @@ public class ContextConfig implements LifecycleListener {
             }
         } catch (IOException e) {
             log.error(sm.getString("contextConfig.jarFile", url), e);
+        } finally {
+            if (jar != null) {
+                jar.close();
+            }
+        }
+    }
+
+
+    protected void processAnnotationsJndi(URL url, WebXml fragment,
+            boolean handlesTypesOnly) {
+        try {
+            URLConnection urlConn = url.openConnection();
+            DirContextURLConnection dcUrlConn;
+            if (!(urlConn instanceof DirContextURLConnection)) {
+                // This should never happen
+                sm.getString("contextConfig.jndiUrlNotDirContextConn", url);
+                return;
+            }
+
+            dcUrlConn = (DirContextURLConnection) urlConn;
+            dcUrlConn.setUseCaches(false);
+
+            String type = dcUrlConn.getHeaderField(ResourceAttributes.TYPE);
+            if (ResourceAttributes.COLLECTION_TYPE.equals(type)) {
+                // Collection
+                Enumeration<String> dirs = dcUrlConn.list();
+
+                if (log.isDebugEnabled() && dirs.hasMoreElements()) {
+                    log.debug(sm.getString(
+                            "contextConfig.processAnnotationsWebDir.debug",
+                            url));
+                }
+
+                while (dirs.hasMoreElements()) {
+                    String dir = dirs.nextElement();
+                    URL dirUrl = new URL(url.toString() + '/' + dir);
+                    processAnnotationsJndi(dirUrl, fragment, handlesTypesOnly);
+                }
+
+            } else {
+                // Single file
+                if (url.getPath().endsWith(".class")) {
+                    InputStream is = null;
+                    try {
+                        is = dcUrlConn.getInputStream();
+                        processAnnotationsStream(
+                                is, fragment, handlesTypesOnly);
+                    } catch (IOException e) {
+                        log.error(sm.getString("contextConfig.inputStreamJndi",
+                                url),e);
+                    } catch (ClassFormatException e) {
+                        log.error(sm.getString("contextConfig.inputStreamJndi",
+                                url),e);
+                    } finally {
+                        if (is != null) {
+                            try {
+                                is.close();
+                            } catch (Throwable t) {
+                                ExceptionUtils.handleThrowable(t);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.error(sm.getString("contextConfig.jndiUrl", url), e);
         }
     }
 
 
     protected void processAnnotationsFile(File file, WebXml fragment,
-            boolean handlesTypesOnly, Map<String,JavaClassCacheEntry> javaClassCache) {
+            boolean handlesTypesOnly) {
 
         if (file.isDirectory()) {
             // Returns null if directory is not readable
@@ -2100,30 +2162,40 @@ public class ContextConfig implements LifecycleListener {
                 }
                 for (String dir : dirs) {
                     processAnnotationsFile(
-                            new File(file,dir), fragment, handlesTypesOnly, javaClassCache);
+                            new File(file,dir), fragment, handlesTypesOnly);
                 }
             }
         } else if (file.getName().endsWith(".class") && file.canRead()) {
-            try (FileInputStream fis = new FileInputStream(file)) {
-                processAnnotationsStream(fis, fragment, handlesTypesOnly, javaClassCache);
+            FileInputStream fis = null;
+            try {
+                fis = new FileInputStream(file);
+                processAnnotationsStream(fis, fragment, handlesTypesOnly);
             } catch (IOException e) {
                 log.error(sm.getString("contextConfig.inputStreamFile",
                         file.getAbsolutePath()),e);
             } catch (ClassFormatException e) {
                 log.error(sm.getString("contextConfig.inputStreamFile",
                         file.getAbsolutePath()),e);
+            } finally {
+                if (fis != null) {
+                    try {
+                        fis.close();
+                    } catch (Throwable t) {
+                        ExceptionUtils.handleThrowable(t);
+                    }
+                }
             }
         }
     }
 
 
     protected void processAnnotationsStream(InputStream is, WebXml fragment,
-            boolean handlesTypesOnly, Map<String,JavaClassCacheEntry> javaClassCache)
+            boolean handlesTypesOnly)
             throws ClassFormatException, IOException {
 
         ClassParser parser = new ClassParser(is);
         JavaClass clazz = parser.parse();
-        checkHandlesTypes(clazz, javaClassCache);
+        checkHandlesTypes(clazz);
 
         if (handlesTypesOnly) {
             return;
@@ -2133,6 +2205,7 @@ public class ContextConfig implements LifecycleListener {
     }
 
 
+    // 处理注解
     protected void processClass(WebXml fragment, JavaClass clazz) {
         AnnotationEntry[] annotationsEntries = clazz.getAnnotationEntries();
         if (annotationsEntries != null) {
@@ -2157,16 +2230,13 @@ public class ContextConfig implements LifecycleListener {
      * For classes packaged with the web application, the class and each
      * super class needs to be checked for a match with {@link HandlesTypes} or
      * for an annotation that matches {@link HandlesTypes}.
-     * @param javaClass the class to check
-     * @param javaClassCache a class cache
+     * @param javaClass
      */
-    protected void checkHandlesTypes(JavaClass javaClass,
-            Map<String,JavaClassCacheEntry> javaClassCache) {
+    protected void checkHandlesTypes(JavaClass javaClass) {
 
         // Skip this if we can
-        if (typeInitializerMap.size() == 0) {
+        if (typeInitializerMap.size() == 0)
             return;
-        }
 
         if ((javaClass.getAccessFlags() &
                 org.apache.tomcat.util.bcel.Const.ACC_ANNOTATION) != 0) {
@@ -2179,16 +2249,16 @@ public class ContextConfig implements LifecycleListener {
         Class<?> clazz = null;
         if (handlesTypesNonAnnotations) {
             // This *might* be match for a HandlesType.
-            populateJavaClassCache(className, javaClass, javaClassCache);
+            populateJavaClassCache(className, javaClass);
             JavaClassCacheEntry entry = javaClassCache.get(className);
             if (entry.getSciSet() == null) {
                 try {
-                    populateSCIsForCacheEntry(entry, javaClassCache);
+                    populateSCIsForCacheEntry(entry);
                 } catch (StackOverflowError soe) {
                     throw new IllegalStateException(sm.getString(
                             "contextConfig.annotationsStackOverflow",
                             context.getName(),
-                            classHierarchyToString(className, entry, javaClassCache)));
+                            classHierarchyToString(className, entry)));
                 }
             }
             if (!entry.getSciSet().isEmpty()) {
@@ -2202,7 +2272,7 @@ public class ContextConfig implements LifecycleListener {
                 for (ServletContainerInitializer sci : entry.getSciSet()) {
                     Set<Class<?>> classes = initializerClassMap.get(sci);
                     if (classes == null) {
-                        classes = new HashSet<>();
+                        classes = new HashSet<Class<?>>();
                         initializerClassMap.put(sci, classes);
                     }
                     classes.add(clazz);
@@ -2211,14 +2281,13 @@ public class ContextConfig implements LifecycleListener {
         }
 
         if (handlesTypesAnnotations) {
-            AnnotationEntry[] annotationEntries = javaClass.getAnnotationEntries();
-            if (annotationEntries != null) {
-                for (Map.Entry<Class<?>, Set<ServletContainerInitializer>> entry :
-                        typeInitializerMap.entrySet()) {
-                    if (entry.getKey().isAnnotation()) {
-                        String entryClassName = entry.getKey().getName();
+            for (Map.Entry<Class<?>, Set<ServletContainerInitializer>> entry :
+                    typeInitializerMap.entrySet()) {
+                if (entry.getKey().isAnnotation()) {
+                    AnnotationEntry[] annotationEntries = javaClass.getAnnotationEntries();
+                    if (annotationEntries != null) {
                         for (AnnotationEntry annotationEntry : annotationEntries) {
-                            if (entryClassName.equals(
+                            if (entry.getKey().getName().equals(
                                     getClassName(annotationEntry.getAnnotationType()))) {
                                 if (clazz == null) {
                                     clazz = Introspection.loadClass(
@@ -2243,7 +2312,7 @@ public class ContextConfig implements LifecycleListener {
 
 
     private String classHierarchyToString(String className,
-            JavaClassCacheEntry entry, Map<String,JavaClassCacheEntry> javaClassCache) {
+            JavaClassCacheEntry entry) {
         JavaClassCacheEntry start = entry;
         StringBuilder msg = new StringBuilder(className);
         msg.append("->");
@@ -2266,8 +2335,7 @@ public class ContextConfig implements LifecycleListener {
         return msg.toString();
     }
 
-    private void populateJavaClassCache(String className, JavaClass javaClass,
-            Map<String,JavaClassCacheEntry> javaClassCache) {
+    private void populateJavaClassCache(String className, JavaClass javaClass) {
         if (javaClassCache.containsKey(className)) {
             return;
         }
@@ -2275,37 +2343,44 @@ public class ContextConfig implements LifecycleListener {
         // Add this class to the cache
         javaClassCache.put(className, new JavaClassCacheEntry(javaClass));
 
-        populateJavaClassCache(javaClass.getSuperclassName(), javaClassCache);
+        populateJavaClassCache(javaClass.getSuperclassName());
 
         for (String interfaceName : javaClass.getInterfaceNames()) {
-            populateJavaClassCache(interfaceName, javaClassCache);
+            populateJavaClassCache(interfaceName);
         }
     }
 
-    private void populateJavaClassCache(String className,
-            Map<String,JavaClassCacheEntry> javaClassCache) {
+    private void populateJavaClassCache(String className) {
         if (!javaClassCache.containsKey(className)) {
             String name = className.replace('.', '/') + ".class";
-            try (InputStream is = context.getLoader().getClassLoader().getResourceAsStream(name)) {
-                if (is == null) {
-                    return;
-                }
-                ClassParser parser = new ClassParser(is);
+            InputStream is =
+                    context.getLoader().getClassLoader().getResourceAsStream(name);
+            if (is == null) {
+                return;
+            }
+            ClassParser parser = new ClassParser(is);
+            try {
                 JavaClass clazz = parser.parse();
-                populateJavaClassCache(clazz.getClassName(), clazz, javaClassCache);
+                populateJavaClassCache(clazz.getClassName(), clazz);
             } catch (ClassFormatException e) {
                 log.debug(sm.getString("contextConfig.invalidSciHandlesTypes",
                         className), e);
             } catch (IOException e) {
                 log.debug(sm.getString("contextConfig.invalidSciHandlesTypes",
                         className), e);
+            } finally {
+                try {
+                    is.close();
+                } catch (IOException e) {
+                    // ignore
+                }
             }
         }
     }
 
-    private void populateSCIsForCacheEntry(JavaClassCacheEntry cacheEntry,
-            Map<String,JavaClassCacheEntry> javaClassCache) {
-        Set<ServletContainerInitializer> result = new HashSet<>();
+    private void populateSCIsForCacheEntry(JavaClassCacheEntry cacheEntry) {
+        Set<ServletContainerInitializer> result =
+                new HashSet<ServletContainerInitializer>();
 
         // Super class
         String superClassName = cacheEntry.getSuperclassName();
@@ -2321,7 +2396,7 @@ public class ContextConfig implements LifecycleListener {
         // May be null of the class is not present or could not be loaded.
         if (superClassCacheEntry != null) {
             if (superClassCacheEntry.getSciSet() == null) {
-                populateSCIsForCacheEntry(superClassCacheEntry, javaClassCache);
+                populateSCIsForCacheEntry(superClassCacheEntry);
             }
             result.addAll(superClassCacheEntry.getSciSet());
         }
@@ -2336,7 +2411,7 @@ public class ContextConfig implements LifecycleListener {
             // so move along
             if (interfaceEntry != null) {
                 if (interfaceEntry.getSciSet() == null) {
-                    populateSCIsForCacheEntry(interfaceEntry, javaClassCache);
+                    populateSCIsForCacheEntry(interfaceEntry);
                 }
                 result.addAll(interfaceEntry.getSciSet());
             }
@@ -2369,25 +2444,36 @@ public class ContextConfig implements LifecycleListener {
                 internalForm.length() - 1).replace('/', '.');
     }
 
+    /**
+     *
+     * @param className 被@WebServlet注解的类名
+     * @param ae        @WebServlet注解对象
+     * @param fragment
+     */
     protected void processAnnotationWebServlet(String className,
             AnnotationEntry ae, WebXml fragment) {
         String servletName = null;
         // must search for name s. Spec Servlet API 3.0 - 8.2.3.3.n.ii page 81
         List<ElementValuePair> evps = ae.getElementValuePairs();
+        // 遍历注解上配置的name:value对
         for (ElementValuePair evp : evps) {
             String name = evp.getNameString();
+            // @WebServlet中的name为servletName
             if ("name".equals(name)) {
                 servletName = evp.getValue().stringifyValue();
                 break;
             }
         }
+        // 如果没有配置name,那么servletName为类名
         if (servletName == null) {
             // classname is default servletName as annotation has no name!
             servletName = className;
         }
+        // 查看该servletName是否在webxml中存在
         ServletDef servletDef = fragment.getServlets().get(servletName);
 
         boolean isWebXMLservletDef;
+        // 如果没有在webxml中定义，那么就定义一个Servlet
         if (servletDef == null) {
             servletDef = new ServletDef();
             servletDef.setServletName(servletName);
@@ -2398,7 +2484,7 @@ public class ContextConfig implements LifecycleListener {
         }
 
         boolean urlPatternsSet = false;
-        String[] urlPatterns = null;
+        String[] urlPatterns = null;  // 可以配置多个urlPatterns
 
         // List<ElementValuePair> evps = ae.getElementValuePairs();
         for (ElementValuePair evp : evps) {
@@ -2437,9 +2523,11 @@ public class ContextConfig implements LifecycleListener {
                             .setLoadOnStartup(evp.getValue().stringifyValue());
                 }
             } else if ("initParams".equals(name)) {
+                // 初始化参数键值对
                 Map<String, String> initParams = processAnnotationWebInitParams(evp
                         .getValue());
                 if (isWebXMLservletDef) {
+                    // 如果该servlet在webxml中也定义了,将注解上定义的initparams和webxml中定义的initparams合并
                     Map<String, String> webXMLInitParams = servletDef
                             .getParameterMap();
                     for (Map.Entry<String, String> entry : initParams
@@ -2462,6 +2550,7 @@ public class ContextConfig implements LifecycleListener {
             fragment.addServlet(servletDef);
         }
         if (urlPatterns != null) {
+            // 如果webxml中对当前servletname没有配置mapping关系
             if (!fragment.getServletMappings().containsValue(servletName)) {
                 for (String urlPattern : urlPatterns) {
                     fragment.addServletMapping(urlPattern, servletName);
@@ -2475,9 +2564,9 @@ public class ContextConfig implements LifecycleListener {
      * process filter annotation and merge with existing one!
      * FIXME: refactoring method too long and has redundant subroutines with
      *        processAnnotationWebServlet!
-     * @param className The filter class name
-     * @param ae The filter annotation
-     * @param fragment The corresponding fragment
+     * @param className
+     * @param ae
+     * @param fragment
      */
     protected void processAnnotationWebFilter(String className,
             AnnotationEntry ae, WebXml fragment) {
@@ -2523,7 +2612,6 @@ public class ContextConfig implements LifecycleListener {
                 urlPatterns = processAnnotationsStringArray(evp.getValue());
                 urlPatternsSet = urlPatterns.length > 0;
                 for (String urlPattern : urlPatterns) {
-                    // % decoded (if required) using UTF-8
                     filterMap.addURLPattern(urlPattern);
                 }
             } else if ("servletNames".equals(name)) {
@@ -2605,7 +2693,6 @@ public class ContextConfig implements LifecycleListener {
                 if (urlPatternsSet
                         && (urlsPatterns == null || urlsPatterns.length == 0)) {
                     for (String urlPattern : filterMap.getURLPatterns()) {
-                        // % decoded (if required) using UTF-8
                         descMap.addURLPattern(urlPattern);
                     }
                 }
@@ -2622,7 +2709,7 @@ public class ContextConfig implements LifecycleListener {
     }
 
     protected String[] processAnnotationsStringArray(ElementValue ev) {
-        List<String> values = new ArrayList<>();
+        ArrayList<String> values = new ArrayList<String>();
         if (ev instanceof ArrayElementValue) {
             ElementValue[] arrayValues =
                 ((ArrayElementValue) ev).getElementValuesArray();
@@ -2638,7 +2725,7 @@ public class ContextConfig implements LifecycleListener {
 
     protected Map<String,String> processAnnotationWebInitParams(
             ElementValue ev) {
-        Map<String, String> result = new HashMap<>();
+        Map<String, String> result = new HashMap<String,String>();
         if (ev instanceof ArrayElementValue) {
             ElementValue[] arrayValues =
                 ((ArrayElementValue) ev).getElementValuesArray();
@@ -2662,6 +2749,115 @@ public class ContextConfig implements LifecycleListener {
             }
         }
         return result;
+    }
+
+    private class FragmentJarScannerCallback implements JarScannerCallback {
+
+        private static final String FRAGMENT_LOCATION =
+            "META-INF/web-fragment.xml";
+        private Map<String,WebXml> fragments = new HashMap<String,WebXml>();
+        private final boolean parseRequired;
+
+        public FragmentJarScannerCallback(boolean parseRequired) {
+            this.parseRequired = parseRequired;
+        }
+
+        @Override
+        public void scan(JarURLConnection jarConn) throws IOException {
+
+            URL url = jarConn.getURL();
+            URL resourceURL = jarConn.getJarFileURL();
+            Jar jar = null;
+            InputStream is = null;
+            WebXml fragment = new WebXml();
+
+            try {
+                jar = JarFactory.newInstance(url);
+                if (parseRequired || context.getXmlValidation()) {
+                    is = jar.getInputStream(FRAGMENT_LOCATION);
+                }
+
+                if (is == null) {
+                    // If there is no web-fragment.xml to process there is no
+                    // impact on distributable
+                    fragment.setDistributable(true);
+                } else {
+                    InputSource source = new InputSource(
+                            "jar:" + resourceURL.toString() + "!/" +
+                            FRAGMENT_LOCATION);
+                    source.setByteStream(is);
+                    parseWebXml(source, fragment, true);
+                }
+            } finally {
+                if (jar != null) {
+                    jar.close();
+                }
+                addFragment(fragment, url);
+            }
+        }
+
+        private String extractJarFileName(URL input) {
+            String url = input.toString();
+            if (url.endsWith("!/")) {
+                // Remove it
+                url = url.substring(0, url.length() - 2);
+            }
+
+            // File name will now be whatever is after the final /
+            return url.substring(url.lastIndexOf('/') + 1);
+        }
+
+        @Override
+        public void scan(File file) throws IOException {
+
+            InputStream stream = null;
+            WebXml fragment = new WebXml();
+
+            try {
+                File fragmentFile = new File(file, FRAGMENT_LOCATION);
+                if (fragmentFile.isFile()) {
+                    stream = new FileInputStream(fragmentFile);
+                    InputSource source =
+                        new InputSource(fragmentFile.toURI().toURL().toString());
+                    source.setByteStream(stream);
+                    parseWebXml(source, fragment, true);
+                } else {
+                    // If there is no web.xml, normal folder no impact on
+                    // distributable
+                    fragment.setDistributable(true);
+                }
+            } finally {
+                if (stream != null) {
+                    try {
+                        stream.close();
+                    } catch (IOException e) {
+                    }
+                }
+                addFragment(fragment, file.toURI().toURL());
+            }
+        }
+
+        private void addFragment(WebXml fragment, URL url) {
+            fragment.setURL(url);
+            if (fragment.getName() == null) {
+                fragment.setName(url.toString());
+            }
+            fragment.setJarName(extractJarFileName(url));
+            if (fragments.containsKey(fragment.getName())) {
+                // Duplicate. Mark the fragment that has already been found with
+                // this name as having a duplicate so Tomcat can handle it
+                // correctly when the fragments are being ordered.
+                String duplicateName = fragment.getName();
+                fragments.get(duplicateName).setDuplicated(true);
+                // Rename the current fragment so it doesn't clash
+                fragment.setName(url.toString());
+             }
+            fragments.put(fragment.getName(), fragment);
+        }
+
+        public Map<String,WebXml> getFragments() {
+            return fragments;
+        }
     }
 
     private static class DefaultWebXmlCacheEntry {
@@ -2689,19 +2885,7 @@ public class ContextConfig implements LifecycleListener {
         }
     }
 
-    private static class HostWebXmlCacheCleaner implements LifecycleListener {
-
-        @Override
-        public void lifecycleEvent(LifecycleEvent event) {
-
-            if (Lifecycle.AFTER_DESTROY_EVENT.equals(event.getType())) {
-                Host host = (Host) event.getSource();
-                hostWebXmlCache.remove(host);
-            }
-        }
-    }
-
-    static class JavaClassCacheEntry {
+    private static class JavaClassCacheEntry {
         public final String superclassName;
 
         public final String[] interfaceNames;

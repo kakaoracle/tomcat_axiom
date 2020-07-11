@@ -46,12 +46,12 @@ import org.apache.catalina.Globals;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.connector.Request;
+import org.apache.catalina.deploy.FilterDef;
+import org.apache.catalina.deploy.FilterMap;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.unittest.TesterContext;
 import org.apache.tomcat.unittest.TesterResponse;
-import org.apache.tomcat.util.descriptor.web.FilterDef;
-import org.apache.tomcat.util.descriptor.web.FilterMap;
 
 public class TestRemoteIpFilter extends TomcatBaseTest {
 
@@ -113,8 +113,9 @@ public class TestRemoteIpFilter extends TomcatBaseTest {
      */
     public static class MockHttpServletRequest extends Request {
         public MockHttpServletRequest() {
-            super(new Connector());
+            super();
             setCoyoteRequest(new org.apache.coyote.Request());
+            setConnector(new Connector());
         }
 
         public void setHeader(String name, String value) {
@@ -148,7 +149,7 @@ public class TestRemoteIpFilter extends TomcatBaseTest {
         public Context getContext() {
             // Lazt init
             if (super.getContext() == null) {
-                getMappingData().context = new TesterContext();
+                super.setContext(new TesterContext());
             }
             return super.getContext();
         }
@@ -165,7 +166,7 @@ public class TestRemoteIpFilter extends TomcatBaseTest {
 
     @Test
     public void testCommaDelimitedListToStringArrayEmptyList() {
-        List<String> elements = new ArrayList<>();
+        List<String> elements = new ArrayList<String>();
         String actual = RemoteIpFilter.listToCommaDelimitedString(elements);
         Assert.assertEquals("", actual);
     }
@@ -661,7 +662,7 @@ public class TestRemoteIpFilter extends TomcatBaseTest {
 
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName(RemoteIpFilter.class.getName());
-        filterMap.addURLPatternDecoded("*");
+        filterMap.addURLPattern("*");
         root.addFilterMap(filterMap);
 
         getTomcatInstance().start();
@@ -734,7 +735,7 @@ public class TestRemoteIpFilter extends TomcatBaseTest {
     public void testWithTomcatServer() throws Exception {
 
         // mostly default configuration : enable "x-forwarded-proto"
-        Map<String, String> remoteIpFilterParameter = new HashMap<>();
+        Map<String, String> remoteIpFilterParameter = new HashMap<String, String>();
         remoteIpFilterParameter.put("protocolHeader", "x-forwarded-proto");
 
         // SETUP
@@ -750,13 +751,13 @@ public class TestRemoteIpFilter extends TomcatBaseTest {
 
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName(RemoteIpFilter.class.getName());
-        filterMap.addURLPatternDecoded("*");
+        filterMap.addURLPattern("*");
         root.addFilterMap(filterMap);
 
         MockHttpServlet mockServlet = new MockHttpServlet();
 
         Tomcat.addServlet(root, mockServlet.getClass().getName(), mockServlet);
-        root.addServletMappingDecoded("/test", mockServlet.getClass().getName());
+        root.addServletMapping("/test", mockServlet.getClass().getName());
 
         getTomcatInstance().start();
 

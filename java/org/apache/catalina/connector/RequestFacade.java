@@ -34,16 +34,15 @@ import javax.servlet.ServletInputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletMapping;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import javax.servlet.http.HttpUpgradeHandler;
 import javax.servlet.http.Part;
-import javax.servlet.http.PushBuilder;
 
 import org.apache.catalina.Globals;
 import org.apache.catalina.security.SecurityUtil;
+import org.apache.coyote.http11.upgrade.UpgradeInbound;
+import org.apache.coyote.http11.upgrade.servlet31.HttpUpgradeHandler;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -52,9 +51,12 @@ import org.apache.tomcat.util.res.StringManager;
  *
  * @author Craig R. McClanahan
  * @author Remy Maucherat
+ * @author Jean-Francois Arcand
  */
 @SuppressWarnings("deprecation")
 public class RequestFacade implements HttpServletRequest {
+
+
 
 
     // ----------------------------------------------------------- DoPrivileged
@@ -244,7 +246,8 @@ public class RequestFacade implements HttpServletRequest {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm = StringManager.getManager(RequestFacade.class);
+    protected static final StringManager sm =
+        StringManager.getManager(Constants.Package);
 
 
     // --------------------------------------------------------- Public Methods
@@ -276,7 +279,7 @@ public class RequestFacade implements HttpServletRequest {
 
         if (request == null) {
             throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
+                    sm.getString("requestFacade.nullRequest"));
         }
 
         return request.getAttribute(name);
@@ -738,18 +741,6 @@ public class RequestFacade implements HttpServletRequest {
 
 
     @Override
-    public HttpServletMapping getHttpServletMapping() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        return request.getHttpServletMapping();
-    }
-
-
-    @Override
     public String getMethod() {
 
         if (request == null) {
@@ -920,16 +911,6 @@ public class RequestFacade implements HttpServletRequest {
         return getSession(true);
     }
 
-    @Override
-    public String changeSessionId() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        return request.changeSessionId();
-    }
 
     @Override
     public boolean isRequestedSessionIdValid() {
@@ -1068,12 +1049,10 @@ public class RequestFacade implements HttpServletRequest {
         return request.getAsyncContext();
     }
 
-
     @Override
     public DispatcherType getDispatcherType() {
         return request.getDispatcherType();
     }
-
 
     @Override
     public boolean authenticate(HttpServletResponse response)
@@ -1098,51 +1077,35 @@ public class RequestFacade implements HttpServletRequest {
         return request.getParts();
     }
 
-
     @Override
     public Part getPart(String name) throws IllegalStateException, IOException,
             ServletException {
         return request.getPart(name);
     }
 
-
     public boolean getAllowTrace() {
         return request.getConnector().getAllowTrace();
     }
 
-
-    @Override
-    public long getContentLengthLong() {
-        return request.getContentLengthLong();
+    /**
+     * Sets the response status to {@link
+     * HttpServletResponse#SC_SWITCHING_PROTOCOLS} and flushes the response.
+     * Protocol specific headers must have already been set before this method
+     * is called.
+     *
+     * @param inbound   The handler for all further incoming data on the current
+     *                  connection.
+     *
+     * @throws IOException  If the upgrade fails (e.g. if the response has
+     *                      already been committed.
+     */
+    public void doUpgrade(UpgradeInbound inbound)
+            throws IOException {
+        request.doUpgrade(inbound);
     }
 
-
-    @Override
     public <T extends HttpUpgradeHandler> T upgrade(
-            Class<T> httpUpgradeHandlerClass) throws java.io.IOException, ServletException {
+            Class<T> httpUpgradeHandlerClass) throws ServletException {
         return request.upgrade(httpUpgradeHandlerClass);
-    }
-
-
-    @Override
-    public PushBuilder newPushBuilder() {
-        return request.newPushBuilder();
-    }
-
-
-    public PushBuilder newPushBuilder(HttpServletRequest request) {
-        return this.request.newPushBuilder(request);
-    }
-
-
-    @Override
-    public boolean isTrailerFieldsReady() {
-        return request.isTrailerFieldsReady();
-    }
-
-
-    @Override
-    public Map<String, String> getTrailerFields() {
-        return request.getTrailerFields();
     }
 }

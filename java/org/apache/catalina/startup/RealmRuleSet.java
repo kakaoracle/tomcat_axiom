@@ -14,39 +14,47 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina.startup;
 
+
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSet;
+import org.apache.tomcat.util.digester.RuleSetBase;
+
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a Realm definition
  * element.  This <code>RuleSet</code> supports Realms such as the
  * <code>CombinedRealm</code> that used nested Realms.</p>
  */
-public class RealmRuleSet implements RuleSet {
+public class RealmRuleSet extends RuleSetBase {
+
 
     private static final int MAX_NESTED_REALM_LEVELS = Integer.getInteger(
             "org.apache.catalina.startup.RealmRuleSet.MAX_NESTED_REALM_LEVELS",
             3).intValue();
 
-
     // ----------------------------------------------------- Instance Variables
+
 
     /**
      * The matching pattern prefix to use for recognizing our elements.
      */
-    protected final String prefix;
+    protected String prefix = null;
 
 
     // ------------------------------------------------------------ Constructor
+
 
     /**
      * Construct an instance of this <code>RuleSet</code> with the default
      * matching pattern prefix.
      */
     public RealmRuleSet() {
+
         this("");
+
     }
 
 
@@ -58,11 +66,16 @@ public class RealmRuleSet implements RuleSet {
      *  trailing slash character)
      */
     public RealmRuleSet(String prefix) {
+
+        super();
+        this.namespaceURI = null;
         this.prefix = prefix;
+
     }
 
 
     // --------------------------------------------------------- Public Methods
+
 
     /**
      * <p>Add the set of Rule instances defined in this RuleSet to the
@@ -90,6 +103,5 @@ public class RealmRuleSet implements RuleSet {
                 "className");
         digester.addSetProperties(pattern);
         digester.addSetNext(pattern, methodName, "org.apache.catalina.Realm");
-        digester.addRuleSet(new CredentialHandlerRuleSet(pattern + "/"));
     }
 }

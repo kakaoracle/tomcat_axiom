@@ -80,11 +80,11 @@ public class ELParser {
         while (parser.hasNextChar()) {
             String text = parser.skipUntilEL();
             if (text.length() > 0) {
-                parser.expr.add(new ELNode.Text(text));
+                parser.expr.add(new Text(text));
             }
             ELNode.Nodes elexpr = parser.parseEL();
             if (!elexpr.isEmpty()) {
-                parser.expr.add(new ELNode.Root(elexpr, parser.type));
+                parser.expr.add(new Root(elexpr, parser.type));
             }
         }
         return parser.expr;
@@ -96,7 +96,7 @@ public class ELParser {
      *
      * @return An ELNode.Nodes representing the EL expression
      *
-     * Note: This cannot be refactored to use the standard EL implementation as
+     * Note: This can not be refactored to use the standard EL implementation as
      *       the EL API does not provide the level of access required to the
      *       parsed expression.
      */
@@ -106,27 +106,21 @@ public class ELParser {
         ELexpr = new ELNode.Nodes();
         curToken = null;
         prevToken = null;
-        int openBraces = 0;
         while (hasNext()) {
             curToken = nextToken();
             if (curToken instanceof Char) {
                 if (curToken.toChar() == '}') {
-                    openBraces--;
-                    if (openBraces < 0) {
-                        break;
-                    }
-                } else if (curToken.toChar() == '{') {
-                    openBraces++;
+                    break;
                 }
                 buf.append(curToken.toString());
             } else {
                 // Output whatever is in buffer
                 if (buf.length() > 0) {
-                    ELexpr.add(new ELNode.ELText(buf.toString()));
+                    ELexpr.add(new ELText(buf.toString()));
                     buf.setLength(0);
                 }
                 if (!parseFunction()) {
-                    ELexpr.add(new ELNode.ELText(curToken.toString()));
+                    ELexpr.add(new ELText(curToken.toString()));
                 }
             }
         }
@@ -134,7 +128,7 @@ public class ELParser {
             buf.append(curToken.getWhiteSpace());
         }
         if (buf.length() > 0) {
-            ELexpr.add(new ELNode.ELText(buf.toString()));
+            ELexpr.add(new ELText(buf.toString()));
         }
 
         return ELexpr;
@@ -170,7 +164,7 @@ public class ELParser {
                 }
             }
             if (curToken.toChar() == '(') {
-                ELexpr.add(new ELNode.Function(s1, s2, expression.substring(start, index - 1)));
+                ELexpr.add(new Function(s1, s2, expression.substring(start, index - 1)));
                 return true;
             }
             curToken = original;
@@ -186,7 +180,7 @@ public class ELParser {
         int i = 0;
         int j = reservedWords.length;
         while (i < j) {
-            int k = (i + j) >>> 1;
+            int k = (i + j) / 2;
             int result = reservedWords[k].compareTo(id);
             if (result == 0) {
                 return true;
@@ -202,7 +196,7 @@ public class ELParser {
 
     /**
      * Skip until an EL expression ('${' || '#{') is reached, allowing escape
-     * sequences '\$' and '\#'.
+     * sequences '\${' and '\#{'.
      *
      * @return The text string up to the EL expression
      */

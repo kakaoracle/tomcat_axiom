@@ -37,7 +37,7 @@ public class TestCsrfPreventionFilter extends TomcatBaseTest {
 
     private final HttpServletResponse wrapper =
         new CsrfPreventionFilter.CsrfResponseWrapper(
-                new NonEncodingResponse(), Constants.CSRF_NONCE_SESSION_ATTR_NAME, "TESTNONCE");
+                new NonEncodingResponse(), "TESTNONCE");
 
     @Test
     public void testAddNonceNoQueryNoAnchor() throws Exception {
@@ -65,7 +65,7 @@ public class TestCsrfPreventionFilter extends TomcatBaseTest {
 
     @Test
     public void testLruCacheSerializable() throws Exception {
-        LruCache<String> cache = new LruCache<>(5);
+        LruCache<String> cache = new LruCache<String>(5);
         cache.add("key1");
         cache.add("key2");
         cache.add("key3");

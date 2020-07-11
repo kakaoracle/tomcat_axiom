@@ -18,12 +18,12 @@
 package org.apache.catalina.util;
 
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Locale;
 import java.util.Properties;
 
 import org.apache.tomcat.util.ExceptionUtils;
-import org.apache.tomcat.util.compat.JreCompat;
 
 
 
@@ -70,14 +70,19 @@ public class CharsetMapper {
      *  resource could not be loaded for any reason.
      */
     public CharsetMapper(String name) {
-        if (JreCompat.isGraalAvailable()) {
-            map.put("en", "ISO-8859-1");
-        } else {
-            try (InputStream stream = this.getClass().getResourceAsStream(name)) {
-                map.load(stream);
-            } catch (Throwable t) {
-                ExceptionUtils.handleThrowable(t);
-                throw new IllegalArgumentException(t);
+        InputStream stream = null;
+        try {
+            stream = this.getClass().getResourceAsStream(name);
+            map.load(stream);
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
+            throw new IllegalArgumentException(t.toString());
+        } finally {
+            if (stream != null) {
+                try {
+                    stream.close();
+                } catch (IOException e) {
+                }
             }
         }
     }
@@ -102,7 +107,6 @@ public class CharsetMapper {
      * content type header.
      *
      * @param locale The locale for which to calculate a character set
-     * @return the charset name
      */
     public String getCharset(Locale locale) {
         // Match full language_country_variant first, then language_country,
@@ -115,7 +119,7 @@ public class CharsetMapper {
                 charset = map.getProperty(locale.getLanguage());
             }
         }
-        return charset;
+        return (charset);
     }
 
 

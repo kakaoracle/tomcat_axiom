@@ -18,8 +18,6 @@ package org.apache.catalina.ssi;
 
 
 import java.io.PrintWriter;
-
-import org.apache.tomcat.util.res.StringManager;
 /**
  * Implements the Server-side #exec command
  *
@@ -29,7 +27,6 @@ import org.apache.tomcat.util.res.StringManager;
  * @author David Becker
  */
 public final class SSIConfig implements SSICommand {
-    private static final StringManager sm = StringManager.getManager(SSIConfig.class);
     /**
      * @see SSICommand
      */
@@ -48,7 +45,7 @@ public final class SSIConfig implements SSICommand {
             } else if (paramName.equalsIgnoreCase("timefmt")) {
                 ssiMediator.setConfigTimeFmt(substitutedValue);
             } else {
-                ssiMediator.log(sm.getString("ssiCommand.invalidAttribute", paramName));
+                ssiMediator.log("#config--Invalid attribute: " + paramName);
                 //We need to fetch this value each time, since it may change
                 // during the
                 // loop

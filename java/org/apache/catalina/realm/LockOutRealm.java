@@ -27,7 +27,6 @@ import org.apache.catalina.LifecycleException;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.ietf.jgss.GSSContext;
-import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
 import org.ietf.jgss.GSSName;
 
@@ -46,6 +45,11 @@ import org.ietf.jgss.GSSName;
 public class LockOutRealm extends CombinedRealm {
 
     private static final Log log = LogFactory.getLog(LockOutRealm.class);
+
+    /**
+     * Descriptive information about this Realm implementation.
+     */
+    protected static final String name = "LockOutRealm";
 
     /**
      * The number of times in a row a user has to fail authentication to be
@@ -89,7 +93,7 @@ public class LockOutRealm extends CombinedRealm {
      *  that prevents this component from being used
      */
     @Override
-    protected synchronized void startInternal() throws LifecycleException {
+    protected void startInternal() throws LifecycleException {
         // Configure the list of failed users to delete the oldest entry once it
         // exceeds the specified size
         failedUsers = new LinkedHashMap<String, LockRecord>(cacheSize, 0.75f,
@@ -201,18 +205,6 @@ public class LockOutRealm extends CombinedRealm {
         return null;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public Principal authenticate(GSSName gssName, GSSCredential gssCredential) {
-        String username = gssName.toString();
-
-        Principal authenticatedUser = super.authenticate(gssName, gssCredential);
-
-        return filterLockedAccounts(username, authenticatedUser);
-    }
-
 
     /*
      * Filters authenticated principals to ensure that <code>null</code> is
@@ -220,7 +212,7 @@ public class LockOutRealm extends CombinedRealm {
      */
     private Principal filterLockedAccounts(String username, Principal authenticatedUser) {
         // Register all failed authentications
-        if (authenticatedUser == null && isAvailable()) {
+        if (authenticatedUser == null) {
             registerAuthFailure(username);
         }
 
@@ -254,7 +246,7 @@ public class LockOutRealm extends CombinedRealm {
      * a login attempt, then the last access time will be recorded and any
      * attempt to authenticated a locked user will log a warning.
      */
-    public boolean isLocked(String username) {
+    private boolean isLocked(String username) {
         LockRecord lockRecord = null;
         synchronized (this) {
             lockRecord = failedUsers.get(username);
@@ -342,6 +334,12 @@ public class LockOutRealm extends CombinedRealm {
     }
 
 
+    @Override
+    protected String getName() {
+        return name;
+    }
+
+
     /**
      * Set the period for which an account will be locked.
      * @param lockOutTime the lockOutTime to set
@@ -394,7 +392,7 @@ public class LockOutRealm extends CombinedRealm {
 
 
     protected static class LockRecord {
-        private final AtomicInteger failures = new AtomicInteger(0);
+        private AtomicInteger failures = new AtomicInteger(0);
         private long lastFailureTime = 0;
 
         public int getFailures() {

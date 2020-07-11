@@ -17,7 +17,8 @@
 package org.apache.coyote;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+
+import org.apache.tomcat.util.buf.ByteChunk;
 
 /**
  * Output buffer.
@@ -29,6 +30,7 @@ import java.nio.ByteBuffer;
  */
 public interface OutputBuffer {
 
+
     /**
      * Write the given data to the response. The caller owns the chunks.
      *
@@ -39,8 +41,7 @@ public interface OutputBuffer {
      *
      * @throws IOException an underlying I/O error occurred
      */
-    public int doWrite(ByteBuffer chunk) throws IOException;
-
+    public int doWrite(ByteChunk chunk, Response response) throws IOException;
 
     /**
      * Bytes written to the underlying socket. This includes the effects of

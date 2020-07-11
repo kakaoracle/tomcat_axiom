@@ -21,19 +21,17 @@ import java.lang.reflect.Method;
 
 import javax.el.FunctionMapper;
 
-import org.apache.el.util.MessageFactory;
-
 /**
  * @author Jacob Hookom [jacob@hookom.net]
  */
 public class FunctionMapperFactory extends FunctionMapper {
 
     protected FunctionMapperImpl memento = null;
-    protected final FunctionMapper target;
+    protected FunctionMapper target;
 
     public FunctionMapperFactory(FunctionMapper mapper) {
         if (mapper == null) {
-            throw new NullPointerException(MessageFactory.get("error.noFunctionMapperTarget"));
+            throw new NullPointerException("FunctionMapper target cannot be null");
         }
         this.target = mapper;
     }
@@ -49,20 +47,10 @@ public class FunctionMapperFactory extends FunctionMapper {
         }
         Method m = this.target.resolveFunction(prefix, localName);
         if (m != null) {
-            this.memento.mapFunction(prefix, localName, m);
+            this.memento.addFunction(prefix, localName, m);
         }
         return m;
     }
-
-
-    @Override
-    public void mapFunction(String prefix, String localName, Method method) {
-        if (this.memento == null) {
-            this.memento = new FunctionMapperImpl();
-        }
-        memento.mapFunction(prefix, localName, method);
-    }
-
 
     public FunctionMapper create() {
         return this.memento;

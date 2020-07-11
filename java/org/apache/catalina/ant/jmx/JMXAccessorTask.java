@@ -23,6 +23,7 @@ import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -120,7 +121,25 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
 
     private String ifCondition;
 
-    private final Properties properties = new Properties();
+    private Properties properties = new Properties();
+
+    // ----------------------------------------------------- Instance Info
+
+    /**
+     * Descriptive information describing this implementation.
+     */
+    private static final String info = "org.apache.catalina.ant.JMXAccessorTask/1.1";
+
+    /**
+     * Return descriptive information about this implementation and the
+     * corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    public String getInfo() {
+
+        return (info);
+
+    }
 
     // ------------------------------------------------------------- Properties
 
@@ -368,7 +387,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
             String[] credentials = new String[2];
             credentials[0] = username;
             credentials[1] = password;
-            environment = new HashMap<>();
+            environment = new HashMap<String, String[]>();
             environment.put(JMXConnector.CREDENTIALS, credentials);
         }
         return JMXConnectorFactory.connect(new JMXServiceURL(urlForJMX),
@@ -616,7 +635,8 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
             CompositeDataSupport data = (CompositeDataSupport) result;
             CompositeType compositeType = data.getCompositeType();
             Set<String> keys = compositeType.keySet();
-            for (String key : keys) {
+            for (Iterator<String> iter = keys.iterator(); iter.hasNext();) {
+                String key = iter.next();
                 Object value = data.get(key);
                 OpenType<?> type = compositeType.getType(key);
                 if (type instanceof SimpleType<?>) {
@@ -627,8 +647,10 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
             }
         } else if (result instanceof TabularDataSupport) {
             TabularDataSupport data = (TabularDataSupport) result;
-            for (Object key : data.keySet()) {
-                for (Object key1 : ((List<?>) key)) {
+            for (Iterator<Object> iter = data.keySet().iterator(); iter.hasNext();) {
+                Object key = iter.next();
+                for (Iterator<?> iter1 = ((List<?>) key).iterator(); iter1.hasNext();) {
+                    Object key1 = iter1.next();
                     CompositeData valuedata = data.get(new Object[] { key1 });
                     Object value = valuedata.get("value");
                     OpenType<?> type = valuedata.getCompositeType().getType(

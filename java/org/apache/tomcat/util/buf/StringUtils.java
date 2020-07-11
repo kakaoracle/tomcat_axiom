@@ -18,7 +18,6 @@ package org.apache.tomcat.util.buf;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.function.Function;
 
 /**
  * Utility methods to build a separated list from a given set (not
@@ -69,11 +68,12 @@ public final class StringUtils {
 
 
     public static void join(Iterable<String> iterable, char separator, StringBuilder sb) {
-        join(iterable, separator, (x) -> x, sb);
+        join(iterable, separator,
+                new Function<String>() {@Override public String apply(String t) { return t; }}, sb);
     }
 
 
-    public static <T> void join(T[] array, char separator, Function<T,String> function,
+    public static <T> void join(T[] array, char separator, Function<T> function,
             StringBuilder sb) {
         if (array == null) {
             return;
@@ -82,7 +82,7 @@ public final class StringUtils {
     }
 
 
-    public static <T> void join(Iterable<T> iterable, char separator, Function<T,String> function,
+    public static <T> void join(Iterable<T> iterable, char separator, Function<T> function,
             StringBuilder sb) {
         if (iterable == null) {
             return;
@@ -96,5 +96,10 @@ public final class StringUtils {
             }
             sb.append(function.apply(value));
         }
+    }
+
+
+    public interface Function<T> {
+        public String apply(T t);
     }
 }

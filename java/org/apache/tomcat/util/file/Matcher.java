@@ -106,8 +106,8 @@ public final class Matcher {
         char ch;
 
         boolean containsStar = false;
-        for (char c : patArr) {
-            if (c == '*') {
+        for (int i = 0; i < patArr.length; i++) {
+            if (patArr[i] == '*') {
                 containsStar = true;
                 break;
             }

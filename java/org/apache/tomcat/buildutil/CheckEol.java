@@ -33,20 +33,18 @@ import org.apache.tools.ant.types.FileSet;
 
 /**
  * Ant task that checks that all the files in the given fileset have end-of-line
- * delimiters that are appropriate.
+ * delimiters that are appropriate for the current OS.
  *
  * <p>
- * The goal is to check whether we have problems with Subversion's svn:eol-style
- * property or Git's autocrlf setting when files are committed on one OS and then
- * checked on another one.
+ * The goal is to check whether we have problems with svn:eol-style property
+ * when files are committed on one OS and then checked on another one.
  */
 public class CheckEol extends Task {
 
-    /** The files to be checked */
-    private final List<FileSet> filesets = new LinkedList<>();
+    private static final String eoln = System.getProperty("line.separator");
 
-    /** The line ending mode (either LF, CRLF, or null for OS specific) */
-    private Mode mode;
+    /** The files to be checked */
+    private final List<FileSet> filesets = new LinkedList<FileSet>();
 
     /**
      * Sets the files to be checked
@@ -58,29 +56,6 @@ public class CheckEol extends Task {
     }
 
     /**
-     * Sets the line ending mode.
-     *
-     * @param mode The line ending mode (either LF or CRLF)
-     */
-    public void setMode( String mode ) {
-        this.mode = Mode.valueOf( mode.toUpperCase() );
-    }
-
-    private Mode getMode() {
-        if ( mode != null ) {
-            return mode;
-        } else {
-            if ("\n".equals(System.lineSeparator())) {
-                return Mode.LF;
-            } else if ("\r\n".equals(System.lineSeparator())) {
-                return Mode.CRLF;
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * Perform the check
      *
      * @throws BuildException if an error occurs during execution of
@@ -89,15 +64,20 @@ public class CheckEol extends Task {
     @Override
     public void execute() throws BuildException {
 
-        Mode mode = getMode();
-        if ( mode == null ) {
-            log("Line ends check skipped, because OS line ends setting is neither LF nor CRLF.", Project.MSG_VERBOSE);
+        Mode mode = null;
+        if ("\n".equals(eoln)) {
+            mode = Mode.LF;
+        } else if ("\r\n".equals(eoln)) {
+            mode = Mode.CRLF;
+        } else {
+            log("Line ends check skipped, because OS line ends setting is neither LF nor CRLF.",
+                    Project.MSG_VERBOSE);
             return;
         }
 
         int count = 0;
 
-        List<CheckFailure> errors = new ArrayList<>();
+        List<CheckFailure> errors = new ArrayList<CheckFailure>();
 
         // Step through each file and check.
         for (FileSet fs : filesets) {
@@ -106,8 +86,8 @@ public class CheckEol extends Task {
             String[] files = ds.getIncludedFiles();
             if (files.length > 0) {
                 log("Checking line ends in " + files.length + " file(s)");
-                for (String filename : files) {
-                    File file = new File(basedir, filename);
+                for (int i = 0; i < files.length; i++) {
+                    File file = new File(basedir, files[i]);
                     log("Checking file '" + file + "' for correct line ends",
                             Project.MSG_DEBUG);
                     try {
@@ -152,13 +132,15 @@ public class CheckEol extends Task {
 
         @Override
         public String toString() {
-            return System.lineSeparator() + file + ": uses " + value + " on line " + line;
+            return eoln + file + ": uses " + value + " on line " + line;
         }
     }
 
-    private void check(File file, List<CheckFailure> errors, Mode mode) throws IOException {
-        try (FileInputStream fis = new FileInputStream(file);
-                BufferedInputStream is = new BufferedInputStream(fis)) {
+    private void check(File file, List<CheckFailure> errors, Mode mode)
+            throws IOException {
+        BufferedInputStream is = new BufferedInputStream(new FileInputStream(
+                file));
+        try {
             int line = 1;
             int prev = -1;
             int ch;
@@ -178,6 +160,8 @@ public class CheckEol extends Task {
                 }
                 prev = ch;
             }
+        } finally {
+            is.close();
         }
     }
 }

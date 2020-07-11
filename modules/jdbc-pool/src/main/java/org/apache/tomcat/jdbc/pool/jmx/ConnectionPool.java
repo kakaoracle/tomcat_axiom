@@ -14,18 +14,17 @@
  * limitations under the License.
  */
 package org.apache.tomcat.jdbc.pool.jmx;
-
+/**
+ * @author Filip Hanik
+ */
 import java.util.Properties;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.management.MBeanNotificationInfo;
-import javax.management.MBeanRegistration;
-import javax.management.MBeanServer;
 import javax.management.Notification;
 import javax.management.NotificationBroadcasterSupport;
 import javax.management.NotificationListener;
-import javax.management.ObjectName;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -34,9 +33,7 @@ import org.apache.tomcat.jdbc.pool.PoolProperties.InterceptorDefinition;
 import org.apache.tomcat.jdbc.pool.PoolUtilities;
 import org.apache.tomcat.jdbc.pool.Validator;
 
-public class ConnectionPool extends NotificationBroadcasterSupport
-        implements ConnectionPoolMBean, MBeanRegistration {
-
+public class ConnectionPool extends NotificationBroadcasterSupport implements ConnectionPoolMBean  {
     /**
      * logger
      */
@@ -54,13 +51,7 @@ public class ConnectionPool extends NotificationBroadcasterSupport
     /**
      * Listeners that are local and interested in our notifications, no need for JMX
      */
-    protected ConcurrentLinkedQueue<NotificationListener> listeners =
-            new ConcurrentLinkedQueue<>();
-
-    /**
-     * the ObjectName of this pool.
-     */
-    private ObjectName oname = null;
+    protected ConcurrentLinkedQueue<NotificationListener> listeners = new ConcurrentLinkedQueue<NotificationListener>();
 
     public ConnectionPool(org.apache.tomcat.jdbc.pool.ConnectionPool pool) {
         super();
@@ -73,29 +64,6 @@ public class ConnectionPool extends NotificationBroadcasterSupport
 
     public PoolConfiguration getPoolProperties() {
         return pool.getPoolProperties();
-    }
-
-    public ObjectName getObjectName() {
-        return oname;
-    }
-
-    @Override
-    public ObjectName preRegister(MBeanServer server, ObjectName name)
-            throws Exception {
-        this.oname = name;
-        return name;
-    }
-
-    @Override
-    public void postRegister(Boolean registrationDone) {
-    }
-
-    @Override
-    public void preDeregister() throws Exception {
-    }
-
-    @Override
-    public void postDeregister() {
     }
 
     //=================================================================
@@ -131,8 +99,8 @@ public class ConnectionPool extends NotificationBroadcasterSupport
 
     /**
      * Return true if the notification was sent successfully, false otherwise.
-     * @param type The notification type
-     * @param message The message
+     * @param type
+     * @param message
      * @return true if the notification succeeded
      */
     public boolean notify(final String type, String message) {
@@ -521,11 +489,7 @@ public class ConnectionPool extends NotificationBroadcasterSupport
 
     @Override
     public void setMaxAge(long maxAge) {
-        boolean wasEnabled = getPoolProperties().isPoolSweeperEnabled();
         getPoolProperties().setMaxAge(maxAge);
-        //make sure the pool is properly configured
-        pool.checkPoolConfiguration(getPoolProperties());
-        poolCleanerAttributeUpdated(wasEnabled);
     }
 
     @Override
@@ -635,7 +599,10 @@ public class ConnectionPool extends NotificationBroadcasterSupport
     public void setMinEvictableIdleTimeMillis(int minEvictableIdleTimeMillis) {
         boolean wasEnabled = getPoolProperties().isPoolSweeperEnabled();
         getPoolProperties().setMinEvictableIdleTimeMillis(minEvictableIdleTimeMillis);
-        poolCleanerAttributeUpdated(wasEnabled);
+        boolean shouldBeEnabled = getPoolProperties().isPoolSweeperEnabled();
+        //make sure pool cleaner starts/stops when it should
+        if (!wasEnabled && shouldBeEnabled) pool.initializePoolCleaner(getPoolProperties());
+        else if (wasEnabled && !shouldBeEnabled) pool.terminatePoolCleaner();
     }
 
 
@@ -663,7 +630,10 @@ public class ConnectionPool extends NotificationBroadcasterSupport
     public void setRemoveAbandoned(boolean removeAbandoned) {
         boolean wasEnabled = getPoolProperties().isPoolSweeperEnabled();
         getPoolProperties().setRemoveAbandoned(removeAbandoned);
-        poolCleanerAttributeUpdated(wasEnabled);
+        boolean shouldBeEnabled = getPoolProperties().isPoolSweeperEnabled();
+        //make sure pool cleaner starts/stops when it should
+        if (!wasEnabled && shouldBeEnabled) pool.initializePoolCleaner(getPoolProperties());
+        else if (wasEnabled && !shouldBeEnabled) pool.terminatePoolCleaner();
     }
 
 
@@ -671,7 +641,10 @@ public class ConnectionPool extends NotificationBroadcasterSupport
     public void setRemoveAbandonedTimeout(int removeAbandonedTimeout) {
         boolean wasEnabled = getPoolProperties().isPoolSweeperEnabled();
         getPoolProperties().setRemoveAbandonedTimeout(removeAbandonedTimeout);
-        poolCleanerAttributeUpdated(wasEnabled);
+        boolean shouldBeEnabled = getPoolProperties().isPoolSweeperEnabled();
+        //make sure pool cleaner starts/stops when it should
+        if (!wasEnabled && shouldBeEnabled) pool.initializePoolCleaner(getPoolProperties());
+        else if (wasEnabled && !shouldBeEnabled) pool.terminatePoolCleaner();
     }
 
 
@@ -697,7 +670,10 @@ public class ConnectionPool extends NotificationBroadcasterSupport
     public void setTestWhileIdle(boolean testWhileIdle) {
         boolean wasEnabled = getPoolProperties().isPoolSweeperEnabled();
         getPoolProperties().setTestWhileIdle(testWhileIdle);
-        poolCleanerAttributeUpdated(wasEnabled);
+        boolean shouldBeEnabled = getPoolProperties().isPoolSweeperEnabled();
+        //make sure pool cleaner starts/stops when it should
+        if (!wasEnabled && shouldBeEnabled) pool.initializePoolCleaner(getPoolProperties());
+        else if (wasEnabled && !shouldBeEnabled) pool.terminatePoolCleaner();
     }
 
 
@@ -705,21 +681,6 @@ public class ConnectionPool extends NotificationBroadcasterSupport
     public void setTimeBetweenEvictionRunsMillis(int timeBetweenEvictionRunsMillis) {
         boolean wasEnabled = getPoolProperties().isPoolSweeperEnabled();
         getPoolProperties().setTimeBetweenEvictionRunsMillis(timeBetweenEvictionRunsMillis);
-        //make sure the pool is properly configured
-        pool.checkPoolConfiguration(getPoolProperties());
-        poolCleanerAttributeUpdated(wasEnabled);
-    }
-
-    /**
-     * Starts/stops pool cleaner thread as necessary after its configuration properties
-     * were updated.
-     *
-     * This method must be called <b>after</b> configuration properties affecting the pool cleaner
-     * have been updated.
-     *
-     * @param wasEnabled whether the pool cleaner was enabled <b>before</b> the configuration change occurred.
-     */
-    private void poolCleanerAttributeUpdated(boolean wasEnabled) {
         boolean shouldBeEnabled = getPoolProperties().isPoolSweeperEnabled();
         //make sure pool cleaner starts/stops when it should
         if (!wasEnabled && shouldBeEnabled) {
@@ -731,6 +692,7 @@ public class ConnectionPool extends NotificationBroadcasterSupport
             }
         }
     }
+
 
     @Override
     public void setUrl(String url) {
@@ -987,4 +949,9 @@ public class ConnectionPool extends NotificationBroadcasterSupport
         pool.purgeOnReturn();
 
     }
+
+
+
+
+
 }

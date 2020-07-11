@@ -20,15 +20,16 @@ import java.io.IOException;
 
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
+import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
 
 /**
- * A {@link javax.servlet.Filter} that initializes the {@link HttpSession} for
- * the {@link HttpServletRequest} by calling its getSession() method.
+ * A {@link javax.servlet.Filter} that initializes the {@link
+ * javax.servlet.http.HttpSession} for the {@link HttpServletRequest} by calling
+ * its getSession() method.
  * <p>
  * This is required for some operations with WebSocket requests, where it is
  * too late to initialize the HttpSession object, and the current Java WebSocket
@@ -58,4 +59,14 @@ public class SessionInitializerFilter implements Filter {
         chain.doFilter(request, response);
     }
 
+
+    @Override
+    public void init(FilterConfig filterConfig) throws ServletException {
+        // NO-OP
+    }
+
+    @Override
+    public void destroy() {
+        // NO-OP
+    }
 }

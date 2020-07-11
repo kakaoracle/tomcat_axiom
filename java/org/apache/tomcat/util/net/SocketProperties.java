@@ -16,15 +16,9 @@
  */
 package org.apache.tomcat.util.net;
 
-import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.net.StandardSocketOptions;
-import java.nio.channels.AsynchronousServerSocketChannel;
-import java.nio.channels.AsynchronousSocketChannel;
-
-import javax.management.ObjectName;
 
 /**
  * Properties that can be set in the &lt;Connector&gt; element
@@ -32,6 +26,14 @@ import javax.management.ObjectName;
  * and are currently only working for the Nio connector
  */
 public class SocketProperties {
+    /**
+     * Enable/disable key cache, this bounded cache stores
+     * KeyAttachment objects to reduce GC
+     * Default is 500
+     * -1 is unlimited
+     * 0 is disabled
+     */
+    protected int keyCache = 500;
 
     /**
      * Enable/disable socket processor cache, this bounded cache stores
@@ -39,7 +41,6 @@ public class SocketProperties {
      * Default is 500
      * -1 is unlimited
      * 0 is disabled
-     * TODO: The default will be changed to 0 in Tomcat 10
      */
     protected int processorCache = 500;
 
@@ -50,7 +51,6 @@ public class SocketProperties {
      * -1 is unlimited
      * 0 is disabled
      * &gt;0 the max number of objects to keep in cache.
-     * TODO: The default will be changed to 0 in Tomcat 10
      */
     protected int eventCache = 500;
 
@@ -59,12 +59,6 @@ public class SocketProperties {
      * Default value is disabled
      */
     protected boolean directBuffer = false;
-
-    /**
-     * Enable/disable direct buffers for the network buffers for SSL
-     * Default value is disabled
-     */
-    protected boolean directSslBuffer = false;
 
     /**
      * Socket receive buffer size in bytes (SO_RCVBUF).
@@ -95,11 +89,6 @@ public class SocketProperties {
      * this value is how many channels
      * -1 means unlimited cached, 0 means no cache
      * Default value is 500
-     * TODO: The default should be changed in Tomcat 10, actually it should be
-     *   bufferPoolSize / (appReadBufSize + appWriteBufSize), assuming the SSL
-     *   buffers are ignored (that would be logical), and the value would be 6400.
-     *   So the default value will be changed to a new default value like -2 to
-     *   set a dynamic value based on bufferPoolSize in that case.
      */
     protected int bufferPool = 500;
 
@@ -107,13 +96,6 @@ public class SocketProperties {
      * Buffer pool size in bytes to be cached
      * -1 means unlimited, 0 means no cache
      * Default value is 100MB (1024*1024*100 bytes)
-     * TODO: The default value to be used could rather be based on the
-     *   JVM max heap, otherwise it could be a problem in some
-     *   environments. Big servers also need to use a much higher default,
-     *   while small cloud based ones should use 0 instead.
-     *   Possible default value strategy:
-     *     heap inf 1GB: 0
-     *     heap sup 1GB: heap / 32
      */
     protected int bufferPoolSize = 1024*1024*100;
 
@@ -189,9 +171,6 @@ public class SocketProperties {
      */
     protected int unlockTimeout = 250;
 
-    private ObjectName oname = null;
-
-
     public void setProperties(Socket socket) throws SocketException{
         if (rxBufSize != null)
             socket.setReceiveBufferSize(rxBufSize.intValue());
@@ -238,34 +217,9 @@ public class SocketProperties {
             socket.setSoTimeout(soTimeout.intValue());
     }
 
-    public void setProperties(AsynchronousSocketChannel socket) throws IOException {
-        if (rxBufSize != null)
-            socket.setOption(StandardSocketOptions.SO_RCVBUF, rxBufSize);
-        if (txBufSize != null)
-            socket.setOption(StandardSocketOptions.SO_SNDBUF, txBufSize);
-        if (soKeepAlive != null)
-            socket.setOption(StandardSocketOptions.SO_KEEPALIVE, soKeepAlive);
-        if (soReuseAddress != null)
-            socket.setOption(StandardSocketOptions.SO_REUSEADDR, soReuseAddress);
-        if (soLingerOn != null && soLingerOn.booleanValue() && soLingerTime != null)
-            socket.setOption(StandardSocketOptions.SO_LINGER, soLingerTime);
-        if (tcpNoDelay != null)
-            socket.setOption(StandardSocketOptions.TCP_NODELAY, tcpNoDelay);
-    }
-
-    public void setProperties(AsynchronousServerSocketChannel socket) throws IOException {
-        if (rxBufSize != null)
-            socket.setOption(StandardSocketOptions.SO_RCVBUF, rxBufSize);
-        if (soReuseAddress != null)
-            socket.setOption(StandardSocketOptions.SO_REUSEADDR, soReuseAddress);
-    }
 
     public boolean getDirectBuffer() {
         return directBuffer;
-    }
-
-    public boolean getDirectSslBuffer() {
-        return directSslBuffer;
     }
 
     public boolean getOoBInline() {
@@ -326,6 +280,10 @@ public class SocketProperties {
 
     public int getEventCache() {
         return eventCache;
+    }
+
+    public int getKeyCache() {
+        return keyCache;
     }
 
     public int getAppReadBufSize() {
@@ -397,10 +355,6 @@ public class SocketProperties {
         this.directBuffer = directBuffer;
     }
 
-    public void setDirectSslBuffer(boolean directSslBuffer) {
-        this.directSslBuffer = directSslBuffer;
-    }
-
     public void setSoLingerOn(boolean soLingerOn) {
         this.soLingerOn = Boolean.valueOf(soLingerOn);
     }
@@ -415,6 +369,10 @@ public class SocketProperties {
 
     public void setEventCache(int eventCache) {
         this.eventCache = eventCache;
+    }
+
+    public void setKeyCache(int keyCache) {
+        this.keyCache = keyCache;
     }
 
     public void setAppReadBufSize(int appReadBufSize) {
@@ -443,13 +401,5 @@ public class SocketProperties {
 
     public void setUnlockTimeout(int unlockTimeout) {
         this.unlockTimeout = unlockTimeout;
-    }
-
-    void setObjectName(ObjectName oname) {
-        this.oname = oname;
-    }
-
-    ObjectName getObjectName() {
-        return oname;
     }
 }

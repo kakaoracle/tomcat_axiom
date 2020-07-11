@@ -21,21 +21,19 @@ package org.apache.juli;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.sql.Timestamp;
-import java.time.DateTimeException;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -49,6 +47,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.LogRecord;
+import java.util.logging.SimpleFormatter;
 import java.util.regex.Pattern;
 
 /**
@@ -95,53 +94,54 @@ import java.util.regex.Pattern;
  * </ul>
  */
 public class FileHandler extends Handler {
-
     public static final int DEFAULT_MAX_DAYS = -1;
-    public static final int DEFAULT_BUFFER_SIZE = -1;
-
 
     private static final ExecutorService DELETE_FILES_SERVICE =
             Executors.newSingleThreadExecutor(new ThreadFactory() {
-                private static final String NAME_PREFIX = "FileHandlerLogFilesCleaner-";
                 private final boolean isSecurityEnabled;
                 private final ThreadGroup group;
                 private final AtomicInteger threadNumber = new AtomicInteger(1);
+                private final String namePrefix = "FileHandlerLogFilesCleaner-";
 
                 {
                     SecurityManager s = System.getSecurityManager();
-                    if (s == null) {
-                        this.isSecurityEnabled = false;
-                        this.group = Thread.currentThread().getThreadGroup();
-                    } else {
-                        this.isSecurityEnabled = true;
-                        this.group = s.getThreadGroup();
-                    }
+                    this.isSecurityEnabled = s != null;
+                    this.group = isSecurityEnabled ? s.getThreadGroup()
+                            : Thread.currentThread().getThreadGroup();
                 }
 
                 @Override
                 public Thread newThread(Runnable r) {
-                    ClassLoader loader = Thread.currentThread().getContextClassLoader();
+                    final ClassLoader loader = Thread.currentThread().getContextClassLoader();
                     try {
                         // Threads should not be created by the webapp classloader
                         if (isSecurityEnabled) {
-                            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-                                Thread.currentThread()
-                                        .setContextClassLoader(getClass().getClassLoader());
-                                return null;
+                            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+
+                                @Override
+                                public Void run() {
+                                    Thread.currentThread()
+                                            .setContextClassLoader(getClass().getClassLoader());
+                                    return null;
+                                }
                             });
                         } else {
                             Thread.currentThread()
                                     .setContextClassLoader(getClass().getClassLoader());
                         }
                         Thread t = new Thread(group, r,
-                                NAME_PREFIX + threadNumber.getAndIncrement());
+                                namePrefix + threadNumber.getAndIncrement());
                         t.setDaemon(true);
                         return t;
                     } finally {
                         if (isSecurityEnabled) {
-                            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-                                Thread.currentThread().setContextClassLoader(loader);
-                                return null;
+                            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+
+                                @Override
+                                public Void run() {
+                                    Thread.currentThread().setContextClassLoader(loader);
+                                    return null;
+                                }
                             });
                         } else {
                             Thread.currentThread().setContextClassLoader(loader);
@@ -154,28 +154,19 @@ public class FileHandler extends Handler {
 
 
     public FileHandler() {
-        this(null, null, null);
+        this(null, null, null, DEFAULT_MAX_DAYS);
     }
 
 
     public FileHandler(String directory, String prefix, String suffix) {
-        this(directory, prefix, suffix, null);
+        this(directory, prefix, suffix, DEFAULT_MAX_DAYS);
     }
 
-
-    public FileHandler(String directory, String prefix, String suffix, Integer maxDays) {
-        this(directory, prefix, suffix, maxDays, null, null);
-    }
-
-
-    public FileHandler(String directory, String prefix, String suffix, Integer maxDays,
-            Boolean rotatable, Integer bufferSize) {
+    public FileHandler(String directory, String prefix, String suffix, int maxDays) {
         this.directory = directory;
         this.prefix = prefix;
         this.suffix = suffix;
         this.maxDays = maxDays;
-        this.rotatable = rotatable;
-        this.bufferSize = bufferSize;
         configure();
         openWriter();
         clean();
@@ -195,31 +186,31 @@ public class FileHandler extends Handler {
     /**
      * The directory in which log files are created.
      */
-    private String directory;
+    private String directory = null;
 
 
     /**
      * The prefix that is added to log file filenames.
      */
-    private String prefix;
+    private String prefix = null;
 
 
     /**
      * The suffix that is added to log file filenames.
      */
-    private String suffix;
+    private String suffix = null;
 
 
     /**
      * Determines whether the log file is rotatable
      */
-    private Boolean rotatable;
+    private boolean rotatable = true;
 
 
     /**
      * Maximum number of days to keep the log files
      */
-    private Integer maxDays;
+    private int maxDays = DEFAULT_MAX_DAYS;
 
 
     /**
@@ -231,13 +222,13 @@ public class FileHandler extends Handler {
     /**
      * Lock used to control access to the writer.
      */
-    protected final ReadWriteLock writerLock = new ReentrantReadWriteLock();
+    protected ReadWriteLock writerLock = new ReentrantReadWriteLock();
 
 
     /**
      * Log buffer size.
      */
-    private Integer bufferSize;
+    private int bufferSize = -1;
 
 
     /**
@@ -269,7 +260,7 @@ public class FileHandler extends Handler {
         writerLock.readLock().lock();
         try {
             // If the date has changed, switch log files
-            if (rotatable.booleanValue() && !date.equals(tsDate)) {
+            if (rotatable && !date.equals(tsDate)) {
                 // Upgrade to writeLock before we switch
                 writerLock.readLock().unlock();
                 writerLock.writeLock().lock();
@@ -300,7 +291,7 @@ public class FileHandler extends Handler {
             try {
                 if (writer != null) {
                     writer.write(result);
-                    if (bufferSize.intValue() < 0) {
+                    if (bufferSize < 0) {
                         writer.flush();
                     }
                 } else {
@@ -374,16 +365,15 @@ public class FileHandler extends Handler {
     private void configure() {
 
         Timestamp ts = new Timestamp(System.currentTimeMillis());
-        date = ts.toString().substring(0, 10);
+        String tsString = ts.toString().substring(0, 19);
+        date = tsString.substring(0, 10);
 
         String className = this.getClass().getName(); //allow classes to override
 
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
 
         // Retrieve configuration of logging file name
-        if (rotatable == null) {
-            rotatable = Boolean.valueOf(getProperty(className + ".rotatable", "true"));
-        }
+        rotatable = Boolean.parseBoolean(getProperty(className + ".rotatable", "true"));
         if (directory == null) {
             directory = getProperty(className + ".directory", "logs");
         }
@@ -395,37 +385,31 @@ public class FileHandler extends Handler {
         }
 
         // https://bz.apache.org/bugzilla/show_bug.cgi?id=61232
-        boolean shouldCheckForRedundantSeparator =
-                !rotatable.booleanValue() && !prefix.isEmpty() && !suffix.isEmpty();
+        boolean shouldCheckForRedundantSeparator = !rotatable && !prefix.isEmpty()
+                && !suffix.isEmpty();
         // assuming separator is just one char, if there are use cases with
         // more, the notion of separator might be introduced
-        if (shouldCheckForRedundantSeparator &&
-                (prefix.charAt(prefix.length() - 1) == suffix.charAt(0))) {
+        if (shouldCheckForRedundantSeparator
+                && (prefix.charAt(prefix.length() - 1) == suffix.charAt(0))) {
             suffix = suffix.substring(1);
         }
 
         pattern = Pattern.compile("^(" + Pattern.quote(prefix) + ")\\d{4}-\\d{1,2}-\\d{1,2}("
                 + Pattern.quote(suffix) + ")$");
-
-        if (maxDays == null) {
-            String sMaxDays = getProperty(className + ".maxDays", String.valueOf(DEFAULT_MAX_DAYS));
+        String sMaxDays = getProperty(className + ".maxDays", String.valueOf(DEFAULT_MAX_DAYS));
+        if (maxDays <= 0) {
             try {
-                maxDays = Integer.valueOf(sMaxDays);
+                maxDays = Integer.parseInt(sMaxDays);
             } catch (NumberFormatException ignore) {
-                maxDays = Integer.valueOf(DEFAULT_MAX_DAYS);
+                // no-op
             }
         }
-
-        if (bufferSize == null) {
-            String sBufferSize = getProperty(className + ".bufferSize",
-                    String.valueOf(DEFAULT_BUFFER_SIZE));
-            try {
-                bufferSize = Integer.valueOf(sBufferSize);
-            } catch (NumberFormatException ignore) {
-                bufferSize = Integer.valueOf(DEFAULT_BUFFER_SIZE);
-            }
+        String sBufferSize = getProperty(className + ".bufferSize", String.valueOf(bufferSize));
+        try {
+            bufferSize = Integer.parseInt(sBufferSize);
+        } catch (NumberFormatException ignore) {
+            //no op
         }
-
         // Get encoding for the logging file
         String encoding = getProperty(className + ".encoding", null);
         if (encoding != null && encoding.length() > 0) {
@@ -443,7 +427,7 @@ public class FileHandler extends Handler {
         String filterName = getProperty(className + ".filter", null);
         if (filterName != null) {
             try {
-                setFilter((Filter) cl.loadClass(filterName).getConstructor().newInstance());
+                setFilter((Filter) cl.loadClass(filterName).newInstance());
             } catch (Exception e) {
                 // Ignore
             }
@@ -453,14 +437,13 @@ public class FileHandler extends Handler {
         String formatterName = getProperty(className + ".formatter", null);
         if (formatterName != null) {
             try {
-                setFormatter((Formatter) cl.loadClass(
-                        formatterName).getConstructor().newInstance());
+                setFormatter((Formatter) cl.loadClass(formatterName).newInstance());
             } catch (Exception e) {
                 // Ignore and fallback to defaults
-                setFormatter(new OneLineFormatter());
+                setFormatter(new SimpleFormatter());
             }
         } else {
-            setFormatter(new OneLineFormatter());
+            setFormatter(new SimpleFormatter());
         }
 
         // Set error manager
@@ -502,7 +485,7 @@ public class FileHandler extends Handler {
         OutputStream os = null;
         try {
             File pathname = new File(dir.getAbsoluteFile(), prefix
-                    + (rotatable.booleanValue() ? date : "") + suffix);
+                    + (rotatable ? date : "") + suffix);
             File parent = pathname.getParentFile();
             if (!parent.mkdirs() && !parent.isDirectory()) {
                 reportError("Unable to create [" + parent + "]", null, ErrorManager.OPEN_FAILURE);
@@ -511,7 +494,7 @@ public class FileHandler extends Handler {
             }
             String encoding = getEncoding();
             fos = new FileOutputStream(pathname, true);
-            os = bufferSize.intValue() > 0 ? new BufferedOutputStream(fos, bufferSize.intValue()) : fos;
+            os = bufferSize > 0 ? new BufferedOutputStream(fos, bufferSize) : fos;
             writer = new PrintWriter(
                     (encoding != null) ? new OutputStreamWriter(os, encoding)
                                        : new OutputStreamWriter(os), false);
@@ -539,49 +522,62 @@ public class FileHandler extends Handler {
     }
 
     private void clean() {
-        if (maxDays.intValue() <= 0) {
+        if (maxDays <= 0) {
             return;
         }
-        DELETE_FILES_SERVICE.submit(() -> {
-            try (DirectoryStream<Path> files = streamFilesForDelete()) {
-                for (Path file : files) {
-                    Files.delete(file);
+        DELETE_FILES_SERVICE.submit(new Runnable() {
+
+            @Override
+            public void run() {
+                for (File file : streamFilesForDelete()) {
+                    if (!file.delete()) {
+                        reportError("Unable to delete log files older than [" + maxDays + "] days",
+                                null, ErrorManager.GENERIC_FAILURE);
+                    }
                 }
-            } catch (IOException e) {
-                reportError("Unable to delete log files older than [" + maxDays + "] days", null,
-                        ErrorManager.GENERIC_FAILURE);
             }
         });
     }
 
-    private DirectoryStream<Path> streamFilesForDelete() throws IOException {
-        LocalDate maxDaysOffset = LocalDate.now().minus(maxDays.intValue(), ChronoUnit.DAYS);
-        return Files.newDirectoryStream(new File(directory).toPath(), path -> {
-            boolean result = false;
-            String date = obtainDateFromPath(path);
-            if (date != null) {
-                try {
-                    LocalDate dateFromFile = LocalDate.from(DateTimeFormatter.ISO_LOCAL_DATE.parse(date));
-                    result = dateFromFile.isBefore(maxDaysOffset);
-                } catch (DateTimeException e) {
-                    // no-op
+    private File[] streamFilesForDelete() {
+        final Date maxDaysOffset = getMaxDaysOffset();
+        final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
+        return new File(directory).listFiles(new FilenameFilter() {
+
+            @Override
+            public boolean accept(File dir, String name) {
+                boolean result = false;
+                String date = obtainDateFromFilename(name);
+                if (date != null) {
+                    try {
+                        Date dateFromFile = formatter.parse(date);
+                        result = dateFromFile.before(maxDaysOffset);
+                    } catch (ParseException e) {
+                        // no-op
+                    }
                 }
+                return result;
             }
-            return result;
         });
     }
 
-    private String obtainDateFromPath(Path path) {
-        Path fileName = path.getFileName();
-        if (fileName == null) {
-            return null;
-        }
-        String date = fileName.toString();
+    private String obtainDateFromFilename(String name) {
+        String date = name;
         if (pattern.matcher(date).matches()) {
             date = date.substring(prefix.length());
             return date.substring(0, date.length() - suffix.length());
         } else {
             return null;
         }
+    }
+
+    private Date getMaxDaysOffset() {
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        cal.add(Calendar.DATE, -maxDays);
+        return cal.getTime();
     }
 }

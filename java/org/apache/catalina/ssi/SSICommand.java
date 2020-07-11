@@ -45,6 +45,6 @@ public interface SSICommand {
      *             if SSI processing should be aborted
      */
     public long process(SSIMediator ssiMediator, String commandName,
-            String[] paramNames, String[] paramValues, PrintWriter writer)
+                        String[] paramNames, String[] paramValues, PrintWriter writer)
             throws SSIStopProcessingException;
 }

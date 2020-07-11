@@ -58,14 +58,13 @@ public interface Filter {
      * <li>Does not return within a time period defined by the web
      *     container</li>
      * </ul>
-     * The default implementation is a NO-OP.
      *
      * @param filterConfig The configuration information associated with the
      *                     filter instance being initialised
      *
      * @throws ServletException if the initialisation fails
      */
-    public default void init(FilterConfig filterConfig) throws ServletException {}
+    public void init(FilterConfig filterConfig) throws ServletException;
 
     /**
      * The <code>doFilter</code> method of the Filter is called by the container
@@ -99,7 +98,7 @@ public interface Filter {
      * @throws ServletException if the processing fails for any other reason
      */
     public void doFilter(ServletRequest request, ServletResponse response,
-            FilterChain chain) throws IOException, ServletException;
+                         FilterChain chain) throws IOException, ServletException;
 
     /**
      * Called by the web container to indicate to a filter that it is being
@@ -113,8 +112,6 @@ public interface Filter {
      * that are being held (for example, memory, file handles, threads) and make
      * sure that any persistent state is synchronized with the filter's current
      * state in memory.
-     *
-     * The default implementation is a NO-OP.
      */
-    public default void destroy() {}
+    public void destroy();
 }

@@ -35,7 +35,7 @@ import java.math.BigInteger;
  * <li>Line separator: Default is CRLF ("\r\n")</li>
  * </ul>
  * <p>
- * The URL-safe parameter is only applied to encode operations. Decoding seamlessly handles both modes.
+ * The URL-safe parameter is only applied to encode operations. Decoding only handles standard mode.
  * </p>
  * <p>
  * Since this class operates directly on byte streams, and not character streams, it is hard-coded to only
@@ -104,13 +104,12 @@ public class Base64 extends BaseNCodec {
      * in Table 1 of RFC 2045) into their 6-bit positive integer equivalents. Characters that are not in the Base64
      * alphabet but fall within the bounds of the array are translated to -1.
      *
-     * Note: '+' and '-' both decode to 62. '/' and '_' both decode to 63. This means decoder seamlessly handles both
-     * URL_SAFE and STANDARD base64. (The encoder, on the other hand, needs to know ahead of time what to emit).
+     * Note: The seamless decoding of URL safe values has been disabled because Tomcat doesn't use it.
      *
      * Thanks to "commons" project in ws.apache.org for this code.
      * https://svn.apache.org/repos/asf/webservices/commons/trunk/modules/util/
      */
-    private static final byte[] STANDARD_DECODE_TABLE = {
+    private static final byte[] DECODE_TABLE = {
         //   0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 00-0f
             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 10-1f
@@ -122,27 +121,11 @@ public class Base64 extends BaseNCodec {
             41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51                      // 70-7a p-z
     };
 
-    private static final byte[] URL_SAFE_DECODE_TABLE = {
-            //   0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-                -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 00-0f
-                -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 10-1f
-                -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, // 20-2f -
-                52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1, // 30-3f 0-9
-                -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, // 40-4f A-O
-                15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, 63, // 50-5f P-Z _
-                -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, // 60-6f a-o
-                41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51                      // 70-7a p-z
-        };
-
     /**
      * Base64 uses 6-bit fields.
      */
     /** Mask used to extract 6 bits, used when encoding */
     private static final int MASK_6BITS = 0x3f;
-    /** Mask used to extract 4 bits, used when decoding final trailing character. */
-    private static final int MASK_4BITS = 0xf;
-    /** Mask used to extract 2 bits, used when decoding final trailing character. */
-    private static final int MASK_2BITS = 0x3;
 
     // The static final fields above are used for the original static byte[] methods on Base64.
     // The private member fields below are used with the new streaming approach, which requires
@@ -156,7 +139,7 @@ public class Base64 extends BaseNCodec {
     private final byte[] encodeTable;
 
     // Only one decode table currently; keep for consistency with Base32 code
-    private final byte[] decodeTable;
+    private final byte[] decodeTable = DECODE_TABLE;
 
     /**
      * Line separator for encoding. Not used when decoding. Only used if lineLength &gt; 0.
@@ -279,7 +262,7 @@ public class Base64 extends BaseNCodec {
      *            Each line of encoded data will end with this sequence of bytes.
      * @param urlSafe
      *            Instead of emitting '+' and '/' we emit '-' and '_' respectively. urlSafe is only applied to encode
-     *            operations. Decoding seamlessly handles both modes.
+     *            operations. Decoding only handles standard mode.
      *            <b>Note: no padding is added when using the URL-safe alphabet.</b>
      * @throws IllegalArgumentException
      *             The provided lineSeparator included some base64 characters. That's not going to work!
@@ -289,14 +272,12 @@ public class Base64 extends BaseNCodec {
         super(BYTES_PER_UNENCODED_BLOCK, BYTES_PER_ENCODED_BLOCK,
                 lineLength,
                 lineSeparator == null ? 0 : lineSeparator.length);
-        // Needs to be set early to avoid NPE during call to containsAlphabetOrPad() below
-        this.decodeTable = urlSafe ? URL_SAFE_DECODE_TABLE : STANDARD_DECODE_TABLE;
         // TODO could be simplified if there is no requirement to reject invalid line sep when length <=0
         // @see test case Base64Test.testConstructors()
         if (lineSeparator != null) {
             if (containsAlphabetOrPad(lineSeparator)) {
                 final String sep = StringUtils.newStringUtf8(lineSeparator);
-                throw new IllegalArgumentException(sm.getString("base64.lineSeparator", sep));
+                throw new IllegalArgumentException("lineSeparator must not contain base64 characters: [" + sep + "]");
             }
             if (lineLength > 0){ // null line-sep forces no chunking rather than throwing IAE
                 this.encodeSize = BYTES_PER_ENCODED_BLOCK + lineSeparator.length;
@@ -369,8 +350,8 @@ public class Base64 extends BaseNCodec {
                     buffer[context.pos++] = encodeTable[(context.ibitWorkArea << 4) & MASK_6BITS];
                     // URL-SAFE skips the padding to further reduce size.
                     if (encodeTable == STANDARD_ENCODE_TABLE) {
-                        buffer[context.pos++] = pad;
-                        buffer[context.pos++] = pad;
+                        buffer[context.pos++] = PAD;
+                        buffer[context.pos++] = PAD;
                     }
                     break;
 
@@ -380,12 +361,11 @@ public class Base64 extends BaseNCodec {
                     buffer[context.pos++] = encodeTable[(context.ibitWorkArea << 2) & MASK_6BITS];
                     // URL-SAFE skips the padding to further reduce size.
                     if (encodeTable == STANDARD_ENCODE_TABLE) {
-                        buffer[context.pos++] = pad;
+                        buffer[context.pos++] = PAD;
                     }
                     break;
                 default:
-                    throw new IllegalStateException(sm.getString(
-                            "base64.impossibleModulus", Integer.valueOf(context.modulus)));
+                    throw new IllegalStateException("Impossible modulus "+context.modulus);
             }
             context.currentLinePos += context.pos - savedPos; // keep track of current line position
             // if currentPos == 0 we are at the start of a line, so don't add CRLF
@@ -454,20 +434,21 @@ public class Base64 extends BaseNCodec {
         for (int i = 0; i < inAvail; i++) {
             final byte[] buffer = ensureBufferSize(decodeSize, context);
             final byte b = in[inPos++];
-            if (b == pad) {
+            if (b == PAD) {
                 // We're done.
                 context.eof = true;
                 break;
-            }
-            if (b >= 0 && b < decodeTable.length) {
-                final int result = decodeTable[b];
-                if (result >= 0) {
-                    context.modulus = (context.modulus+1) % BYTES_PER_ENCODED_BLOCK;
-                    context.ibitWorkArea = (context.ibitWorkArea << BITS_PER_ENCODED_BYTE) + result;
-                    if (context.modulus == 0) {
-                        buffer[context.pos++] = (byte) ((context.ibitWorkArea >> 16) & MASK_8BITS);
-                        buffer[context.pos++] = (byte) ((context.ibitWorkArea >> 8) & MASK_8BITS);
-                        buffer[context.pos++] = (byte) (context.ibitWorkArea & MASK_8BITS);
+            } else {
+                if (b >= 0 && b < DECODE_TABLE.length) {
+                    final int result = DECODE_TABLE[b];
+                    if (result >= 0) {
+                        context.modulus = (context.modulus+1) % BYTES_PER_ENCODED_BLOCK;
+                        context.ibitWorkArea = (context.ibitWorkArea << BITS_PER_ENCODED_BYTE) + result;
+                        if (context.modulus == 0) {
+                            buffer[context.pos++] = (byte) ((context.ibitWorkArea >> 16) & MASK_8BITS);
+                            buffer[context.pos++] = (byte) ((context.ibitWorkArea >> 8) & MASK_8BITS);
+                            buffer[context.pos++] = (byte) (context.ibitWorkArea & MASK_8BITS);
+                        }
                     }
                 }
             }
@@ -487,21 +468,35 @@ public class Base64 extends BaseNCodec {
                     // TODO not currently tested; perhaps it is impossible?
                     break;
                 case 2 : // 12 bits = 8 + 4
-                    validateCharacter(MASK_4BITS, context);
+                    validateCharacter(4, context);
                     context.ibitWorkArea = context.ibitWorkArea >> 4; // dump the extra 4 bits
                     buffer[context.pos++] = (byte) ((context.ibitWorkArea) & MASK_8BITS);
                     break;
                 case 3 : // 18 bits = 8 + 8 + 2
-                    validateCharacter(MASK_2BITS, context);
+                    validateCharacter(2, context);
                     context.ibitWorkArea = context.ibitWorkArea >> 2; // dump 2 bits
                     buffer[context.pos++] = (byte) ((context.ibitWorkArea >> 8) & MASK_8BITS);
                     buffer[context.pos++] = (byte) ((context.ibitWorkArea) & MASK_8BITS);
                     break;
                 default:
-                    throw new IllegalStateException(sm.getString(
-                            "base64.impossibleModulus", Integer.valueOf(context.modulus)));
+                    throw new IllegalStateException("Impossible modulus "+context.modulus);
             }
         }
+    }
+
+    /**
+     * Tests a given byte array to see if it contains only valid characters within the Base64 alphabet. Currently the
+     * method treats whitespace as valid.
+     *
+     * @param arrayOctet
+     *            byte array to test
+     * @return {@code true} if all bytes are valid characters in the Base64 alphabet or if the byte array is empty;
+     *         {@code false}, otherwise
+     * @deprecated 1.5 Use {@link #isBase64(byte[])}, will be removed in 2.0.
+     */
+    @Deprecated
+    public static boolean isArrayByteBase64(final byte[] arrayOctet) {
+        return isBase64(arrayOctet);
     }
 
     /**
@@ -513,7 +508,7 @@ public class Base64 extends BaseNCodec {
      * @since 1.4
      */
     public static boolean isBase64(final byte octet) {
-        return octet == PAD_DEFAULT || (octet >= 0 && octet < STANDARD_DECODE_TABLE.length && STANDARD_DECODE_TABLE[octet] != -1);
+        return octet == PAD_DEFAULT || (octet >= 0 && octet < DECODE_TABLE.length && DECODE_TABLE[octet] != -1);
     }
 
     /**
@@ -541,8 +536,8 @@ public class Base64 extends BaseNCodec {
      * @since 1.5
      */
     public static boolean isBase64(final byte[] arrayOctet) {
-        for (byte b : arrayOctet) {
-            if (!isBase64(b) && !isWhiteSpace(b)) {
+        for (int i = 0; i < arrayOctet.length; i++) {
+            if (!isBase64(arrayOctet[i]) && !isWhiteSpace(arrayOctet[i])) {
                 return false;
             }
         }
@@ -674,8 +669,10 @@ public class Base64 extends BaseNCodec {
         final Base64 b64 = isChunked ? new Base64(urlSafe) : new Base64(0, CHUNK_SEPARATOR, urlSafe);
         final long len = b64.getEncodedLength(binaryData);
         if (len > maxResultSize) {
-            throw new IllegalArgumentException(sm.getString(
-                    "base64.inputTooLarge", Long.valueOf(len), Integer.valueOf(maxResultSize)));
+            throw new IllegalArgumentException("Input array too big, the output array would be bigger (" +
+                len +
+                ") than the specified maximum size of " +
+                maxResultSize);
         }
 
         return b64.encode(binaryData);
@@ -684,7 +681,7 @@ public class Base64 extends BaseNCodec {
     /**
      * Decodes a Base64 String into octets.
      * <p>
-     * <b>Note:</b> this method seamlessly handles data encoded in URL-safe or normal mode.
+     * <b>Note:</b> this method only handles data encoded in standard mode.
      * </p>
      *
      * @param base64String
@@ -696,14 +693,10 @@ public class Base64 extends BaseNCodec {
         return new Base64().decode(base64String);
     }
 
-    public static byte[] decodeBase64URLSafe(final String base64String) {
-        return new Base64(true).decode(base64String);
-    }
-
     /**
      * Decodes Base64 data into octets.
      * <p>
-     * <b>Note:</b> this method seamlessly handles data encoded in URL-safe or normal mode.
+     * <b>Note:</b> this method only handles data encoded in standard mode.
      * </p>
      *
      * @param base64Data
@@ -746,7 +739,7 @@ public class Base64 extends BaseNCodec {
      */
     public static byte[] encodeInteger(final BigInteger bigInt) {
         if (bigInt == null) {
-            throw new NullPointerException(sm.getString("base64.nullEncodeParameter"));
+            throw new NullPointerException("encodeInteger called with null parameter");
         }
         return encodeBase64(toIntegerBytes(bigInt), false);
     }
@@ -796,22 +789,20 @@ public class Base64 extends BaseNCodec {
 
 
     /**
-     * Validates whether decoding the final trailing character is possible in the context
-     * of the set of possible base 64 values.
+     * <p>
+     * Validates whether the character is possible in the context of the set of possible base 64 values.
+     * </p>
      *
-     * <p>The character is valid if the lower bits within the provided mask are zero. This
-     * is used to test the final trailing base-64 digit is zero in the bits that will be discarded.
-     *
-     * @param emptyBitsMask The mask of the lower bits that should be empty
+     * @param numBitsToDrop number of least significant bits to check
      * @param context the context to be used
      *
      * @throws IllegalArgumentException if the bits being checked contain any non-zero value
      */
-    private static void validateCharacter(final int emptyBitsMask, final Context context) {
-        if ((context.ibitWorkArea & emptyBitsMask) != 0) {
-            throw new IllegalArgumentException(
-                "Last encoded character (before the paddings if any) is a valid base 64 alphabet but not a possible value. " +
-                "Expected the discarded bits to be zero.");
+    private long validateCharacter(final int numBitsToDrop, final Context context) {
+        if ((context.ibitWorkArea & numBitsToDrop) != 0) {
+        throw new IllegalArgumentException(
+            "Last encoded character (before the paddings if any) is a valid base 64 alphabet but not a possible value");
         }
+        return context.ibitWorkArea >> numBitsToDrop;
     }
 }

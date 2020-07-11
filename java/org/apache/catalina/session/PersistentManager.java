@@ -35,13 +35,26 @@ public final class PersistentManager extends PersistentManagerBase {
 
     // ----------------------------------------------------- Instance Variables
 
+
+    /**
+     * The descriptive information about this implementation.
+     */
+    private static final String info = "PersistentManager/1.0";
+
+
     /**
      * The descriptive name of this Manager implementation (for logging).
      */
-    private static final String name = "PersistentManager";
+    static String name = "PersistentManager";
 
 
     // ------------------------------------------------------------- Properties
+
+    @Override
+    public String getInfo() {
+        return info;
+    }
+
 
     @Override
     public String getName() {

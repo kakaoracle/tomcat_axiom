@@ -25,8 +25,7 @@ import java.util.Iterator;
 import org.apache.catalina.Group;
 import org.apache.catalina.Role;
 import org.apache.catalina.UserDatabase;
-import org.apache.tomcat.util.buf.StringUtils;
-import org.apache.tomcat.util.security.Escape;
+import org.apache.catalina.util.RequestUtil;
 
 /**
  * <p>Concrete implementation of {@link org.apache.catalina.User} for the
@@ -68,19 +67,19 @@ public class MemoryUser extends AbstractUser {
     /**
      * The {@link MemoryUserDatabase} that owns this user.
      */
-    protected final MemoryUserDatabase database;
+    protected MemoryUserDatabase database = null;
 
 
     /**
      * The set of {@link Group}s that this user is a member of.
      */
-    protected final ArrayList<Group> groups = new ArrayList<>();
+    protected ArrayList<Group> groups = new ArrayList<Group>();
 
 
     /**
      * The set of {@link Role}s associated with this user.
      */
-    protected final ArrayList<Role> roles = new ArrayList<>();
+    protected ArrayList<Role> roles = new ArrayList<Role>();
 
 
     // ------------------------------------------------------------- Properties
@@ -250,26 +249,42 @@ public class MemoryUser extends AbstractUser {
     public String toXml() {
 
         StringBuilder sb = new StringBuilder("<user username=\"");
-        sb.append(Escape.xml(username));
+        sb.append(RequestUtil.filter(username));
         sb.append("\" password=\"");
-        sb.append(Escape.xml(password));
+        sb.append(RequestUtil.filter(password));
         sb.append("\"");
         if (fullName != null) {
             sb.append(" fullName=\"");
-            sb.append(Escape.xml(fullName));
+            sb.append(RequestUtil.filter(fullName));
             sb.append("\"");
         }
         synchronized (groups) {
             if (groups.size() > 0) {
                 sb.append(" groups=\"");
-                StringUtils.join(groups, ',', (x) -> Escape.xml(x.getGroupname()), sb);
+                int n = 0;
+                Iterator<Group> values = groups.iterator();
+                while (values.hasNext()) {
+                    if (n > 0) {
+                        sb.append(',');
+                    }
+                    n++;
+                    sb.append(RequestUtil.filter(values.next().getGroupname()));
+                }
                 sb.append("\"");
             }
         }
         synchronized (roles) {
             if (roles.size() > 0) {
                 sb.append(" roles=\"");
-                StringUtils.join(roles, ',', (x) -> Escape.xml(x.getRolename()), sb);
+                int n = 0;
+                Iterator<Role> values = roles.iterator();
+                while (values.hasNext()) {
+                    if (n > 0) {
+                        sb.append(',');
+                    }
+                    n++;
+                    sb.append(RequestUtil.filter(values.next().getRolename()));
+                }
                 sb.append("\"");
             }
         }
@@ -285,24 +300,40 @@ public class MemoryUser extends AbstractUser {
     public String toString() {
 
         StringBuilder sb = new StringBuilder("User username=\"");
-        sb.append(Escape.xml(username));
+        sb.append(RequestUtil.filter(username));
         sb.append("\"");
         if (fullName != null) {
             sb.append(", fullName=\"");
-            sb.append(Escape.xml(fullName));
+            sb.append(RequestUtil.filter(fullName));
             sb.append("\"");
         }
         synchronized (groups) {
             if (groups.size() > 0) {
                 sb.append(", groups=\"");
-                StringUtils.join(groups, ',', (x) -> Escape.xml(x.getGroupname()), sb);
+                int n = 0;
+                Iterator<Group> values = groups.iterator();
+                while (values.hasNext()) {
+                    if (n > 0) {
+                        sb.append(',');
+                    }
+                    n++;
+                    sb.append(RequestUtil.filter(values.next().getGroupname()));
+                }
                 sb.append("\"");
             }
         }
         synchronized (roles) {
             if (roles.size() > 0) {
                 sb.append(", roles=\"");
-                StringUtils.join(roles, ',', (x) -> Escape.xml(x.getRolename()), sb);
+                int n = 0;
+                Iterator<Role> values = roles.iterator();
+                while (values.hasNext()) {
+                    if (n > 0) {
+                        sb.append(',');
+                    }
+                    n++;
+                    sb.append(RequestUtil.filter(values.next().getRolename()));
+                }
                 sb.append("\"");
             }
         }

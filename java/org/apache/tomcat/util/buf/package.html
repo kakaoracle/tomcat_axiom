@@ -22,7 +22,7 @@ conversions, URL encodings, etc.
 
 <p>
 Encoding is a critical operation for performance. There are few tricks in this package - the C2B and
-B2C converters are caching an ISReader/OSWriter and keep everything allocated to do the conversions
+B2C converters are caching a ISReader/OSWriter and keep everything allocated to do the conversions
 in any VM without any garbage.
 
 <p>
@@ -34,4 +34,5 @@ other tuned encoders could be added.
 My benchmarks ( I'm costin :-) show only small differences between C2B, B2C and hand-written codders/decoders,
 so UTF8Decoder may be disabled.
 
+<p>
 </body></html>

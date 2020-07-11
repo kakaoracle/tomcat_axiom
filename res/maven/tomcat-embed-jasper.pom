@@ -46,9 +46,9 @@
       <scope>compile</scope>
     </dependency>
     <dependency>
-      <groupId>org.eclipse.jdt</groupId>
+      <groupId>org.eclipse.jdt.core.compiler</groupId>
       <artifactId>ecj</artifactId>
-      <version>3.18.0</version>
+      <version>4.4.2</version>
     </dependency>
   </dependencies>
 </project>

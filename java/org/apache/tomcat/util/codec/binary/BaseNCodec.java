@@ -17,7 +17,10 @@
 package org.apache.tomcat.util.codec.binary;
 
 import org.apache.tomcat.util.buf.HexUtils;
-import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.codec.BinaryDecoder;
+import org.apache.tomcat.util.codec.BinaryEncoder;
+import org.apache.tomcat.util.codec.DecoderException;
+import org.apache.tomcat.util.codec.EncoderException;
 
 /**
  * Abstract superclass for Base-N encoders and decoders.
@@ -26,9 +29,7 @@ import org.apache.tomcat.util.res.StringManager;
  * This class is thread-safe.
  * </p>
  */
-public abstract class BaseNCodec {
-
-    protected static final StringManager sm = StringManager.getManager(BaseNCodec.class);
+public abstract class BaseNCodec implements BinaryEncoder, BinaryDecoder {
 
     /**
      * Holds thread context so classes can be thread-safe.
@@ -44,6 +45,12 @@ public abstract class BaseNCodec {
          * Bitwise operations store and extract the encoding or decoding from this variable.
          */
         int ibitWorkArea;
+
+        /**
+         * Place holder for the bytes we're dealing with for our based logic.
+         * Bitwise operations store and extract the encoding or decoding from this variable.
+         */
+        long lbitWorkArea;
 
         /**
          * Buffer for streaming.
@@ -90,10 +97,10 @@ public abstract class BaseNCodec {
         @Override
         public String toString() {
             return String.format("%s[buffer=%s, currentLinePos=%s, eof=%s, " +
-                    "ibitWorkArea=%s, modulus=%s, pos=%s, " +
+                    "ibitWorkArea=%s, lbitWorkArea=%s, modulus=%s, pos=%s, " +
                     "readPos=%s]", this.getClass().getSimpleName(),
                     HexUtils.toHexString(buffer), currentLinePos, eof,
-                    ibitWorkArea, modulus, pos, readPos);
+                    ibitWorkArea, lbitWorkArea, modulus, pos, readPos);
         }
     }
 
@@ -136,18 +143,6 @@ public abstract class BaseNCodec {
      */
     private static final int DEFAULT_BUFFER_SIZE = 128;
 
-    /**
-     * The maximum size buffer to allocate.
-     *
-     * <p>This is set to the same size used in the JDK {@code java.util.ArrayList}:</p>
-     * <blockquote>
-     * Some VMs reserve some header words in an array.
-     * Attempts to allocate larger arrays may result in
-     * OutOfMemoryError: Requested array size exceeds VM limit.
-     * </blockquote>
-     */
-    private static final int MAX_BUFFER_SIZE = Integer.MAX_VALUE - 8;
-
     /** Mask used to extract 8 bits, used in decoding bytes */
     protected static final int MASK_8BITS = 0xff;
 
@@ -156,7 +151,7 @@ public abstract class BaseNCodec {
      */
     protected static final byte PAD_DEFAULT = '='; // Allow static access to default
 
-    protected final byte pad; // instance variable just in case it needs to vary later
+    protected final byte PAD = PAD_DEFAULT; // instance variable just in case it needs to vary later
 
     /** Number of bytes in each full block of unencoded data, e.g. 4 for Base64 and 5 for Base32 */
     private final int unencodedBlockSize;
@@ -172,12 +167,12 @@ public abstract class BaseNCodec {
     protected final int lineLength;
 
     /**
-     * Size of chunk separator. Not used unless {@link #lineLength} &gt; 0.
+     * Size of chunk separator. Not used unless {@link #lineLength} > 0.
      */
     private final int chunkSeparatorLength;
 
     /**
-     * Note <code>lineLength</code> is rounded down to the nearest multiple of the encoded block size.
+     * Note <code>lineLength</code> is rounded down to the nearest multiple of {@link #encodedBlockSize}
      * If <code>chunkSeparatorLength</code> is zero, then chunking is disabled.
      * @param unencodedBlockSize the size of an unencoded block (e.g. Base64 = 3)
      * @param encodedBlockSize the size of an encoded block (e.g. Base64 = 4)
@@ -186,27 +181,11 @@ public abstract class BaseNCodec {
      */
     protected BaseNCodec(final int unencodedBlockSize, final int encodedBlockSize,
                          final int lineLength, final int chunkSeparatorLength) {
-        this(unencodedBlockSize, encodedBlockSize, lineLength, chunkSeparatorLength, PAD_DEFAULT);
-    }
-
-    /**
-     * Note <code>lineLength</code> is rounded down to the nearest multiple of the encoded block size.
-     * If <code>chunkSeparatorLength</code> is zero, then chunking is disabled.
-     * @param unencodedBlockSize the size of an unencoded block (e.g. Base64 = 3)
-     * @param encodedBlockSize the size of an encoded block (e.g. Base64 = 4)
-     * @param lineLength if &gt; 0, use chunking with a length <code>lineLength</code>
-     * @param chunkSeparatorLength the chunk separator length, if relevant
-     * @param pad byte used as padding byte.
-     */
-    protected BaseNCodec(final int unencodedBlockSize, final int encodedBlockSize,
-                         final int lineLength, final int chunkSeparatorLength, final byte pad) {
         this.unencodedBlockSize = unencodedBlockSize;
         this.encodedBlockSize = encodedBlockSize;
         final boolean useChunking = lineLength > 0 && chunkSeparatorLength > 0;
         this.lineLength = useChunking ? (lineLength / encodedBlockSize) * encodedBlockSize : 0;
         this.chunkSeparatorLength = chunkSeparatorLength;
-
-        this.pad = pad;
     }
 
     /**
@@ -232,7 +211,7 @@ public abstract class BaseNCodec {
     /**
      * Get the default buffer size. Can be overridden.
      *
-     * @return the default buffer size.
+     * @return {@link #DEFAULT_BUFFER_SIZE}
      */
     protected int getDefaultBufferSize() {
         return DEFAULT_BUFFER_SIZE;
@@ -241,69 +220,18 @@ public abstract class BaseNCodec {
     /**
      * Increases our buffer by the {@link #DEFAULT_BUFFER_RESIZE_FACTOR}.
      * @param context the context to be used
-     * @param minCapacity the minimum required capacity
-     * @return the resized byte[] buffer
-     * @throws OutOfMemoryError if the {@code minCapacity} is negative
      */
-    private static byte[] resizeBuffer(final Context context, final int minCapacity) {
-        // Overflow-conscious code treats the min and new capacity as unsigned.
-        final int oldCapacity = context.buffer.length;
-        int newCapacity = oldCapacity * DEFAULT_BUFFER_RESIZE_FACTOR;
-        if (compareUnsigned(newCapacity, minCapacity) < 0) {
-            newCapacity = minCapacity;
+    private byte[] resizeBuffer(final Context context) {
+        if (context.buffer == null) {
+            context.buffer = new byte[getDefaultBufferSize()];
+            context.pos = 0;
+            context.readPos = 0;
+        } else {
+            final byte[] b = new byte[context.buffer.length * DEFAULT_BUFFER_RESIZE_FACTOR];
+            System.arraycopy(context.buffer, 0, b, 0, context.buffer.length);
+            context.buffer = b;
         }
-        if (compareUnsigned(newCapacity, MAX_BUFFER_SIZE) > 0) {
-            newCapacity = createPositiveCapacity(minCapacity);
-        }
-
-        final byte[] b = new byte[newCapacity];
-        System.arraycopy(context.buffer, 0, b, 0, context.buffer.length);
-        context.buffer = b;
-        return b;
-    }
-
-    /**
-     * Compares two {@code int} values numerically treating the values
-     * as unsigned. Taken from JDK 1.8.
-     *
-     * <p>TODO: Replace with JDK 1.8 Integer::compareUnsigned(int, int).</p>
-     *
-     * @param  x the first {@code int} to compare
-     * @param  y the second {@code int} to compare
-     * @return the value {@code 0} if {@code x == y}; a value less
-     *         than {@code 0} if {@code x < y} as unsigned values; and
-     *         a value greater than {@code 0} if {@code x > y} as
-     *         unsigned values
-     */
-    private static int compareUnsigned(int x, int y) {
-        return Integer.compare(x + Integer.MIN_VALUE, y + Integer.MIN_VALUE);
-    }
-
-    /**
-     * Create a positive capacity at least as large the minimum required capacity.
-     * If the minimum capacity is negative then this throws an OutOfMemoryError as no array
-     * can be allocated.
-     *
-     * @param minCapacity the minimum capacity
-     * @return the capacity
-     * @throws OutOfMemoryError if the {@code minCapacity} is negative
-     */
-    private static int createPositiveCapacity(int minCapacity) {
-        if (minCapacity < 0) {
-            // overflow
-            throw new OutOfMemoryError("Unable to allocate array size: " + (minCapacity & 0xffffffffL));
-        }
-        // This is called when we require buffer expansion to a very big array.
-        // Use the conservative maximum buffer size if possible, otherwise the biggest required.
-        //
-        // Note: In this situation JDK 1.8 java.util.ArrayList returns Integer.MAX_VALUE.
-        // This excludes some VMs that can exceed MAX_BUFFER_SIZE but not allocate a full
-        // Integer.MAX_VALUE length array.
-        // The result is that we may have to allocate an array of this size more than once if
-        // the capacity must be expanded again.
-        return (minCapacity > MAX_BUFFER_SIZE) ?
-            minCapacity :
-            MAX_BUFFER_SIZE;
+        return context.buffer;
     }
 
     /**
@@ -314,15 +242,8 @@ public abstract class BaseNCodec {
      * @return the buffer
      */
     protected byte[] ensureBufferSize(final int size, final Context context){
-        if (context.buffer == null) {
-            context.buffer = new byte[getDefaultBufferSize()];
-            context.pos = 0;
-            context.readPos = 0;
-
-            // Overflow-conscious:
-            // x + y > z  ==  x + y - z > 0
-        } else if (context.pos + size - context.buffer.length > 0) {
-            return resizeBuffer(context, context.pos + size);
+        if ((context.buffer == null) || (context.buffer.length < context.pos + size)){
+            return resizeBuffer(context);
         }
         return context.buffer;
     }
@@ -376,6 +297,24 @@ public abstract class BaseNCodec {
     }
 
     /**
+     * Encodes an Object using the Base-N algorithm. This method is provided in order to satisfy the requirements of
+     * the Encoder interface, and will throw an EncoderException if the supplied object is not of type byte[].
+     *
+     * @param obj
+     *            Object to encode
+     * @return An object (of type byte[]) containing the Base-N encoded data which corresponds to the byte[] supplied.
+     * @throws EncoderException
+     *             if the parameter supplied is not of type byte[]
+     */
+    @Override
+    public Object encode(final Object obj) throws EncoderException {
+        if (!(obj instanceof byte[])) {
+            throw new EncoderException("Parameter supplied to Base-N encode is not a byte[]");
+        }
+        return encode((byte[]) obj);
+    }
+
+    /**
      * Encodes a byte[] containing binary data, into a String containing characters in the Base-N alphabet.
      * Uses UTF8 encoding.
      *
@@ -401,6 +340,28 @@ public abstract class BaseNCodec {
     }
 
     /**
+     * Decodes an Object using the Base-N algorithm. This method is provided in order to satisfy the requirements of
+     * the Decoder interface, and will throw a DecoderException if the supplied object is not of type byte[] or String.
+     *
+     * @param obj
+     *            Object to decode
+     * @return An object (of type byte[]) containing the binary data which corresponds to the byte[] or String
+     *         supplied.
+     * @throws DecoderException
+     *             if the parameter supplied is not of type byte[]
+     */
+    @Override
+    public Object decode(final Object obj) throws DecoderException {
+        if (obj instanceof byte[]) {
+            return decode((byte[]) obj);
+        } else if (obj instanceof String) {
+            return decode((String) obj);
+        } else {
+            throw new DecoderException("Parameter supplied to Base-N decode is not a byte[] or a String");
+        }
+    }
+
+    /**
      * Decodes a String containing characters in the Base-N alphabet.
      *
      * @param pArray
@@ -418,6 +379,7 @@ public abstract class BaseNCodec {
      *            A byte array containing Base-N character data
      * @return a byte array containing binary data
      */
+    @Override
     public byte[] decode(final byte[] pArray) {
         return decode(pArray, 0, pArray.length);
     }
@@ -441,33 +403,14 @@ public abstract class BaseNCodec {
      *            a byte array containing binary data
      * @return A byte array containing only the base N alphabetic character data
      */
+    @Override
     public byte[] encode(final byte[] pArray) {
         if (pArray == null || pArray.length == 0) {
             return pArray;
         }
-        return encode(pArray, 0, pArray.length);
-    }
-
-    /**
-     * Encodes a byte[] containing binary data, into a byte[] containing
-     * characters in the alphabet.
-     *
-     * @param pArray
-     *            a byte array containing binary data
-     * @param offset
-     *            initial offset of the subarray.
-     * @param length
-     *            length of the subarray.
-     * @return A byte array containing only the base N alphabetic character data
-     * @since 1.11
-     */
-    public byte[] encode(final byte[] pArray, final int offset, final int length) {
-        if (pArray == null || pArray.length == 0) {
-            return pArray;
-        }
         final Context context = new Context();
-        encode(pArray, offset, length, context);
-        encode(pArray, offset, EOF, context); // Notify encoder of EOF.
+        encode(pArray, 0, pArray.length, context);
+        encode(pArray, 0, EOF, context); // Notify encoder of EOF.
         final byte[] buf = new byte[context.pos - context.readPos];
         readResults(buf, 0, buf.length, context);
         return buf;
@@ -502,7 +445,7 @@ public abstract class BaseNCodec {
     public boolean isInAlphabet(final byte[] arrayOctet, final boolean allowWSPad) {
         for (final byte octet : arrayOctet) {
             if (!isInAlphabet(octet) &&
-                    (!allowWSPad || (octet != pad) && !isWhiteSpace(octet))) {
+                    (!allowWSPad || (octet != PAD) && !isWhiteSpace(octet))) {
                 return false;
             }
         }
@@ -536,7 +479,7 @@ public abstract class BaseNCodec {
             return false;
         }
         for (final byte element : arrayOctet) {
-            if (pad == element || isInAlphabet(element)) {
+            if (PAD == element || isInAlphabet(element)) {
                 return true;
             }
         }

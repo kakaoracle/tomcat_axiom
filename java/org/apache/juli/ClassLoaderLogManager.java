@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.juli;
 
 import java.io.File;
@@ -30,6 +31,7 @@ import java.security.PrivilegedAction;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -105,14 +107,14 @@ public class ClassLoaderLogManager extends LogManager {
      * application redeployment.
      */
     protected final Map<ClassLoader, ClassLoaderLogInfo> classLoaderLoggers =
-            new WeakHashMap<>(); // Guarded by this
+            new WeakHashMap<ClassLoader, ClassLoaderLogInfo>(); // Guarded by this
 
 
     /**
      * This prefix is used to allow using prefixes for the properties names
      * of handlers and their subcomponents.
      */
-    protected final ThreadLocal<String> prefix = new ThreadLocal<>();
+    protected ThreadLocal<String> prefix = new ThreadLocal<String>();
 
 
     /**
@@ -326,6 +328,7 @@ public class ClassLoaderLogManager extends LogManager {
         return result;
     }
 
+
     @Override
     public void readConfiguration()
         throws IOException, SecurityException {
@@ -359,11 +362,7 @@ public class ClassLoaderLogManager extends LogManager {
         ClassLoader classLoader = thread.getContextClassLoader();
         ClassLoaderLogInfo clLogInfo = getClassLoaderInfo(classLoader);
         resetLoggers(clLogInfo);
-        // Do not call super.reset(). It should be a NO-OP as all loggers should
-        // have been registered via this manager. Very rarely a
-        // ConcurrentModificationException has been seen in the unit tests when
-        // calling super.reset() and that exception could cause the stop of a
-        // web application to fail.
+        super.reset();
     }
 
     /**
@@ -412,7 +411,6 @@ public class ClassLoaderLogManager extends LogManager {
      *
      * @param classLoader The classloader for which we will retrieve or build the
      *                    configuration
-     * @return the log configuration
      */
     protected synchronized ClassLoaderLogInfo getClassLoaderInfo(ClassLoader classLoader) {
 
@@ -442,8 +440,8 @@ public class ClassLoaderLogManager extends LogManager {
     /**
      * Read configuration for the specified classloader.
      *
-     * @param classLoader The classloader
-     * @throws IOException Error reading configuration
+     * @param classLoader
+     * @throws IOException Error
      */
     protected synchronized void readConfiguration(ClassLoader classLoader)
         throws IOException {
@@ -452,11 +450,7 @@ public class ClassLoaderLogManager extends LogManager {
         // Special case for URL classloaders which are used in containers:
         // only look in the local repositories to avoid redefining loggers 20 times
         try {
-            if (classLoader instanceof WebappProperties) {
-                if (((WebappProperties) classLoader).hasLoggingConfig()) {
-                    is = classLoader.getResourceAsStream("logging.properties");
-                }
-            } else if (classLoader instanceof URLClassLoader) {
+            if (classLoader instanceof URLClassLoader) {
                 URL logConfig = ((URLClassLoader)classLoader).findResource("logging.properties");
 
                 if(null != logConfig) {
@@ -484,7 +478,8 @@ public class ClassLoaderLogManager extends LogManager {
                     Permission perm = ace.getPermission();
                     if (perm instanceof FilePermission && perm.getActions().equals("read")) {
                         log.warning("Reading " + perm.getName() + " is not permitted. See \"per context logging\" in the default catalina.policy file.");
-                    } else {
+                    }
+                    else {
                         log.warning("Reading logging.properties is not permitted in some context. See \"per context logging\" in the default catalina.policy file.");
                         log.warning("Original error was: " + ace.getMessage());
                     }
@@ -596,8 +591,8 @@ public class ClassLoaderLogManager extends LogManager {
                 }
                 try {
                     this.prefix.set(prefix);
-                    Handler handler = (Handler) classLoader.loadClass(
-                            handlerClassName).getConstructor().newInstance();
+                    Handler handler =
+                        (Handler) classLoader.loadClass(handlerClassName).newInstance();
                     // The specification strongly implies all configuration should be done
                     // during the creation of the handler object.
                     // This includes setting level, filter, formatter and encoding.
@@ -621,8 +616,8 @@ public class ClassLoaderLogManager extends LogManager {
     /**
      * Set parent child relationship between the two specified loggers.
      *
-     * @param logger The logger
-     * @param parent The parent logger
+     * @param logger
+     * @param parent
      */
     protected static void doSetParentLogger(final Logger logger,
             final Logger parent) {
@@ -656,11 +651,8 @@ public class ClassLoaderLogManager extends LogManager {
                     break;
                 }
                 String propName = str.substring(pos_start + 2, pos_end);
-
-                String replacement = replaceWebApplicationProperties(propName);
-                if (replacement == null) {
-                    replacement = propName.length() > 0 ? System.getProperty(propName) : null;
-                }
+                String replacement = propName.length() > 0 ? System
+                        .getProperty(propName) : null;
                 if (replacement != null) {
                     builder.append(replacement);
                 } else {
@@ -674,33 +666,14 @@ public class ClassLoaderLogManager extends LogManager {
         return result;
     }
 
-
-    private String replaceWebApplicationProperties(String propName) {
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
-        if (cl instanceof WebappProperties) {
-            WebappProperties wProps = (WebappProperties) cl;
-            if ("classloader.webappName".equals(propName)) {
-                return wProps.getWebappName();
-            } else if ("classloader.hostName".equals(propName)) {
-                return wProps.getHostName();
-            } else if ("classloader.serviceName".equals(propName)) {
-                return wProps.getServiceName();
-            } else {
-                return null;
-            }
-        } else {
-            return null;
-        }
-    }
-
-
     // ---------------------------------------------------- LogNode Inner Class
 
 
     protected static final class LogNode {
         Logger logger;
 
-        final Map<String, LogNode> children = new HashMap<>();
+        final Map<String, LogNode> children =
+            new HashMap<String, LogNode>();
 
         final LogNode parent;
 
@@ -749,7 +722,9 @@ public class ClassLoaderLogManager extends LogManager {
         }
 
         void setParentLogger(final Logger parent) {
-            for (final LogNode childNode : children.values()) {
+            for (final Iterator<LogNode> iter =
+                children.values().iterator(); iter.hasNext();) {
+                final LogNode childNode = iter.next();
                 if (childNode.logger == null) {
                     childNode.setParentLogger(parent);
                 } else {
@@ -766,8 +741,8 @@ public class ClassLoaderLogManager extends LogManager {
 
     protected static final class ClassLoaderLogInfo {
         final LogNode rootNode;
-        final Map<String, Logger> loggers = new ConcurrentHashMap<>();
-        final Map<String, Handler> handlers = new HashMap<>();
+        final Map<String, Logger> loggers = new ConcurrentHashMap<String, Logger>();
+        final Map<String, Handler> handlers = new HashMap<String, Handler>();
         final Properties props = new Properties();
 
         ClassLoaderLogInfo(final LogNode rootNode) {

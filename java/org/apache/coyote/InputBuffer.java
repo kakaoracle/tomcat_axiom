@@ -18,7 +18,7 @@ package org.apache.coyote;
 
 import java.io.IOException;
 
-import org.apache.tomcat.util.net.ApplicationBufferHandler;
+import org.apache.tomcat.util.buf.ByteChunk;
 
 /**
  * This class is only for internal use in the protocol implementation. All
@@ -27,18 +27,22 @@ import org.apache.tomcat.util.net.ApplicationBufferHandler;
 public interface InputBuffer {
 
     /**
-     * Read from the input stream into the ByteBuffer provided by the
-     * ApplicationBufferHandler.
+     * Read from the input stream into the given buffer.
      * IMPORTANT: the current model assumes that the protocol will 'own' the
-     * ByteBuffer and return a pointer to it.
+     * buffer and return a pointer to it in ByteChunk (i.e. the param will
+     * have chunk.getBytes()==null before call, and the result after the call).
      *
-     * @param handler ApplicationBufferHandler that provides the buffer to read
-     *                data into.
+     * @param chunk   The buffer to read data into.
+     * @param request The associated request
      *
      * @return The number of bytes that have been added to the buffer or -1 for
      *         end of stream
      *
      * @throws IOException If an I/O error occurs reading from the input stream
+     *
      */
-    public int doRead(ApplicationBufferHandler handler) throws IOException;
+    public int doRead(ByteChunk chunk, Request request)
+        throws IOException;
+
+
 }

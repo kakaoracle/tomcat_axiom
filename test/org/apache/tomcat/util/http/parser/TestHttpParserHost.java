@@ -48,7 +48,7 @@ public class TestHttpParserHost {
 
     @Parameters(name="{index}: host {1}")
     public static Collection<Object[]> inputs() {
-        List<Object[]> result = new ArrayList<>();
+        List<Object[]> result = new ArrayList<Object[]>();
         // IPv4 - valid
         result.add(new Object[] { TestType.IPv4, "127.0.0.1", Integer.valueOf(-1), null} );
         result.add(new Object[] { TestType.IPv4, "127.0.0.1:8080", Integer.valueOf(9), null} );
@@ -124,7 +124,6 @@ public class TestHttpParserHost {
         result.add(new Object[] { TestType.IPv4, "myapp-t.my-domain.com:8080", Integer.valueOf(21), null} );
         result.add(new Object[] { TestType.IPv4, "myapp-t.my-domain.c-om", Integer.valueOf(-1), null} );
         result.add(new Object[] { TestType.IPv4, "myapp-t.my-domain.c-om:8080", Integer.valueOf(22), null} );
-        result.add(new Object[] { TestType.IPv4, "gateway.demo-ilt-latest-demo:9000", Integer.valueOf(28), null} );
         // Domain Name with trailing dot - valid
         result.add(new Object[] { TestType.IPv4, "0.0.0.", Integer.valueOf(-1), null} );
         result.add(new Object[] { TestType.IPv4, "myapp-t.mydomain.com.", Integer.valueOf(-1), null} );
@@ -226,25 +225,6 @@ public class TestHttpParserHost {
         Class<? extends Exception> exceptionClass = null;
         int result = -1;
         try {
-            result = Host.parse(input);
-        } catch (Exception e) {
-            exceptionClass = e.getClass();
-        }
-        Assert.assertEquals(input, expectedResult.intValue(), result);
-        if (expectedException == null) {
-            Assert.assertNull(input, exceptionClass);
-        } else {
-            Assert.assertNotNull(exceptionClass);
-            Assert.assertTrue(input, expectedException.isAssignableFrom(exceptionClass));
-        }
-    }
-
-
-    @Test
-    public void testHostType() {
-        Class<? extends Exception> exceptionClass = null;
-        int result = -1;
-        try {
             StringReader sr = new StringReader(input);
             switch(testType) {
                 case IPv4:
@@ -268,7 +248,7 @@ public class TestHttpParserHost {
     }
 
 
-    private enum TestType {
+    private static enum TestType {
         IPv4,
         IPv6
     }

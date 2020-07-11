@@ -28,6 +28,10 @@ import org.xml.sax.Attributes;
  * See {@link #CallParamRule(int paramIndex, String attributeName)}
  * <li>from current the element body
  * See {@link #CallParamRule(int paramIndex)}
+ * <li>from the top object on the stack.
+ * See {@link #CallParamRule(int paramIndex, boolean fromStack)}
+ * <li>the current path being processed (separate <code>Rule</code>).
+ * See {@link PathCallParamRule}
  * </ul>
  */
 public class CallParamRule extends Rule {
@@ -54,18 +58,39 @@ public class CallParamRule extends Rule {
      */
     public CallParamRule(int paramIndex,
                          String attributeName) {
-        this(attributeName, paramIndex, 0, false);
+
+        this.paramIndex = paramIndex;
+        this.attributeName = attributeName;
+
     }
 
 
-    private CallParamRule(String attributeName, int paramIndex, int stackIndex,
-            boolean fromStack) {
-        this.attributeName = attributeName;
+    /**
+     * Construct a "call parameter" rule.
+     *
+     * @param paramIndex The zero-relative parameter number
+     * @param fromStack should this parameter be taken from the top of the stack?
+     */
+    public CallParamRule(int paramIndex, boolean fromStack) {
+
         this.paramIndex = paramIndex;
-        this.stackIndex = stackIndex;
         this.fromStack = fromStack;
     }
 
+    /**
+     * Constructs a "call parameter" rule which sets a parameter from the stack.
+     * If the stack contains too few objects, then the parameter will be set to null.
+     *
+     * @param paramIndex The zero-relative parameter number
+     * @param stackIndex the index of the object which will be passed as a parameter.
+     * The zeroth object is the top of the stack, 1 is the next object down and so on.
+     */
+    public CallParamRule(int paramIndex, int stackIndex) {
+
+        this.paramIndex = paramIndex;
+        this.fromStack = true;
+        this.stackIndex = stackIndex;
+    }
 
     // ----------------------------------------------------- Instance Variables
 
@@ -73,24 +98,24 @@ public class CallParamRule extends Rule {
     /**
      * The attribute from which to save the parameter value
      */
-    protected final String attributeName;
+    protected String attributeName = null;
 
 
     /**
      * The zero-relative index of the parameter we are saving.
      */
-    protected final int paramIndex;
+    protected int paramIndex = 0;
 
 
     /**
      * Is the parameter to be set from the stack?
      */
-    protected final boolean fromStack;
+    protected boolean fromStack = false;
 
     /**
      * The position of the object from the top of the stack
      */
-    protected final int stackIndex;
+    protected int stackIndex = 0;
 
     /**
      * Stack is used to allow nested body text to be processed.
@@ -167,7 +192,7 @@ public class CallParamRule extends Rule {
             // so that we can make sure that the right set of parameters
             // is at the top of the stack
             if (bodyTextStack == null) {
-                bodyTextStack = new ArrayStack<>();
+                bodyTextStack = new ArrayStack<String>();
             }
             bodyTextStack.push(bodyText.trim());
         }

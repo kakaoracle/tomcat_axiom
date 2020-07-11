@@ -25,6 +25,16 @@ import org.apache.catalina.tribes.Channel;
 import org.apache.catalina.tribes.ChannelException;
 import org.apache.catalina.tribes.ChannelInterceptor;
 
+/**
+ * <p>Title: </p>
+ *
+ * <p>Description: </p>
+ *
+ * <p>Company: </p>
+ *
+ * @author not attributable
+ * @version 1.0
+ */
 public class TestGroupChannelOptionFlag {
     private GroupChannel channel = null;
 
@@ -58,7 +68,7 @@ public class TestGroupChannelOptionFlag {
         try {
             channel.start(Channel.DEFAULT);
         }catch ( ChannelException x ) {
-            if (x.getMessage().contains("option flag conflict")) error = true;
+            if ( x.getMessage().indexOf("option flag conflict") >= 0 ) error = true;
         }
         Assert.assertTrue(error);
     }
@@ -79,7 +89,7 @@ public class TestGroupChannelOptionFlag {
         try {
             channel.start(Channel.DEFAULT);
         }catch ( ChannelException x ) {
-            if (x.getMessage().contains("option flag conflict")) error = true;
+            if ( x.getMessage().indexOf("option flag conflict") >= 0 ) error = true;
         }
         Assert.assertFalse(error);
     }

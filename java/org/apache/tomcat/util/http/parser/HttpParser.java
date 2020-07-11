@@ -18,7 +18,14 @@ package org.apache.tomcat.util.http.parser;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -33,10 +40,27 @@ import org.apache.tomcat.util.res.StringManager;
  * assuming that wrapped header lines have already been unwrapped. (The Tomcat
  * header processing code does the unwrapping.)
  *
+ * Provides parsing of the following HTTP header values as per RFC 2616:
+ * - Authorization for DIGEST authentication
+ * - MediaType (used for Content-Type header)
+ *
+ * Support for additional headers will be provided as required.
  */
 public class HttpParser {
 
+    @SuppressWarnings("unused")  // Unused due to buggy client implementations
+    private static final Integer FIELD_TYPE_TOKEN = Integer.valueOf(0);
+    private static final Integer FIELD_TYPE_QUOTED_STRING = Integer.valueOf(1);
+    private static final Integer FIELD_TYPE_TOKEN_OR_QUOTED_STRING = Integer.valueOf(2);
+    private static final Integer FIELD_TYPE_LHEX = Integer.valueOf(3);
+    private static final Integer FIELD_TYPE_QUOTED_TOKEN = Integer.valueOf(4);
+
+    private static final Map<String,Integer> fieldTypes =
+            new HashMap<String,Integer>();
+
     private static final StringManager sm = StringManager.getManager(HttpParser.class);
+
+    private static final Log log = LogFactory.getLog(HttpParser.class);
 
     private static final int ARRAY_SIZE = 128;
 
@@ -47,6 +71,7 @@ public class HttpParser {
     private static final boolean[] IS_HTTP_PROTOCOL = new boolean[ARRAY_SIZE];
     private static final boolean[] IS_ALPHA = new boolean[ARRAY_SIZE];
     private static final boolean[] IS_NUMERIC = new boolean[ARRAY_SIZE];
+    private static final boolean[] REQUEST_TARGET_ALLOW = new boolean[ARRAY_SIZE];
     private static final boolean[] IS_UNRESERVED = new boolean[ARRAY_SIZE];
     private static final boolean[] IS_SUBDELIM = new boolean[ARRAY_SIZE];
     private static final boolean[] IS_USERINFO = new boolean[ARRAY_SIZE];
@@ -56,6 +81,25 @@ public class HttpParser {
 
 
     static {
+        // Digest field types.
+        // Note: These are more relaxed than RFC2617. This adheres to the
+        //       recommendation of RFC2616 that servers are tolerant of buggy
+        //       clients when they can be so without ambiguity.
+        fieldTypes.put("username", FIELD_TYPE_QUOTED_STRING);
+        fieldTypes.put("realm", FIELD_TYPE_QUOTED_STRING);
+        fieldTypes.put("nonce", FIELD_TYPE_QUOTED_STRING);
+        fieldTypes.put("digest-uri", FIELD_TYPE_QUOTED_STRING);
+        // RFC2617 says response is <">32LHEX<">. 32LHEX will also be accepted
+        fieldTypes.put("response", FIELD_TYPE_LHEX);
+        // RFC2617 says algorithm is token. <">token<"> will also be accepted
+        fieldTypes.put("algorithm", FIELD_TYPE_QUOTED_TOKEN);
+        fieldTypes.put("cnonce", FIELD_TYPE_QUOTED_STRING);
+        fieldTypes.put("opaque", FIELD_TYPE_QUOTED_STRING);
+        // RFC2617 says qop is token. <">token<"> will also be accepted
+        fieldTypes.put("qop", FIELD_TYPE_QUOTED_TOKEN);
+        // RFC2617 says nc is 8LHEX. <">8LHEX<"> will also be accepted
+        fieldTypes.put("nc", FIELD_TYPE_LHEX);
+
         for (int i = 0; i < ARRAY_SIZE; i++) {
             // Control> 0-31, 127
             if (i < 32 || i == 127) {
@@ -117,6 +161,19 @@ public class HttpParser {
             }
         }
 
+        String prop = System.getProperty("tomcat.util.http.parser.HttpParser.requestTargetAllow");
+        if (prop != null) {
+            for (int i = 0; i < prop.length(); i++) {
+                char c = prop.charAt(i);
+                if (c == '{' || c == '}' || c == '|') {
+                    REQUEST_TARGET_ALLOW[c] = true;
+                } else {
+                    log.warn(sm.getString("http.invalidRequestTargetCharacter",
+                            Character.valueOf(c)));
+                }
+            }
+        }
+
         DEFAULT = new HttpParser(null, null);
     }
 
@@ -131,10 +188,12 @@ public class HttpParser {
             // Not valid for request target.
             // Combination of multiple rules from RFC7230 and RFC 3986. Must be
             // ASCII, no controls plus a few additional characters excluded
-            if (IS_CONTROL[i] ||
+            if (IS_CONTROL[i] || i > 127 ||
                     i == ' ' || i == '\"' || i == '#' || i == '<' || i == '>' || i == '\\' ||
                     i == '^' || i == '`'  || i == '{' || i == '|' || i == '}') {
-                IS_NOT_REQUEST_TARGET[i] = true;
+                if (!REQUEST_TARGET_ALLOW[i]) {
+                    IS_NOT_REQUEST_TARGET[i] = true;
+                }
             }
 
             /*
@@ -144,7 +203,7 @@ public class HttpParser {
              *
              * Note pchar allows everything userinfo allows plus "@"
              */
-            if (IS_USERINFO[i] || i == '@' || i == '/') {
+            if (IS_USERINFO[i] || i == '@' || i == '/' || REQUEST_TARGET_ALLOW[i]) {
                 IS_ABSOLUTEPATH_RELAXED[i] = true;
             }
 
@@ -153,13 +212,142 @@ public class HttpParser {
              *
              * Note query allows everything absolute-path allows plus "?"
              */
-            if (IS_ABSOLUTEPATH_RELAXED[i] || i == '?') {
+            if (IS_ABSOLUTEPATH_RELAXED[i] || i == '?' || REQUEST_TARGET_ALLOW[i]) {
                 IS_QUERY_RELAXED[i] = true;
             }
         }
 
         relax(IS_ABSOLUTEPATH_RELAXED, relaxedPathChars);
         relax(IS_QUERY_RELAXED, relaxedQueryChars);
+    }
+
+    /**
+     * Parses an HTTP Authorization header for DIGEST authentication as per RFC
+     * 2617 section 3.2.2.
+     *
+     * @param input The header value to parse
+     *
+     * @return  A map of directives and values as {@link String}s or
+     *          <code>null</code> if a parsing error occurs. Although the
+     *          values returned are {@link String}s they will have been
+     *          validated to ensure that they conform to RFC 2617.
+     *
+     * @throws IllegalArgumentException If the header does not conform to RFC
+     *                                  2617
+     * @throws IOException If an error occurs while reading the input
+     */
+    public static Map<String,String> parseAuthorizationDigest (
+            StringReader input) throws IllegalArgumentException, IOException {
+
+        Map<String,String> result = new HashMap<String,String>();
+
+        if (skipConstant(input, "Digest") != SkipResult.FOUND) {
+            return null;
+        }
+        // All field names are valid tokens
+        String field = readToken(input);
+        if (field == null) {
+            return null;
+        }
+        while (!field.equals("")) {
+            if (skipConstant(input, "=") != SkipResult.FOUND) {
+                return null;
+            }
+            String value = null;
+            Integer type = fieldTypes.get(field.toLowerCase(Locale.ENGLISH));
+            if (type == null) {
+                // auth-param = token "=" ( token | quoted-string )
+                type = FIELD_TYPE_TOKEN_OR_QUOTED_STRING;
+            }
+            switch (type.intValue()) {
+                case 0:
+                    // FIELD_TYPE_TOKEN
+                    value = readToken(input);
+                    break;
+                case 1:
+                    // FIELD_TYPE_QUOTED_STRING
+                    value = readQuotedString(input, false);
+                    break;
+                case 2:
+                    // FIELD_TYPE_TOKEN_OR_QUOTED_STRING
+                    value = readTokenOrQuotedString(input, false);
+                    break;
+                case 3:
+                    // FIELD_TYPE_LHEX
+                    value = readLhex(input);
+                    break;
+                case 4:
+                    // FIELD_TYPE_QUOTED_TOKEN
+                    value = readQuotedToken(input);
+                    break;
+                default:
+                    // Error
+                    throw new IllegalArgumentException(
+                            "TODO i18n: Unsupported type");
+            }
+
+            if (value == null) {
+                return null;
+            }
+            result.put(field, value);
+
+            if (skipConstant(input, ",") == SkipResult.NOT_FOUND) {
+                return null;
+            }
+            field = readToken(input);
+            if (field == null) {
+                return null;
+            }
+        }
+
+        return result;
+    }
+
+    public static MediaType parseMediaType(StringReader input)
+            throws IOException {
+
+        // Type (required)
+        String type = readToken(input);
+        if (type == null || type.length() == 0) {
+            return null;
+        }
+
+        if (skipConstant(input, "/") == SkipResult.NOT_FOUND) {
+            return null;
+        }
+
+        // Subtype (required)
+        String subtype = readToken(input);
+        if (subtype == null || subtype.length() == 0) {
+            return null;
+        }
+
+        LinkedHashMap<String,String> parameters =
+                new LinkedHashMap<String,String>();
+
+        SkipResult lookForSemiColon = skipConstant(input, ";");
+        if (lookForSemiColon == SkipResult.NOT_FOUND) {
+            return null;
+        }
+        while (lookForSemiColon == SkipResult.FOUND) {
+            String attribute = readToken(input);
+
+            String value = "";
+            if (skipConstant(input, "=") == SkipResult.FOUND) {
+                value = readTokenOrQuotedString(input, true);
+            }
+
+            if (attribute != null) {
+                parameters.put(attribute.toLowerCase(Locale.ENGLISH), value);
+            }
+
+            lookForSemiColon = skipConstant(input, ";");
+            if (lookForSemiColon == SkipResult.NOT_FOUND) {
+                return null;
+            }
+        }
+
+        return new MediaType(type, subtype, parameters);
     }
 
 
@@ -317,21 +505,10 @@ public class HttpParser {
     }
 
 
-    public static boolean isControl(int c) {
-        // Fast for valid control characters, slower for some incorrect
-        // ones
-        try {
-            return IS_CONTROL[c];
-        } catch (ArrayIndexOutOfBoundsException ex) {
-            return false;
-        }
-    }
-
-
     // Skip any LWS and position to read the next character. The next character
     // is returned as being able to 'peek()' it allows a small optimisation in
     // some cases.
-    static int skipLws(Reader input) throws IOException {
+    private static int skipLws(Reader input) throws IOException {
 
         input.mark(1);
         int c = input.read();
@@ -345,7 +522,8 @@ public class HttpParser {
         return c;
     }
 
-    static SkipResult skipConstant(Reader input, String constant) throws IOException {
+    static SkipResult skipConstant(Reader input, String constant)
+            throws IOException {
         int len = constant.length();
 
         skipLws(input);
@@ -396,48 +574,11 @@ public class HttpParser {
     }
 
     /**
-     * @return  the digits if any were found, the empty string if no data was
-     *          found or if data other than digits was found
-     */
-    static String readDigits(Reader input) throws IOException {
-        StringBuilder result = new StringBuilder();
-
-        skipLws(input);
-        input.mark(1);
-        int c = input.read();
-
-        while (c != -1 && isNumeric(c)) {
-            result.append((char) c);
-            input.mark(1);
-            c = input.read();
-        }
-        // Use mark(1)/reset() rather than skip(-1) since skip() is a NOP
-        // once the end of the String has been reached.
-        input.reset();
-
-        return result.toString();
-    }
-
-    /**
-     * @return  the number if digits were found, -1 if no data was found
-     *          or if data other than digits was found
-     */
-    static long readLong(Reader input) throws IOException {
-        String digits = readDigits(input);
-
-        if (digits.length() == 0) {
-            return -1;
-        }
-
-        return Long.parseLong(digits);
-    }
-
-    /**
      * @return the quoted string if one was found, null if data other than a
      *         quoted string was found or null if the end of data was reached
      *         before the quoted string was terminated
      */
-    static String readQuotedString(Reader input, boolean returnQuoted) throws IOException {
+    private static String readQuotedString(Reader input, boolean returnQuoted) throws IOException {
 
         skipLws(input);
         int c = input.read();
@@ -473,7 +614,7 @@ public class HttpParser {
         return result.toString();
     }
 
-    static String readTokenOrQuotedString(Reader input, boolean returnQuoted)
+    private static String readTokenOrQuotedString(Reader input, boolean returnQuoted)
             throws IOException {
 
         // Peek at next character to enable correct method to be called
@@ -498,7 +639,7 @@ public class HttpParser {
      *         quoted token was found or null if the end of data was reached
      *         before a quoted token was terminated
      */
-    static String readQuotedToken(Reader input) throws IOException {
+    private static String readQuotedToken(Reader input) throws IOException {
 
         StringBuilder result = new StringBuilder();
         boolean quoted = false;
@@ -554,7 +695,7 @@ public class HttpParser {
      * @return  the sequence of LHEX (minus any surrounding quotes) if any was
      *          found, or <code>null</code> if data other LHEX was found
      */
-    static String readLhex(Reader input) throws IOException {
+    private static String readLhex(Reader input) throws IOException {
 
         StringBuilder result = new StringBuilder();
         boolean quoted = false;
@@ -673,6 +814,13 @@ public class HttpParser {
             return 0;
         }
         return result;
+    }
+
+
+    static enum SkipResult {
+        FOUND,
+        NOT_FOUND,
+        EOF
     }
 
 
@@ -910,27 +1058,27 @@ public class HttpParser {
 
 
     private enum DomainParseState {
-        NEW(     true, false, false, false, "http.invalidCharacterDomain.atStart"),
-        ALPHA(   true,  true,  true,  true, "http.invalidCharacterDomain.afterLetter"),
-        NUMERIC( true,  true,  true,  true, "http.invalidCharacterDomain.afterNumber"),
-        PERIOD(  true, false, false,  true, "http.invalidCharacterDomain.afterPeriod"),
-        HYPHEN(  true,  true, false, false, "http.invalidCharacterDomain.afterHyphen"),
-        COLON(  false, false, false, false, "http.invalidCharacterDomain.afterColon"),
-        END(    false, false, false, false, "http.invalidCharacterDomain.atEnd");
+        NEW(     true, false, false, false, " at the start of"),
+        ALPHA(   true,  true,  true,  true, " after a letter in"),
+        NUMERIC( true,  true,  true,  true, " after a number in"),
+        PERIOD(  true, false, false,  true, " after a period in"),
+        HYPHEN(  true,  true, false, false, " after a hypen in"),
+        COLON(  false, false, false, false, " after a colon in"),
+        END(    false, false, false, false, " at the end of");
 
         private final boolean mayContinue;
         private final boolean allowsHyphen;
         private final boolean allowsPeriod;
         private final boolean allowsEnd;
-        private final String errorMsg;
+        private final String errorLocation;
 
         private DomainParseState(boolean mayContinue, boolean allowsHyphen, boolean allowsPeriod,
-                boolean allowsEnd, String errorMsg) {
+                boolean allowsEnd, String errorLocation) {
             this.mayContinue = mayContinue;
             this.allowsHyphen = allowsHyphen;
             this.allowsPeriod = allowsPeriod;
             this.allowsEnd = allowsEnd;
-            this.errorMsg = errorMsg;
+            this.errorLocation = errorLocation;
         }
 
         public boolean mayContinue() {
@@ -953,22 +1101,22 @@ public class HttpParser {
                 if (allowsPeriod) {
                     return PERIOD;
                 } else {
-                    throw new IllegalArgumentException(sm.getString(errorMsg,
-                            Character.toString((char) c)));
+                    throw new IllegalArgumentException(sm.getString("http.invalidCharacterDomain",
+                            Character.toString((char) c), errorLocation));
                 }
             } else if (c == ':') {
                 if (allowsEnd) {
                     return COLON;
                 } else {
-                    throw new IllegalArgumentException(sm.getString(errorMsg,
-                            Character.toString((char) c)));
+                    throw new IllegalArgumentException(sm.getString("http.invalidCharacterDomain",
+                            Character.toString((char) c), errorLocation));
                 }
             } else if (c == '-') {
                 if (allowsHyphen) {
                     return HYPHEN;
                 } else {
-                    throw new IllegalArgumentException(sm.getString(errorMsg,
-                            Character.toString((char) c)));
+                    throw new IllegalArgumentException(sm.getString("http.invalidCharacterDomain",
+                            Character.toString((char) c), errorLocation));
                 }
             } else {
                 throw new IllegalArgumentException(sm.getString(

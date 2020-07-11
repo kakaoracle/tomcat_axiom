@@ -21,7 +21,6 @@ import java.beans.BeanInfo;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.text.DateFormat;
@@ -32,8 +31,8 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Hashtable;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -48,7 +47,6 @@ import javax.servlet.jsp.tagext.TagInfo;
 import javax.servlet.jsp.tagext.TagVariableInfo;
 import javax.servlet.jsp.tagext.VariableInfo;
 
-import org.apache.el.util.JreCompat;
 import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
@@ -332,15 +330,15 @@ class Generator {
                     }
                     for (int i = 0; i < namedAttrs.size(); i++) {
                         attrNames[attrs.getLength() + i] =
-                            namedAttrs.getNode(i).getQName();
+                            ((NamedAttribute) namedAttrs.getNode(i)).getQName();
                     }
                     Arrays.sort(attrNames, Collections.reverseOrder());
                     if (attrNames.length > 0) {
                         poolName.append('&');
                     }
-                    for (String attrName : attrNames) {
+                    for (int i = 0; i < attrNames.length; i++) {
                         poolName.append('_');
-                        poolName.append(attrName);
+                        poolName.append(attrNames[i]);
                     }
                 }
                 if (hasEmptyBody) {
@@ -361,7 +359,7 @@ class Generator {
             private final Vector<String> vars;
 
             ScriptingVarVisitor() {
-                vars = new Vector<>();
+                vars = new Vector<String>();
             }
 
             @Override
@@ -375,13 +373,13 @@ class Generator {
                     VariableInfo[] varInfos = n.getVariableInfos();
 
                     if (varInfos.length > 0) {
-                        for (VariableInfo varInfo : varInfos) {
-                            String varName = varInfo.getVarName();
+                        for (int i = 0; i < varInfos.length; i++) {
+                            String varName = varInfos[i].getVarName();
                             String tmpVarName = "_jspx_" + varName + "_"
                                     + n.getCustomNestingLevel();
                             if (!vars.contains(tmpVarName)) {
                                 vars.add(tmpVarName);
-                                out.printin(varInfo.getClassName());
+                                out.printin(varInfos[i].getClassName());
                                 out.print(" ");
                                 out.print(tmpVarName);
                                 out.print(" = ");
@@ -390,13 +388,12 @@ class Generator {
                             }
                         }
                     } else {
-                        for (TagVariableInfo tagVarInfo : tagVarInfos) {
-                            String varName = tagVarInfo.getNameGiven();
+                        for (int i = 0; i < tagVarInfos.length; i++) {
+                            String varName = tagVarInfos[i].getNameGiven();
                             if (varName == null) {
                                 varName = n.getTagData().getAttributeString(
-                                        tagVarInfo.getNameFromAttribute());
-                            }
-                            else if (tagVarInfo.getNameFromAttribute() != null) {
+                                        tagVarInfos[i].getNameFromAttribute());
+                            } else if (tagVarInfos[i].getNameFromAttribute() != null) {
                                 // alias
                                 continue;
                             }
@@ -404,7 +401,7 @@ class Generator {
                                     + n.getCustomNestingLevel();
                             if (!vars.contains(tmpVarName)) {
                                 vars.add(tmpVarName);
-                                out.printin(tagVarInfo.getClassName());
+                                out.printin(tagVarInfos[i].getClassName());
                                 out.print(" ");
                                 out.print(tmpVarName);
                                 out.print(" = ");
@@ -573,9 +570,10 @@ class Generator {
      * generation)
      */
     private void genPreambleImports() {
-        for (String i : pageInfo.getImports()) {
+        Iterator<String> iter = pageInfo.getImports().iterator();
+        while (iter.hasNext()) {
             out.printin("import ");
-            out.print(i);
+            out.print(iter.next());
             out.println(";");
         }
 
@@ -596,13 +594,15 @@ class Generator {
         out.printil("private static java.util.Map<java.lang.String,java.lang.Long> _jspx_dependants;");
         out.println();
         Map<String,Long> dependants = pageInfo.getDependants();
+        Iterator<Entry<String,Long>> iter = dependants.entrySet().iterator();
         if (!dependants.isEmpty()) {
             out.printil("static {");
             out.pushIndent();
             out.printin("_jspx_dependants = new java.util.HashMap<java.lang.String,java.lang.Long>(");
             out.print("" + dependants.size());
             out.println(");");
-            for (Entry<String, Long> entry : dependants.entrySet()) {
+            while (iter.hasNext()) {
+                Entry<String,Long> entry = iter.next();
                 out.printin("_jspx_dependants.put(\"");
                 out.print(entry.getKey());
                 out.print("\", Long.valueOf(");
@@ -613,55 +613,6 @@ class Generator {
             out.printil("}");
             out.println();
         }
-
-        // Static data for getImports()
-        List<String> imports = pageInfo.getImports();
-        Set<String> packages = new HashSet<>();
-        Set<String> classes = new HashSet<>();
-        for (String importName : imports) {
-            if (importName == null) {
-                continue;
-            }
-            String trimmed = importName.trim();
-            if (trimmed.endsWith(".*")) {
-                packages.add(trimmed.substring(0, trimmed.length() - 2));
-            } else {
-                classes.add(trimmed);
-            }
-        }
-        out.printil("private static final java.util.Set<java.lang.String> _jspx_imports_packages;");
-        out.println();
-        out.printil("private static final java.util.Set<java.lang.String> _jspx_imports_classes;");
-        out.println();
-        out.printil("static {");
-        out.pushIndent();
-        if (packages.size() == 0) {
-            out.printin("_jspx_imports_packages = null;");
-            out.println();
-        } else {
-            out.printin("_jspx_imports_packages = new java.util.HashSet<>();");
-            out.println();
-            for (String packageName : packages) {
-                out.printin("_jspx_imports_packages.add(\"");
-                out.print(packageName);
-                out.println("\");");
-            }
-        }
-        if (classes.size() == 0) {
-            out.printin("_jspx_imports_classes = null;");
-            out.println();
-        } else {
-            out.printin("_jspx_imports_classes = new java.util.HashSet<>();");
-            out.println();
-            for (String className : classes) {
-                out.printin("_jspx_imports_classes.add(\"");
-                out.print(className);
-                out.println("\");");
-            }
-        }
-        out.popIndent();
-        out.printil("}");
-        out.println();
     }
 
     /**
@@ -693,28 +644,13 @@ class Generator {
      * preamble generation)
      */
     private void genPreambleMethods() {
-        // Implement JspSourceDependent
+        // Method used to get compile time file dependencies
         out.printil("public java.util.Map<java.lang.String,java.lang.Long> getDependants() {");
         out.pushIndent();
         out.printil("return _jspx_dependants;");
         out.popIndent();
         out.printil("}");
         out.println();
-
-        // Implement JspSourceImports
-        out.printil("public java.util.Set<java.lang.String> getPackageImports() {");
-        out.pushIndent();
-        out.printil("return _jspx_imports_packages;");
-        out.popIndent();
-        out.printil("}");
-        out.println();
-        out.printil("public java.util.Set<java.lang.String> getClassImports() {");
-        out.pushIndent();
-        out.printil("return _jspx_imports_classes;");
-        out.popIndent();
-        out.printil("}");
-        out.println();
-
 
         generateGetters();
         generateInit();
@@ -741,9 +677,7 @@ class Generator {
         out.print(servletClassName);
         out.print(" extends ");
         out.println(pageInfo.getExtends());
-        out.printin("    implements org.apache.jasper.runtime.JspSourceDependent,");
-        out.println();
-        out.printin("                 org.apache.jasper.runtime.JspSourceImports");
+        out.printin("    implements org.apache.jasper.runtime.JspSourceDependent");
         if (!pageInfo.isThreadSafe()) {
             out.println(",");
             out.printin("                 javax.servlet.SingleThreadModel");
@@ -767,35 +701,10 @@ class Generator {
         out.printin("public void ");
         out.print(serviceMethodName);
         out.println("(final javax.servlet.http.HttpServletRequest request, final javax.servlet.http.HttpServletResponse response)");
-        out.pushIndent();
-        out.pushIndent();
-        out.printil("throws java.io.IOException, javax.servlet.ServletException {");
-        out.popIndent();
-        out.println();
+        out.println("        throws java.io.IOException, javax.servlet.ServletException {");
 
-        // Method check
-        if (!pageInfo.isErrorPage()) {
-            out.printil("if (!javax.servlet.DispatcherType.ERROR.equals(request.getDispatcherType())) {");
-            out.pushIndent();
-            out.printil("final java.lang.String _jspx_method = request.getMethod();");
-            out.printil("if (\"OPTIONS\".equals(_jspx_method)) {");
-            out.pushIndent();
-            out.printil("response.setHeader(\"Allow\",\"GET, HEAD, POST, OPTIONS\");");
-            out.printil("return;");
-            out.popIndent();
-            out.printil("}");
-            out.printil("if (!\"GET\".equals(_jspx_method) && !\"POST\".equals(_jspx_method) && !\"HEAD\".equals(_jspx_method)) {");
-            out.pushIndent();
-            out.printil("response.setHeader(\"Allow\",\"GET, HEAD, POST, OPTIONS\");");
-            out.printin("response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, ");
-            out.println("\"" + Localizer.getMessage("jsp.error.servlet.invalid.method") + "\");");
-            out.printil("return;");
-            out.popIndent();
-            out.printil("}");
-            out.popIndent();
-            out.printil("}");
-            out.println();
-        }
+        out.pushIndent();
+        out.println();
 
         // Local variable declarations
         out.printil("final javax.servlet.jsp.PageContext pageContext;");
@@ -832,7 +741,7 @@ class Generator {
         out.println(");");
 
         if (ctxt.getOptions().isXpoweredBy()) {
-            out.printil("response.addHeader(\"X-Powered-By\", \"JSP/2.3\");");
+            out.printil("response.addHeader(\"X-Powered-By\", \"JSP/2.2\");");
         }
 
         out.printil("pageContext = _jspxFactory.getPageContext(this, request, response,");
@@ -902,7 +811,7 @@ class Generator {
     /**
      * A visitor that generates codes for the elements in the page.
      */
-    private class GenerateVisitor extends Node.Visitor {
+    class GenerateVisitor extends Node.Visitor {
 
         /*
          * Hashtable containing introspection information on tag handlers:
@@ -940,7 +849,9 @@ class Generator {
 
         private HashMap<String,String> textMap;
 
-
+        /**
+         * Constructor.
+         */
         public GenerateVisitor(boolean isTagFile, ServletWriter out,
                 ArrayList<GenBuffer> methodsBuffered,
                 FragmentHelperClass fragmentHelperClass) {
@@ -950,9 +861,10 @@ class Generator {
             this.methodsBuffered = methodsBuffered;
             this.fragmentHelperClass = fragmentHelperClass;
             methodNesting = 0;
-            handlerInfos = new Hashtable<>();
-            tagVarNumbers = new Hashtable<>();
-            textMap = new HashMap<>();
+            handlerInfos =
+                new Hashtable<String,Hashtable<String,TagHandlerInfo>>();
+            tagVarNumbers = new Hashtable<String,Integer>();
+            textMap = new HashMap<String,String>();
         }
 
         /**
@@ -972,7 +884,7 @@ class Generator {
          *            attributes that aren't EL expressions)
          */
         private String attributeValue(Node.JspAttribute attr, boolean encode,
-                Class<?> expectedType) {
+                Class<?> expectedType, boolean isXml) {
             String v = attr.getValue();
             if (!attr.isNamedAttribute() && (v == null))
                 return "";
@@ -985,7 +897,7 @@ class Generator {
                 return v;
             } else if (attr.isELInterpreterInput()) {
                 v = elInterpreter.interpreterCall(ctxt, this.isTagFile, v,
-                        expectedType, attr.getEL().getMapName());
+                        expectedType, attr.getEL().getMapName(), isXml);
                 if (encode) {
                     return "org.apache.jasper.runtime.JspRuntimeLibrary.URLEncode("
                             + v + ", request.getCharacterEncoding())";
@@ -1014,7 +926,7 @@ class Generator {
                 throws JasperException {
 
             class ParamVisitor extends Node.Visitor {
-                private String separator;
+                String separator;
 
                 ParamVisitor(String separator) {
                     this.separator = separator;
@@ -1030,7 +942,8 @@ class Generator {
                             + "URLEncode(" + quote(n.getTextAttribute("name"))
                             + ", request.getCharacterEncoding())");
                     out.print("+ \"=\" + ");
-                    out.print(attributeValue(n.getValue(), true, String.class));
+                    out.print(attributeValue(n.getValue(), true, String.class,
+                            n.getRoot().isXmlSyntax()));
 
                     // The separator is '&' after the second use
                     separator = "\"&\"";
@@ -1072,7 +985,7 @@ class Generator {
                 out.printil("out.write("
                         + elInterpreter.interpreterCall(ctxt, this.isTagFile,
                                 n.getType() + "{" + n.getText() + "}",
-                                String.class, n.getEL().getMapName()) +
+                                String.class, n.getEL().getMapName(), false) +
                         ");");
             } else {
                 out.printil("out.write("
@@ -1087,7 +1000,9 @@ class Generator {
             String flush = n.getTextAttribute("flush");
             Node.JspAttribute page = n.getPage();
 
-            boolean isFlush = "true".equals(flush);
+            boolean isFlush = false; // default to false;
+            if ("true".equals(flush))
+                isFlush = true;
 
             n.setBeginJavaLine(out.getJavaLine());
 
@@ -1099,7 +1014,8 @@ class Generator {
                 pageParam = generateNamedAttributeValue(page
                         .getNamedAttributeNode());
             } else {
-                pageParam = attributeValue(page, false, String.class);
+                pageParam = attributeValue(page, false, String.class,
+                        n.getRoot().isXmlSyntax());
             }
 
             // If any of the params have their values specified by
@@ -1140,8 +1056,8 @@ class Generator {
                         for (int j = 0; (paramSubElements != null)
                                 && (j < paramSubElements.size()); j++) {
                             Node m = paramSubElements.getNode(j);
-                            if (m instanceof Node.NamedAttribute) {
-                                generateNamedAttributeValue((Node.NamedAttribute) m);
+                            if (m instanceof NamedAttribute) {
+                                generateNamedAttributeValue((NamedAttribute) m);
                             }
                         }
                     }
@@ -1185,7 +1101,8 @@ class Generator {
                 pageParam = generateNamedAttributeValue(page
                         .getNamedAttributeNode());
             } else {
-                pageParam = attributeValue(page, false, String.class);
+                pageParam = attributeValue(page, false, String.class,
+                        n.getRoot().isXmlSyntax());
             }
 
             // If any of the params have their values specified by
@@ -1224,7 +1141,7 @@ class Generator {
                 // Bean is defined using useBean, introspect at compile time
                 Class<?> bean = beanInfo.getBeanType(name);
                 String beanName = bean.getCanonicalName();
-                java.lang.reflect.Method meth = JspRuntimeLibrary
+                Method meth = JspRuntimeLibrary
                         .getReadMethod(bean, property);
                 String methodName = meth.getName();
                 out.printil("out.write(org.apache.jasper.runtime.JspRuntimeLibrary.toString("
@@ -1292,7 +1209,8 @@ class Generator {
                         + "_jspx_page_context.findAttribute(\""
                         + name
                         + "\"), \"" + property + "\",");
-                out.print(attributeValue(value, false, null));
+                out.print(attributeValue(value, false, null,
+                        n.getRoot().isXmlSyntax()));
                 out.println(");");
             } else if (value.isELInterpreterInput()) {
                 // We've got to resolve the very call to the interpreter
@@ -1337,7 +1255,8 @@ class Generator {
                         + "_jspx_page_context.findAttribute(\""
                         + name
                         + "\"), \"" + property + "\", ");
-                out.print(attributeValue(value, false, null));
+                out.print(attributeValue(value, false, null,
+                        n.getRoot().isXmlSyntax()));
                 out.println(", null, null, false);");
             }
 
@@ -1365,19 +1284,14 @@ class Generator {
                     } else {
                         canonicalName = klass;
                     }
-                    // Check that there is a 0 arg constructor
-                    Constructor<?> constructor = bean.getConstructor(new Class[] {});
-                    // Check the bean is public, not an interface, not abstract
-                    // and (for Java 9+) in an exported module
                     int modifiers = bean.getModifiers();
-                    JreCompat jreCompat = JreCompat.getInstance();
-                    if (!Modifier.isPublic(modifiers) ||
-                            Modifier.isInterface(modifiers) ||
-                            Modifier.isAbstract(modifiers) ||
-                            !jreCompat.canAcccess(null, constructor) ) {
-                        throw new Exception(Localizer.getMessage("jsp.error.invalid.bean",
-                                Integer.valueOf(modifiers)));
+                    if (!Modifier.isPublic(modifiers)
+                            || Modifier.isInterface(modifiers)
+                            || Modifier.isAbstract(modifiers)) {
+                        throw new Exception("Invalid bean class modifier");
                     }
+                    // Check that there is a 0 arg constructor
+                    bean.getConstructor(new Class[] {});
                     // At compile time, we have determined that the bean class
                     // exists, with a public zero constructor, new() can be
                     // used for bean instantiation.
@@ -1473,7 +1387,8 @@ class Generator {
                             binaryName = generateNamedAttributeValue(beanName
                                     .getNamedAttributeNode());
                         } else {
-                            binaryName = attributeValue(beanName, false, String.class);
+                            binaryName = attributeValue(beanName, false,
+                                    String.class, n.getRoot().isXmlSyntax());
                         }
                     } else {
                         // Implies klass is not null
@@ -1586,7 +1501,8 @@ class Generator {
                                 escape(name) +
                                 "\\\" value=\\\"\" + " +
                                 attributeValue(n.getValue(), false,
-                                        String.class) +
+                                        String.class,
+                                        n.getRoot().isXmlSyntax()) +
                                 " + \"\\\">\" );");
                         out.printil("out.write(\"\\n\");");
                     } else {
@@ -1596,7 +1512,8 @@ class Generator {
                                 escape(name) +
                                 "=\\\"\" + " +
                                 attributeValue(n.getValue(), false,
-                                        String.class) +
+                                        String.class,
+                                        n.getRoot().isXmlSyntax()) +
                                 " + \"\\\"\" );");
                     }
 
@@ -1624,7 +1541,8 @@ class Generator {
                     widthStr = generateNamedAttributeValue(width
                             .getNamedAttributeNode());
                 } else {
-                    widthStr = attributeValue(width, false, String.class);
+                    widthStr = attributeValue(width, false, String.class,
+                            n.getRoot().isXmlSyntax());
                 }
             }
 
@@ -1634,7 +1552,8 @@ class Generator {
                     heightStr = generateNamedAttributeValue(height
                             .getNamedAttributeNode());
                 } else {
-                    heightStr = attributeValue(height, false, String.class);
+                    heightStr = attributeValue(height, false, String.class,
+                            n.getRoot().isXmlSyntax());
                 }
             }
 
@@ -1782,7 +1701,7 @@ class Generator {
         }
 
         @Override
-        public void visit(Node.NamedAttribute n) throws JasperException {
+        public void visit(NamedAttribute n) throws JasperException {
             // Don't visit body of this tag - we already did earlier.
         }
 
@@ -1879,19 +1798,21 @@ class Generator {
             // a later test as per JSP.5.3
             VariableInfo[] infos = n.getVariableInfos();
             if (infos != null && infos.length > 0) {
-                for (VariableInfo info : infos) {
+                for (int i = 0; i < infos.length; i++) {
+                    VariableInfo info = infos[i];
                     if (info != null && info.getVarName() != null)
                         pageInfo.getVarInfoNames().add(info.getVarName());
                 }
             }
             TagVariableInfo[] tagInfos = n.getTagVariableInfos();
             if (tagInfos != null && tagInfos.length > 0) {
-                for (TagVariableInfo tagInfo : tagInfos) {
+                for (int i = 0; i < tagInfos.length; i++) {
+                    TagVariableInfo tagInfo = tagInfos[i];
                     if (tagInfo != null) {
                         String name = tagInfo.getNameGiven();
                         if (name == null) {
                             String nameFromAttribute =
-                                    tagInfo.getNameFromAttribute();
+                                tagInfo.getNameFromAttribute();
                             name = n.getAttributeValue(nameFromAttribute);
                         }
                         pageInfo.getVarInfoNames().add(name);
@@ -1987,7 +1908,8 @@ class Generator {
                     out.print("=");
                     if (jspAttrs[i].isELInterpreterInput()) {
                         out.print("\\\"\" + ");
-                        String debug = attributeValue(jspAttrs[i], false, String.class);
+                        String debug = attributeValue(jspAttrs[i], false,
+                                String.class, n.getRoot().isXmlSyntax());
                         out.print(debug);
                         out.print(" + \"\\\"");
                     } else {
@@ -2024,7 +1946,7 @@ class Generator {
 
             // Compute attribute value string for XML-style and named
             // attributes
-            Hashtable<String,String> map = new Hashtable<>();
+            Hashtable<String,String> map = new Hashtable<String,String>();
             Node.JspAttribute[] attrs = n.getJspAttributes();
             for (int i = 0; attrs != null && i < attrs.length; i++) {
                 String value = null;
@@ -2036,7 +1958,8 @@ class Generator {
                     if (omitAttr == null) {
                         omit = "false";
                     } else {
-                        omit = attributeValue(omitAttr, false, boolean.class);
+                        omit = attributeValue(omitAttr, false, boolean.class,
+                                n.getRoot().isXmlSyntax());
                         if ("true".equals(omit)) {
                             continue;
                         }
@@ -2052,7 +1975,8 @@ class Generator {
                                 " + \"\\\"\")";
                     }
                 } else {
-                    value = attributeValue(attrs[i], false, Object.class);
+                    value = attributeValue(attrs[i], false, Object.class,
+                            n.getRoot().isXmlSyntax());
                     nvp = " + \" " + attrs[i].getName() + "=\\\"\" + " +
                             value + " + \"\\\"\"";
                 }
@@ -2061,7 +1985,8 @@ class Generator {
 
             // Write begin tag, using XML-style 'name' attribute as the
             // element name
-            String elemName = attributeValue(n.getNameAttribute(), false, String.class);
+            String elemName = attributeValue(n.getNameAttribute(), false,
+                    String.class, n.getRoot().isXmlSyntax());
             out.printin("out.write(\"<\"");
             out.print(" + " + elemName);
 
@@ -2079,7 +2004,7 @@ class Generator {
             if (subelements != null) {
                 for (int i = 0; i < subelements.size(); i++) {
                     Node subelem = subelements.getNode(i);
-                    if (!(subelem instanceof Node.NamedAttribute)) {
+                    if (!(subelem instanceof NamedAttribute)) {
                         hasBody = true;
                         break;
                     }
@@ -2139,7 +2064,7 @@ class Generator {
                     charArrayBuffer = new GenBuffer();
                     caOut = charArrayBuffer.getOut();
                     caOut.pushIndent();
-                    textMap = new HashMap<>();
+                    textMap = new HashMap<String,String>();
                 } else {
                     caOut = charArrayBuffer.getOut();
                 }
@@ -2354,7 +2279,8 @@ class Generator {
             Hashtable<String,TagHandlerInfo> handlerInfosByShortName =
                 handlerInfos.get(n.getPrefix());
             if (handlerInfosByShortName == null) {
-                handlerInfosByShortName = new Hashtable<>();
+                handlerInfosByShortName =
+                    new Hashtable<String,TagHandlerInfo>();
                 handlerInfos.put(n.getPrefix(), handlerInfosByShortName);
             }
             TagHandlerInfo handlerInfo =
@@ -2723,7 +2649,8 @@ class Generator {
 
             List<Object> vec = n.getScriptingVars(scope);
             if (vec != null) {
-                for (Object elem : vec) {
+                for (int i = 0; i < vec.size(); i++) {
+                    Object elem = vec.get(i);
                     if (elem instanceof VariableInfo) {
                         VariableInfo varInfo = (VariableInfo) elem;
                         if (varInfo.getDeclare()) {
@@ -2784,14 +2711,14 @@ class Generator {
             List<Object> declaredVariables = n.getScriptingVars(scope);
 
             if (varInfos.length > 0) {
-                for (VariableInfo varInfo : varInfos) {
-                    if (varInfo.getScope() != scope)
+                for (int i = 0; i < varInfos.length; i++) {
+                    if (varInfos[i].getScope() != scope)
                         continue;
                     // If the scripting variable has been declared, skip codes
                     // for saving and restoring it.
-                    if (declaredVariables.contains(varInfo))
+                    if (declaredVariables.contains(varInfos[i]))
                         continue;
-                    String varName = varInfo.getVarName();
+                    String varName = varInfos[i].getVarName();
                     String tmpVarName = "_jspx_" + varName + "_"
                             + n.getCustomNestingLevel();
                     out.printin(tmpVarName);
@@ -2800,18 +2727,18 @@ class Generator {
                     out.println(";");
                 }
             } else {
-                for (TagVariableInfo tagVarInfo : tagVarInfos) {
-                    if (tagVarInfo.getScope() != scope)
+                for (int i = 0; i < tagVarInfos.length; i++) {
+                    if (tagVarInfos[i].getScope() != scope)
                         continue;
                     // If the scripting variable has been declared, skip codes
                     // for saving and restoring it.
-                    if (declaredVariables.contains(tagVarInfo))
+                    if (declaredVariables.contains(tagVarInfos[i]))
                         continue;
-                    String varName = tagVarInfo.getNameGiven();
+                    String varName = tagVarInfos[i].getNameGiven();
                     if (varName == null) {
                         varName = n.getTagData().getAttributeString(
-                                tagVarInfo.getNameFromAttribute());
-                    } else if (tagVarInfo.getNameFromAttribute() != null) {
+                                tagVarInfos[i].getNameFromAttribute());
+                    } else if (tagVarInfos[i].getNameFromAttribute() != null) {
                         // alias
                         continue;
                     }
@@ -2854,14 +2781,14 @@ class Generator {
             List<Object> declaredVariables = n.getScriptingVars(scope);
 
             if (varInfos.length > 0) {
-                for (VariableInfo varInfo : varInfos) {
-                    if (varInfo.getScope() != scope)
+                for (int i = 0; i < varInfos.length; i++) {
+                    if (varInfos[i].getScope() != scope)
                         continue;
                     // If the scripting variable has been declared, skip codes
                     // for saving and restoring it.
-                    if (declaredVariables.contains(varInfo))
+                    if (declaredVariables.contains(varInfos[i]))
                         continue;
-                    String varName = varInfo.getVarName();
+                    String varName = varInfos[i].getVarName();
                     String tmpVarName = "_jspx_" + varName + "_"
                             + n.getCustomNestingLevel();
                     out.printin(varName);
@@ -2870,18 +2797,18 @@ class Generator {
                     out.println(";");
                 }
             } else {
-                for (TagVariableInfo tagVarInfo : tagVarInfos) {
-                    if (tagVarInfo.getScope() != scope)
+                for (int i = 0; i < tagVarInfos.length; i++) {
+                    if (tagVarInfos[i].getScope() != scope)
                         continue;
                     // If the scripting variable has been declared, skip codes
                     // for saving and restoring it.
-                    if (declaredVariables.contains(tagVarInfo))
+                    if (declaredVariables.contains(tagVarInfos[i]))
                         continue;
-                    String varName = tagVarInfo.getNameGiven();
+                    String varName = tagVarInfos[i].getNameGiven();
                     if (varName == null) {
                         varName = n.getTagData().getAttributeString(
-                                tagVarInfo.getNameFromAttribute());
-                    } else if (tagVarInfo.getNameFromAttribute() != null) {
+                                tagVarInfos[i].getNameFromAttribute());
+                    } else if (tagVarInfos[i].getNameFromAttribute() != null) {
                         // alias
                         continue;
                     }
@@ -2917,30 +2844,30 @@ class Generator {
             }
 
             if (varInfos.length > 0) {
-                for (VariableInfo varInfo : varInfos) {
-                    if (varInfo.getScope() == scope) {
-                        out.printin(varInfo.getVarName());
+                for (int i = 0; i < varInfos.length; i++) {
+                    if (varInfos[i].getScope() == scope) {
+                        out.printin(varInfos[i].getVarName());
                         out.print(" = (");
-                        out.print(varInfo.getClassName());
+                        out.print(varInfos[i].getClassName());
                         out.print(") _jspx_page_context.findAttribute(");
-                        out.print(quote(varInfo.getVarName()));
+                        out.print(quote(varInfos[i].getVarName()));
                         out.println(");");
                     }
                 }
             } else {
-                for (TagVariableInfo tagVarInfo : tagVarInfos) {
-                    if (tagVarInfo.getScope() == scope) {
-                        String name = tagVarInfo.getNameGiven();
+                for (int i = 0; i < tagVarInfos.length; i++) {
+                    if (tagVarInfos[i].getScope() == scope) {
+                        String name = tagVarInfos[i].getNameGiven();
                         if (name == null) {
                             name = n.getTagData().getAttributeString(
-                                    tagVarInfo.getNameFromAttribute());
-                        } else if (tagVarInfo.getNameFromAttribute() != null) {
+                                    tagVarInfos[i].getNameFromAttribute());
+                        } else if (tagVarInfos[i].getNameFromAttribute() != null) {
                             // alias
                             continue;
                         }
                         out.printin(name);
                         out.print(" = (");
-                        out.print(tagVarInfo.getClassName());
+                        out.print(tagVarInfos[i].getClassName());
                         out.print(") _jspx_page_context.findAttribute(");
                         out.print(quote(name));
                         out.println(");");
@@ -3107,8 +3034,8 @@ class Generator {
                     sb.append("new java.lang.Class[] {");
 
                     String[] p = attr.getParameterTypeNames();
-                    for (String s : p) {
-                        sb.append(JspUtil.toJavaSourceTypeFromTld(s));
+                    for (int i = 0; i < p.length; i++) {
+                        sb.append(JspUtil.toJavaSourceTypeFromTld(p[i]));
                         sb.append(',');
                     }
                     if (p.length > 0) {
@@ -3122,7 +3049,7 @@ class Generator {
                     String mapName = (attr.getEL() != null) ? attr.getEL()
                             .getMapName() : null;
                     attrValue = elInterpreter.interpreterCall(ctxt,
-                            this.isTagFile, attrValue, c[0], mapName);
+                            this.isTagFile, attrValue, c[0], mapName, false);
                 }
             } else {
                 attrValue = convertString(c[0], attrValue, localName,
@@ -3143,9 +3070,9 @@ class Generator {
             String aliasMapVar = null;
 
             boolean aliasSeen = false;
-            for (TagVariableInfo tagVar : tagVars) {
+            for (int i = 0; i < tagVars.length; i++) {
 
-                String nameFrom = tagVar.getNameFromAttribute();
+                String nameFrom = tagVars[i].getNameFromAttribute();
                 if (nameFrom != null) {
                     String aliasedName = n.getAttributeValue(nameFrom);
                     if (aliasedName == null)
@@ -3160,7 +3087,7 @@ class Generator {
                     }
                     out.printin(aliasMapVar);
                     out.print(".put(");
-                    out.print(quote(tagVar.getNameGiven()));
+                    out.print(quote(tagVars[i].getNameGiven()));
                     out.print(", ");
                     out.print(quote(aliasedName));
                     out.println(");");
@@ -3271,18 +3198,12 @@ class Generator {
         }
 
         /*
-         * @param c
-         *              The target class to which to coerce the given string
-         * @param s
-         *              The string value
-         * @param attrName
-         *              The name of the attribute whose value is being supplied
-         * @param propEditorClass
-         *              The property editor for the given attribute
-         * @param isNamedAttribute
-         *              true if the given attribute is a named attribute (that
-         *              is, specified using the jsp:attribute standard action),
-         *              and false otherwise
+         * @param c The target class to which to coerce the given string @param
+         * s The string value @param attrName The name of the attribute whose
+         * value is being supplied @param propEditorClass The property editor
+         * for the given attribute @param isNamedAttribute true if the given
+         * attribute is a named attribute (that is, specified using the
+         * jsp:attribute standard action), and false otherwise
          */
         private String convertString(Class<?> c, String s, String attrName,
                 Class<?> propEditorClass, boolean isNamedAttribute) {
@@ -3410,13 +3331,9 @@ class Generator {
          * Generate the code required to obtain the runtime value of the given
          * named attribute.
          *
-         * @param n The named attribute node whose value is required
-         *
          * @return The name of the temporary variable the result is stored in.
-         *
-         * @throws JasperException If an error
          */
-        public String generateNamedAttributeValue(Node.NamedAttribute n)
+        public String generateNamedAttributeValue(NamedAttribute n)
                 throws JasperException {
 
             String varName = n.getTemporaryVariableName();
@@ -3436,7 +3353,8 @@ class Generator {
                         out.printil("java.lang.String "
                                 + varName
                                 + " = "
-                                + quote(bodyElement.getText()) + ";");
+                                + quote(((Node.TemplateText) bodyElement)
+                                                .getText()) + ";");
                     }
                 }
 
@@ -3469,12 +3387,9 @@ class Generator {
          *            The variable the tag handler is stored in, so the fragment
          *            knows its parent tag.
          * @return The name of the temporary variable the fragment is stored in.
-         *
-         * @throws JasperException If an error occurs trying to generate the
-         *         fragment
          */
-        public String generateNamedAttributeJspFragment(Node.NamedAttribute n,
-                String tagHandlerVar) throws JasperException {
+        public String generateNamedAttributeJspFragment(NamedAttribute n,
+                                                        String tagHandlerVar) throws JasperException {
             String varName = n.getTemporaryVariableName();
 
             out.printin("javax.servlet.jsp.tagext.JspFragment " + varName
@@ -3493,10 +3408,12 @@ class Generator {
             ci = ((Node.CustomTag) n).getChildInfo();
         } else if (n instanceof Node.JspBody) {
             ci = ((Node.JspBody) n).getChildInfo();
-        } else if (n instanceof Node.NamedAttribute) {
-            ci = ((Node.NamedAttribute) n).getChildInfo();
+        } else if (n instanceof NamedAttribute) {
+            ci = ((NamedAttribute) n).getChildInfo();
         } else {
-            throw new JasperException(Localizer.getMessage("jsp.error.internal.unexpectedNodeType"));
+            // Cannot access err since this method is static, but at
+            // least flag an error.
+            throw new JasperException("Unexpected Node Type");
         }
 
         if (ci.hasUseBean()) {
@@ -3517,7 +3434,8 @@ class Generator {
      */
     private void genCommonPostamble() {
         // Append any methods that were generated in the buffer.
-        for (GenBuffer methodBuffer : methodsBuffered) {
+        for (int i = 0; i < methodsBuffered.size(); i++) {
+            GenBuffer methodBuffer = methodsBuffered.get(i);
             methodBuffer.adjustJavaLines(out.getJavaLine() - 1);
             out.printMultiLn(methodBuffer.toString());
         }
@@ -3589,7 +3507,7 @@ class Generator {
      */
     Generator(ServletWriter out, Compiler compiler) throws JasperException {
         this.out = out;
-        methodsBuffered = new ArrayList<>();
+        methodsBuffered = new ArrayList<GenBuffer>();
         charArrayBuffer = null;
         err = compiler.getErrorDispatcher();
         ctxt = compiler.getCompilationContext();
@@ -3624,7 +3542,7 @@ class Generator {
         varInfoNames = pageInfo.getVarInfoNames();
         breakAtLF = ctxt.getOptions().getMappedFile();
         if (isPoolingEnabled) {
-            tagHandlerPoolNames = new Vector<>();
+            tagHandlerPoolNames = new Vector<String>();
         } else {
             tagHandlerPoolNames = null;
         }
@@ -3641,8 +3559,6 @@ class Generator {
      *            The compiler
      * @param page
      *            The input page
-     *
-     * @throws JasperException If something goes wrong during generation
      */
     public static void generate(ServletWriter out, Compiler compiler,
             Node.Nodes page) throws JasperException {
@@ -3698,8 +3614,8 @@ class Generator {
         String className = tagInfo.getTagClassName();
         int lastIndex = className.lastIndexOf('.');
         if (lastIndex != -1) {
-            String packageName = className.substring(0, lastIndex);
-            genPreamblePackage(packageName);
+            String pkgName = className.substring(0, lastIndex);
+            genPreamblePackage(pkgName);
             className = className.substring(lastIndex + 1);
         }
 
@@ -3710,14 +3626,13 @@ class Generator {
         out.printin("public final class ");
         out.println(className);
         out.printil("    extends javax.servlet.jsp.tagext.SimpleTagSupport");
-        out.printin("    implements org.apache.jasper.runtime.JspSourceDependent,");
-        out.println();
-        out.printin("                 org.apache.jasper.runtime.JspSourceImports");
+        out.printin("    implements org.apache.jasper.runtime.JspSourceDependent");
         if (tagInfo.hasDynamicAttributes()) {
             out.println(",");
             out.printin("               javax.servlet.jsp.tagext.DynamicAttributes");
         }
         out.println(" {");
+        out.println();
         out.pushIndent();
 
         /*
@@ -3851,34 +3766,34 @@ class Generator {
 
         // Declare attributes
         TagAttributeInfo[] attrInfos = tagInfo.getAttributes();
-        for (TagAttributeInfo info : attrInfos) {
+        for (int i = 0; i < attrInfos.length; i++) {
             out.printin("private ");
-            if (info.isFragment()) {
+            if (attrInfos[i].isFragment()) {
                 out.print("javax.servlet.jsp.tagext.JspFragment ");
             } else {
-                out.print(JspUtil.toJavaSourceType(info.getTypeName()));
+                out.print(JspUtil.toJavaSourceType(attrInfos[i].getTypeName()));
                 out.print(" ");
             }
             out.print(JspUtil.makeJavaIdentifierForAttribute(
-                    info.getName()));
+                    attrInfos[i].getName()));
             out.println(";");
         }
         out.println();
 
         // Define attribute getter and setter methods
-        for (TagAttributeInfo attrInfo : attrInfos) {
+        for (int i = 0; i < attrInfos.length; i++) {
             String javaName =
-                    JspUtil.makeJavaIdentifierForAttribute(attrInfo.getName());
+                JspUtil.makeJavaIdentifierForAttribute(attrInfos[i].getName());
 
             // getter method
             out.printin("public ");
-            if (attrInfo.isFragment()) {
+            if (attrInfos[i].isFragment()) {
                 out.print("javax.servlet.jsp.tagext.JspFragment ");
             } else {
-                out.print(JspUtil.toJavaSourceType(attrInfo.getTypeName()));
+                out.print(JspUtil.toJavaSourceType(attrInfos[i].getTypeName()));
                 out.print(" ");
             }
-            out.print(toGetterMethod(attrInfo.getName()));
+            out.print(toGetterMethod(attrInfos[i].getName()));
             out.println(" {");
             out.pushIndent();
             out.printin("return this.");
@@ -3890,12 +3805,12 @@ class Generator {
 
             // setter method
             out.printin("public void ");
-            out.print(toSetterMethodName(attrInfo.getName()));
-            if (attrInfo.isFragment()) {
+            out.print(toSetterMethodName(attrInfos[i].getName()));
+            if (attrInfos[i].isFragment()) {
                 out.print("(javax.servlet.jsp.tagext.JspFragment ");
             } else {
                 out.print("(");
-                out.print(JspUtil.toJavaSourceType(attrInfo.getTypeName()));
+                out.print(JspUtil.toJavaSourceType(attrInfos[i].getTypeName()));
                 out.print(" ");
             }
             out.print(javaName);
@@ -3909,7 +3824,7 @@ class Generator {
             if (ctxt.isTagFile()) {
                 // Tag files should also set jspContext attributes
                 out.printin("jspContext.setAttribute(\"");
-                out.print(attrInfo.getName());
+                out.print(attrInfos[i].getName());
                 out.print("\", ");
                 out.print(javaName);
                 out.println(");");
@@ -3935,9 +3850,9 @@ class Generator {
         // Determine if there are any aliases
         boolean aliasSeen = false;
         TagVariableInfo[] tagVars = tagInfo.getTagVariableInfos();
-        for (TagVariableInfo var : tagVars) {
-            if (var.getNameFromAttribute() != null
-                    && var.getNameGiven() != null) {
+        for (int i = 0; i < tagVars.length; i++) {
+            if (tagVars[i].getNameFromAttribute() != null
+                    && tagVars[i].getNameGiven() != null) {
                 aliasSeen = true;
                 break;
             }
@@ -3954,41 +3869,41 @@ class Generator {
         out.printil("java.util.ArrayList _jspx_at_begin = null;");
         out.printil("java.util.ArrayList _jspx_at_end = null;");
 
-        for (TagVariableInfo tagVar : tagVars) {
+        for (int i = 0; i < tagVars.length; i++) {
 
-            switch (tagVar.getScope()) {
-                case VariableInfo.NESTED:
-                    if (!nestedSeen) {
-                        out.printil("_jspx_nested = new java.util.ArrayList();");
-                        nestedSeen = true;
-                    }
-                    out.printin("_jspx_nested.add(");
-                    break;
+            switch (tagVars[i].getScope()) {
+            case VariableInfo.NESTED:
+                if (!nestedSeen) {
+                    out.printil("_jspx_nested = new java.util.ArrayList();");
+                    nestedSeen = true;
+                }
+                out.printin("_jspx_nested.add(");
+                break;
 
-                case VariableInfo.AT_BEGIN:
-                    if (!atBeginSeen) {
-                        out.printil("_jspx_at_begin = new java.util.ArrayList();");
-                        atBeginSeen = true;
-                    }
-                    out.printin("_jspx_at_begin.add(");
-                    break;
+            case VariableInfo.AT_BEGIN:
+                if (!atBeginSeen) {
+                    out.printil("_jspx_at_begin = new java.util.ArrayList();");
+                    atBeginSeen = true;
+                }
+                out.printin("_jspx_at_begin.add(");
+                break;
 
-                case VariableInfo.AT_END:
-                    if (!atEndSeen) {
-                        out.printil("_jspx_at_end = new java.util.ArrayList();");
-                        atEndSeen = true;
-                    }
-                    out.printin("_jspx_at_end.add(");
-                    break;
+            case VariableInfo.AT_END:
+                if (!atEndSeen) {
+                    out.printil("_jspx_at_end = new java.util.ArrayList();");
+                    atEndSeen = true;
+                }
+                out.printin("_jspx_at_end.add(");
+                break;
             } // switch
 
-            out.print(quote(tagVar.getNameGiven()));
+            out.print(quote(tagVars[i].getNameGiven()));
             out.println(");");
         }
         if (aliasSeen) {
-            out.printil("this.jspContext = new org.apache.jasper.runtime.JspContextWrapper(this, ctx, _jspx_nested, _jspx_at_begin, _jspx_at_end, aliasMap);");
+            out.printil("this.jspContext = new org.apache.jasper.runtime.JspContextWrapper(ctx, _jspx_nested, _jspx_at_begin, _jspx_at_end, aliasMap);");
         } else {
-            out.printil("this.jspContext = new org.apache.jasper.runtime.JspContextWrapper(this, ctx, _jspx_nested, _jspx_at_begin, _jspx_at_end, null);");
+            out.printil("this.jspContext = new org.apache.jasper.runtime.JspContextWrapper(ctx, _jspx_nested, _jspx_at_begin, _jspx_at_end, null);");
         }
         out.popIndent();
         out.printil("}");
@@ -4120,23 +4035,23 @@ class Generator {
         TagHandlerInfo(Node n, Class<?> tagHandlerClass,
                 ErrorDispatcher err) throws JasperException {
             this.tagHandlerClass = tagHandlerClass;
-            this.methodMaps = new Hashtable<>();
-            this.propertyEditorMaps = new Hashtable<>();
+            this.methodMaps = new Hashtable<String, Method>();
+            this.propertyEditorMaps = new Hashtable<String, Class<?>>();
 
             try {
                 BeanInfo tagClassInfo = Introspector
                         .getBeanInfo(tagHandlerClass);
                 PropertyDescriptor[] pd = tagClassInfo.getPropertyDescriptors();
-                for (PropertyDescriptor propertyDescriptor : pd) {
+                for (int i = 0; i < pd.length; i++) {
                     /*
                      * FIXME: should probably be checking for things like
                      * pageContext, bodyContent, and parent here -akv
                      */
-                    if (propertyDescriptor.getWriteMethod() != null) {
-                        methodMaps.put(propertyDescriptor.getName(), propertyDescriptor.getWriteMethod());
+                    if (pd[i].getWriteMethod() != null) {
+                        methodMaps.put(pd[i].getName(), pd[i].getWriteMethod());
                     }
-                    if (propertyDescriptor.getPropertyEditorClass() != null)
-                        propertyEditorMaps.put(propertyDescriptor.getName(), propertyDescriptor
+                    if (pd[i].getPropertyEditorClass() != null)
+                        propertyEditorMaps.put(pd[i].getName(), pd[i]
                                 .getPropertyEditorClass());
                 }
             } catch (IntrospectionException ie) {
@@ -4145,14 +4060,23 @@ class Generator {
             }
         }
 
+        /**
+         * XXX
+         */
         public Method getSetterMethod(String attrName) {
             return methodMaps.get(attrName);
         }
 
+        /**
+         * XXX
+         */
         public Class<?> getPropertyEditorClass(String attrName) {
             return propertyEditorMaps.get(attrName);
         }
 
+        /**
+         * XXX
+         */
         public Class<?> getTagHandlerClass() {
             return tagHandlerClass;
         }
@@ -4205,9 +4129,6 @@ class Generator {
          * Adjust the Java Lines. This is necessary because the Java lines
          * stored with the nodes are relative the beginning of this buffer and
          * need to be adjusted when this buffer is inserted into the source.
-         *
-         * @param offset The offset to apply to the start line and end line of
-         *        and Java lines of nodes in this buffer
          */
         public void adjustJavaLines(final int offset) {
 
@@ -4277,7 +4198,7 @@ class Generator {
         // True if the helper class should be generated.
         private boolean used = false;
 
-        private List<Fragment> fragments = new ArrayList<>();
+        private ArrayList<Fragment> fragments = new ArrayList<Fragment>();
 
         private String className;
 
@@ -4371,7 +4292,8 @@ class Generator {
         public void generatePostamble() {
             ServletWriter out = this.classBuffer.getOut();
             // Generate all fragment methods:
-            for (Fragment fragment : fragments) {
+            for (int i = 0; i < fragments.size(); i++) {
+                Fragment fragment = fragments.get(i);
                 fragment.getGenBuffer().adjustJavaLines(out.getJavaLine() - 1);
                 out.printMultiLn(fragment.getGenBuffer().toString());
             }
@@ -4445,7 +4367,8 @@ class Generator {
         }
 
         public void adjustJavaLines(int offset) {
-            for (Fragment fragment : fragments) {
+            for (int i = 0; i < fragments.size(); i++) {
+                Fragment fragment = fragments.get(i);
                 fragment.getGenBuffer().adjustJavaLines(offset);
             }
         }

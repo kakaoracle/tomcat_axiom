@@ -21,23 +21,28 @@ import java.util.LinkedList;
 import java.util.List;
 
 /**
- * A very simple thread pool class.  The pool size is set at
- * construction time and remains fixed.  Threads are cycled
- * through a FIFO idle queue.
+ * @author not attributable
  * @version 1.0
  */
-public class RxTaskPool {
 
-    final List<AbstractRxTask> idle = new LinkedList<>();
-    final List<AbstractRxTask> used = new LinkedList<>();
+public class RxTaskPool
+{
+    /**
+     * A very simple thread pool class.  The pool size is set at
+     * construction time and remains fixed.  Threads are cycled
+     * through a FIFO idle queue.
+     */
 
-    final Object mutex = new Object();
+    List<AbstractRxTask> idle = new LinkedList<AbstractRxTask>();
+    List<AbstractRxTask> used = new LinkedList<AbstractRxTask>();
+
+    Object mutex = new Object();
     boolean running = true;
 
     private int maxTasks;
     private int minTasks;
 
-    private final TaskCreator creator;
+    private TaskCreator creator = null;
 
 
     public RxTaskPool (int maxTasks, int minTasks, TaskCreator creator) throws Exception {
@@ -59,7 +64,6 @@ public class RxTaskPool {
 
     /**
      * Find an idle worker thread, if any.  Could return null.
-     * @return a worker
      */
     public AbstractRxTask getRxTask()
     {
@@ -79,14 +83,14 @@ public class RxTaskPool {
                 } else {
                     try {
                         mutex.wait();
-                    } catch (java.lang.InterruptedException x) {
+                    } catch (InterruptedException x) {
                         Thread.currentThread().interrupt();
                     }
                 }
             }//while
             if ( worker != null ) used.add(worker);
         }
-        return worker;
+        return (worker);
     }
 
     public int available() {
@@ -96,7 +100,6 @@ public class RxTaskPool {
     /**
      * Called by the worker thread to return itself to the
      * idle pool.
-     * @param worker The worker
      */
     public void returnWorker (AbstractRxTask worker) {
         if ( running ) {
@@ -105,12 +108,14 @@ public class RxTaskPool {
                 //if ( idle.size() < minThreads && !idle.contains(worker)) idle.add(worker);
                 if ( idle.size() < maxTasks && !idle.contains(worker)) idle.add(worker); //let max be the upper limit
                 else {
-                    worker.close();
+                    worker.setDoRun(false);
+                    synchronized (worker){worker.notify();}
                 }
-                mutex.notifyAll();
+                mutex.notify();
             }
-        } else {
-            worker.close();
+        }else {
+            worker.setDoRun(false);
+            synchronized (worker){worker.notify();}
         }
     }
 

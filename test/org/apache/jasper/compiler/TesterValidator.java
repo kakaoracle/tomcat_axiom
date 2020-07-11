@@ -19,8 +19,6 @@ package org.apache.jasper.compiler;
 import org.junit.Assert;
 import org.junit.Test;
 
-import org.apache.tomcat.util.security.Escape;
-
 /**
  * Performance tests for {@link Validator}.
  */
@@ -42,26 +40,26 @@ public class TesterValidator {
     private static void doTestBug53867() {
         int count = 100000;
 
-        for (String testDatum : bug53867TestData) {
-            Assert.assertEquals(doTestBug53867OldVersion(testDatum),
-                    Escape.xml(testDatum));
+        for (int j = 0; j < bug53867TestData.length; j++) {
+            Assert.assertEquals(doTestBug53867OldVersion(bug53867TestData[j]),
+                    Validator.xmlEscape(bug53867TestData[j]));
         }
 
         for (int i = 0; i < 100; i++) {
-            for (String bug53867TestDatum : bug53867TestData) {
-                doTestBug53867OldVersion(bug53867TestDatum);
+            for (int j = 0; j < bug53867TestData.length; j++) {
+                doTestBug53867OldVersion(bug53867TestData[j]);
             }
         }
         for (int i = 0; i < 100; i++) {
-            for (String bug53867TestDatum : bug53867TestData) {
-                Escape.xml(bug53867TestDatum);
+            for (int j = 0; j < bug53867TestData.length; j++) {
+                Validator.xmlEscape(bug53867TestData[j]);
             }
         }
 
         long start = System.currentTimeMillis();
         for (int i = 0; i < count; i++) {
-            for (String bug53867TestDatum : bug53867TestData) {
-                doTestBug53867OldVersion(bug53867TestDatum);
+            for (int j = 0; j < bug53867TestData.length; j++) {
+                doTestBug53867OldVersion(bug53867TestData[j]);
             }
         }
         System.out.println(
@@ -69,8 +67,8 @@ public class TesterValidator {
 
         start = System.currentTimeMillis();
         for (int i = 0; i < count; i++) {
-            for (String bug53867TestDatum : bug53867TestData) {
-                Escape.xml(bug53867TestDatum);
+            for (int j = 0; j < bug53867TestData.length; j++) {
+                Validator.xmlEscape(bug53867TestData[j]);
             }
         }
         System.out.println(

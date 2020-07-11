@@ -17,7 +17,6 @@
 package org.apache.catalina.filters;
 
 import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -27,21 +26,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import javax.servlet.Filter;
 import javax.servlet.FilterChain;
-import javax.servlet.GenericFilter;
+import javax.servlet.FilterConfig;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
-import javax.servlet.ServletRequestWrapper;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.PushBuilder;
 
 import org.apache.catalina.AccessLog;
 import org.apache.catalina.Globals;
-import org.apache.catalina.connector.RequestFacade;
-import org.apache.catalina.util.RequestUtil;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.http.FastHttpDateFormat;
@@ -111,14 +107,12 @@ import org.apache.tomcat.util.res.StringManager;
  * in the <code>proxiesHeader</code> value</td>
  * <td>RemoteIPInternalProxy</td>
  * <td>Regular expression (in the syntax supported by
- * {@link java.util.regex.Pattern java.util.regex})</td>
+ * {@link Pattern java.util.regex})</td>
  * <td>10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|
  *     169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|
- *     172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|
- *     172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}|
  *     0:0:0:0:0:0:0:1|::1
  *     <br>
- * By default, 10/8, 192.168/16, 169.254/16, 127/8, 172.16/12, and 0:0:0:0:0:0:0:1 are allowed.</td>
+ * By default, 10/8, 192.168/16, 169.254/16, 127/8 and 0:0:0:0:0:0:0:1 are allowed.</td>
  * </tr>
  * <tr>
  * <td>proxiesHeader</td>
@@ -135,7 +129,7 @@ import org.apache.tomcat.util.res.StringManager;
  * trusted and will appear in the <code>proxiesHeader</code> value</td>
  * <td>RemoteIPTrustedProxy</td>
  * <td>Regular expression (in the syntax supported by
- * {@link java.util.regex.Pattern java.util.regex})</td>
+ * {@link Pattern java.util.regex})</td>
  * <td>&nbsp;</td>
  * </tr>
  * <tr>
@@ -441,13 +435,11 @@ import org.apache.tomcat.util.res.StringManager;
  * </p>
  * <hr>
  */
-public class RemoteIpFilter extends GenericFilter {
-
-    private static final long serialVersionUID = 1L;
+public class RemoteIpFilter implements Filter {
 
     public static class XForwardedRequest extends HttpServletRequestWrapper {
 
-        protected final Map<String, List<String>> headers;
+        protected Map<String, List<String>> headers;
 
         protected String localName;
 
@@ -476,7 +468,7 @@ public class RemoteIpFilter extends GenericFilter {
             this.serverName = request.getServerName();
             this.serverPort = request.getServerPort();
 
-            headers = new HashMap<>();
+            headers = new HashMap<String, List<String>>();
             for (Enumeration<String> headerNames = request.getHeaderNames(); headerNames.hasMoreElements();) {
                 String header = headerNames.nextElement();
                 headers.put(header, Collections.list(request.getHeaders(header)));
@@ -629,20 +621,23 @@ public class RemoteIpFilter extends GenericFilter {
 
         @Override
         public StringBuffer getRequestURL() {
-            return RequestUtil.getRequestURL(this);
-        }
+            StringBuffer url = new StringBuffer();
+            String scheme = getScheme();
+            int port = getServerPort();
+            if (port < 0) {
+                port = 80; // Work around java.net.URL bug
+            }
+            url.append(scheme);
+            url.append("://");
+            url.append(getServerName());
+            if ((scheme.equals("http") && (port != 80))
+                || (scheme.equals("https") && (port != 443))) {
+                url.append(':');
+                url.append(port);
+            }
+            url.append(getRequestURI());
 
-        @Override
-        public PushBuilder newPushBuilder() {
-            ServletRequest current = getRequest();
-            while (current instanceof ServletRequestWrapper) {
-                current = ((ServletRequestWrapper) current).getRequest();
-            }
-            if (current instanceof RequestFacade) {
-                return ((RequestFacade) current).newPushBuilder(this);
-            } else {
-                return null;
-            }
+            return url;
         }
     }
 
@@ -660,7 +655,7 @@ public class RemoteIpFilter extends GenericFilter {
 
     // Log must be non-static as loggers are created per class-loader and this
     // Filter may be used in multiple class loaders
-    private transient Log log = LogFactory.getLog(RemoteIpFilter.class);
+    private final Log log = LogFactory.getLog(RemoteIpFilter.class);
     protected static final StringManager sm = StringManager.getManager(RemoteIpFilter.class);
 
     protected static final String PROTOCOL_HEADER_PARAMETER = "protocolHeader";
@@ -733,9 +728,6 @@ public class RemoteIpFilter extends GenericFilter {
             "192\\.168\\.\\d{1,3}\\.\\d{1,3}|" +
             "169\\.254\\.\\d{1,3}\\.\\d{1,3}|" +
             "127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|" +
-            "172\\.1[6-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" +
-            "172\\.2[0-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" +
-            "172\\.3[0-1]{1}\\.\\d{1,3}\\.\\d{1,3}|" +
             "0:0:0:0:0:0:0:1|::1");
 
     /**
@@ -773,6 +765,11 @@ public class RemoteIpFilter extends GenericFilter {
      */
     private Pattern trustedProxies = null;
 
+    @Override
+    public void destroy() {
+        // NOOP
+    }
+
     public void doFilter(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
 
         boolean isInternal = internalProxies != null &&
@@ -782,7 +779,7 @@ public class RemoteIpFilter extends GenericFilter {
                 trustedProxies.matcher(request.getRemoteAddr()).matches())) {
             String remoteIp = null;
             // In java 6, proxiesHeaderValue should be declared as a java.util.Deque
-            LinkedList<String> proxiesHeaderValue = new LinkedList<>();
+            LinkedList<String> proxiesHeaderValue = new LinkedList<String>();
             StringBuilder concatRemoteIpHeaderValue = new StringBuilder();
 
             for (Enumeration<String> e = request.getHeaders(remoteIpHeader); e.hasMoreElements();) {
@@ -813,7 +810,7 @@ public class RemoteIpFilter extends GenericFilter {
                 }
             }
             // continue to loop on remoteIpHeaderValue to build the new value of the remoteIpHeader
-            LinkedList<String> newRemoteIpHeaderValue = new LinkedList<>();
+            LinkedList<String> newRemoteIpHeaderValue = new LinkedList<String>();
             for (; idx >= 0; idx--) {
                 String currentRemoteIp = remoteIpHeaderValue[idx];
                 newRemoteIpHeaderValue.addFirst(currentRemoteIp);
@@ -924,8 +921,8 @@ public class RemoteIpFilter extends GenericFilter {
         if (forwardedProtocols.length == 0) {
             return false;
         }
-        for (String forwardedProtocol : forwardedProtocols) {
-            if (!protocolHeaderHttpsValue.equalsIgnoreCase(forwardedProtocol)) {
+        for (int i = 0; i < forwardedProtocols.length; i++) {
+            if (!protocolHeaderHttpsValue.equalsIgnoreCase(forwardedProtocols[i])) {
                 return false;
             }
         }
@@ -1014,58 +1011,58 @@ public class RemoteIpFilter extends GenericFilter {
     }
 
     @Override
-    public void init() throws ServletException {
-        if (getInitParameter(INTERNAL_PROXIES_PARAMETER) != null) {
-            setInternalProxies(getInitParameter(INTERNAL_PROXIES_PARAMETER));
+    public void init(FilterConfig filterConfig) throws ServletException {
+        if (filterConfig.getInitParameter(INTERNAL_PROXIES_PARAMETER) != null) {
+            setInternalProxies(filterConfig.getInitParameter(INTERNAL_PROXIES_PARAMETER));
         }
 
-        if (getInitParameter(PROTOCOL_HEADER_PARAMETER) != null) {
-            setProtocolHeader(getInitParameter(PROTOCOL_HEADER_PARAMETER));
+        if (filterConfig.getInitParameter(PROTOCOL_HEADER_PARAMETER) != null) {
+            setProtocolHeader(filterConfig.getInitParameter(PROTOCOL_HEADER_PARAMETER));
         }
 
-        if (getInitParameter(PROTOCOL_HEADER_HTTPS_VALUE_PARAMETER) != null) {
-            setProtocolHeaderHttpsValue(getInitParameter(PROTOCOL_HEADER_HTTPS_VALUE_PARAMETER));
+        if (filterConfig.getInitParameter(PROTOCOL_HEADER_HTTPS_VALUE_PARAMETER) != null) {
+            setProtocolHeaderHttpsValue(filterConfig.getInitParameter(PROTOCOL_HEADER_HTTPS_VALUE_PARAMETER));
         }
 
-        if (getInitParameter(HOST_HEADER_PARAMETER) != null) {
-            setHostHeader(getInitParameter(HOST_HEADER_PARAMETER));
+        if (filterConfig.getInitParameter(HOST_HEADER_PARAMETER) != null) {
+            setHostHeader(filterConfig.getInitParameter(HOST_HEADER_PARAMETER));
         }
 
-        if (getInitParameter(PORT_HEADER_PARAMETER) != null) {
-            setPortHeader(getInitParameter(PORT_HEADER_PARAMETER));
+        if (filterConfig.getInitParameter(PORT_HEADER_PARAMETER) != null) {
+            setPortHeader(filterConfig.getInitParameter(PORT_HEADER_PARAMETER));
         }
 
-        if (getInitParameter(CHANGE_LOCAL_NAME_PARAMETER) != null) {
-            setChangeLocalName(Boolean.parseBoolean(getInitParameter(CHANGE_LOCAL_NAME_PARAMETER)));
+        if (filterConfig.getInitParameter(CHANGE_LOCAL_PORT_PARAMETER) != null) {
+            setChangeLocalPort(Boolean.parseBoolean(filterConfig.getInitParameter(CHANGE_LOCAL_PORT_PARAMETER)));
         }
 
-        if (getInitParameter(CHANGE_LOCAL_PORT_PARAMETER) != null) {
-            setChangeLocalPort(Boolean.parseBoolean(getInitParameter(CHANGE_LOCAL_PORT_PARAMETER)));
+        if (filterConfig.getInitParameter(CHANGE_LOCAL_NAME_PARAMETER) != null) {
+            setChangeLocalName(Boolean.parseBoolean(filterConfig.getInitParameter(CHANGE_LOCAL_NAME_PARAMETER)));
         }
 
-        if (getInitParameter(PROXIES_HEADER_PARAMETER) != null) {
-            setProxiesHeader(getInitParameter(PROXIES_HEADER_PARAMETER));
+        if (filterConfig.getInitParameter(PROXIES_HEADER_PARAMETER) != null) {
+            setProxiesHeader(filterConfig.getInitParameter(PROXIES_HEADER_PARAMETER));
         }
 
-        if (getInitParameter(REMOTE_IP_HEADER_PARAMETER) != null) {
-            setRemoteIpHeader(getInitParameter(REMOTE_IP_HEADER_PARAMETER));
+        if (filterConfig.getInitParameter(REMOTE_IP_HEADER_PARAMETER) != null) {
+            setRemoteIpHeader(filterConfig.getInitParameter(REMOTE_IP_HEADER_PARAMETER));
         }
 
-        if (getInitParameter(TRUSTED_PROXIES_PARAMETER) != null) {
-            setTrustedProxies(getInitParameter(TRUSTED_PROXIES_PARAMETER));
+        if (filterConfig.getInitParameter(TRUSTED_PROXIES_PARAMETER) != null) {
+            setTrustedProxies(filterConfig.getInitParameter(TRUSTED_PROXIES_PARAMETER));
         }
 
-        if (getInitParameter(HTTP_SERVER_PORT_PARAMETER) != null) {
+        if (filterConfig.getInitParameter(HTTP_SERVER_PORT_PARAMETER) != null) {
             try {
-                setHttpServerPort(Integer.parseInt(getInitParameter(HTTP_SERVER_PORT_PARAMETER)));
+                setHttpServerPort(Integer.parseInt(filterConfig.getInitParameter(HTTP_SERVER_PORT_PARAMETER)));
             } catch (NumberFormatException e) {
                 throw new NumberFormatException(sm.getString("remoteIpFilter.invalidNumber", HTTP_SERVER_PORT_PARAMETER, e.getLocalizedMessage()));
             }
         }
 
-        if (getInitParameter(HTTPS_SERVER_PORT_PARAMETER) != null) {
+        if (filterConfig.getInitParameter(HTTPS_SERVER_PORT_PARAMETER) != null) {
             try {
-                setHttpsServerPort(Integer.parseInt(getInitParameter(HTTPS_SERVER_PORT_PARAMETER)));
+                setHttpsServerPort(Integer.parseInt(filterConfig.getInitParameter(HTTPS_SERVER_PORT_PARAMETER)));
             } catch (NumberFormatException e) {
                 throw new NumberFormatException(sm.getString("remoteIpFilter.invalidNumber", HTTPS_SERVER_PORT_PARAMETER, e.getLocalizedMessage()));
             }
@@ -1280,16 +1277,5 @@ public class RemoteIpFilter extends GenericFilter {
         } else {
             this.trustedProxies = Pattern.compile(trustedProxies);
         }
-    }
-
-
-    /*
-     * Log objects are not Serializable but this Filter is because it extends
-     * GenericFilter. Tomcat won't serialize a Filter but in case something else
-     * does...
-     */
-    private void readObject(ObjectInputStream ois) throws ClassNotFoundException, IOException {
-        ois.defaultReadObject();
-        log = LogFactory.getLog(RemoteIpFilter.class);
     }
 }

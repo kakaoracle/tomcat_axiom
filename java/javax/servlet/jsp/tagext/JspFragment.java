@@ -69,7 +69,7 @@ public abstract class JspFragment {
      *     invoked this fragment is to cease evaluation.  The container
      *     must throw this exception if a Classic Tag Handler returned
      *     Tag.SKIP_PAGE or if a Simple Tag Handler threw SkipPageException.
-     * @throws java.io.IOException If there was an error writing to the
+     * @throws IOException If there was an error writing to the
      *     stream.
      */
     public abstract void invoke( Writer out )

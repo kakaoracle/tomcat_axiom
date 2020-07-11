@@ -16,7 +16,6 @@
  */
 package org.apache.catalina.authenticator;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,16 +27,17 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.deploy.LoginConfig;
+import org.apache.catalina.deploy.SecurityCollection;
+import org.apache.catalina.deploy.SecurityConstraint;
 import org.apache.catalina.startup.TesterMapRealm;
 import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.catalina.valves.RemoteIpValve;
+import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.codec.binary.Base64;
-import org.apache.tomcat.util.descriptor.web.LoginConfig;
-import org.apache.tomcat.util.descriptor.web.SecurityCollection;
-import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
 
 public class TestAuthInfoResponseHeaders extends TomcatBaseTest {
 
@@ -67,7 +67,7 @@ public class TestAuthInfoResponseHeaders extends TomcatBaseTest {
             password = aPassword;
             String userCredentials = username + ":" + password;
             byte[] credentialsBytes =
-                    userCredentials.getBytes(StandardCharsets.ISO_8859_1);
+                    userCredentials.getBytes(B2CConverter.ISO_8859_1);
             String base64auth = Base64.encodeBase64String(credentialsBytes);
             credentials= method + " " + base64auth;
         }
@@ -98,20 +98,20 @@ public class TestAuthInfoResponseHeaders extends TomcatBaseTest {
         }
         getTomcatInstance().start();
 
-        Map<String,List<String>> reqHeaders = new HashMap<>();
+        Map<String,List<String>> reqHeaders = new HashMap<String,List<String>>();
 
-        List<String> auth = new ArrayList<>();
+        List<String> auth = new ArrayList<String>();
         auth.add(new BasicCredentials("Basic", user, pwd).getCredentials());
         reqHeaders.put(CLIENT_AUTH_HEADER, auth);
 
-        List<String> forwardedFor = new ArrayList<>();
+        List<String> forwardedFor = new ArrayList<String>();
         forwardedFor.add("192.168.0.10");
-        List<String> forwardedHost = new ArrayList<>();
+        List<String> forwardedHost = new ArrayList<String>();
         forwardedHost.add("localhost");
         reqHeaders.put("X-Forwarded-For", forwardedFor);
         reqHeaders.put("X-Forwarded-Host", forwardedHost);
 
-        Map<String,List<String>> respHeaders = new HashMap<>();
+        Map<String,List<String>> respHeaders = new HashMap<String,List<String>>();
 
         ByteChunk bc = new ByteChunk();
         int rc = getUrl("http://localhost:" + getPort() + uri, bc, reqHeaders,
@@ -147,9 +147,9 @@ public class TestAuthInfoResponseHeaders extends TomcatBaseTest {
 
         // Add protected servlet
         Tomcat.addServlet(ctxt, "TesterServlet", new TesterServlet());
-        ctxt.addServletMappingDecoded(URI, "TesterServlet");
+        ctxt.addServletMapping(URI, "TesterServlet");
         SecurityCollection collection = new SecurityCollection();
-        collection.addPatternDecoded(URI);
+        collection.addPattern(URI);
         SecurityConstraint sc = new SecurityConstraint();
         sc.addAuthRole(ROLE);
         sc.addCollection(collection);

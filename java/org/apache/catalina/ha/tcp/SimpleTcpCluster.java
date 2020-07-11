@@ -21,6 +21,7 @@ import java.beans.PropertyChangeSupport;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,7 +33,9 @@ import org.apache.catalina.Context;
 import org.apache.catalina.Engine;
 import org.apache.catalina.Host;
 import org.apache.catalina.Lifecycle;
+import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleException;
+import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Valve;
@@ -45,17 +48,21 @@ import org.apache.catalina.ha.ClusterValve;
 import org.apache.catalina.ha.session.ClusterSessionListener;
 import org.apache.catalina.ha.session.DeltaManager;
 import org.apache.catalina.ha.session.JvmRouteBinderValve;
+import org.apache.catalina.ha.session.JvmRouteSessionIDBinderListener;
+import org.apache.catalina.ha.session.SessionMessage;
+import org.apache.catalina.ha.util.IDynamicProperty;
+import org.apache.catalina.mbeans.MBeanUtils;
 import org.apache.catalina.tribes.Channel;
 import org.apache.catalina.tribes.ChannelListener;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.MembershipListener;
 import org.apache.catalina.tribes.group.GroupChannel;
-import org.apache.catalina.tribes.group.interceptors.MessageDispatchInterceptor;
+import org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor;
 import org.apache.catalina.tribes.group.interceptors.TcpFailureDetector;
 import org.apache.catalina.util.LifecycleMBeanBase;
-import org.apache.catalina.util.ToStringUtil;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.IntrospectionUtils;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -65,15 +72,22 @@ import org.apache.tomcat.util.res.StringManager;
  *
  * FIXME wrote testcases
  *
+ * @author Filip Hanik
  * @author Remy Maucherat
  * @author Peter Rossbach
  */
 public class SimpleTcpCluster extends LifecycleMBeanBase
-        implements CatalinaCluster, MembershipListener, ChannelListener{
+        implements CatalinaCluster, LifecycleListener, IDynamicProperty,
+               MembershipListener, ChannelListener{
 
     public static final Log log = LogFactory.getLog(SimpleTcpCluster.class);
 
     // ----------------------------------------------------- Instance Variables
+
+    /**
+     * Descriptive information about this component implementation.
+     */
+    protected static final String info = "SimpleTcpCluster/2.2";
 
     public static final String BEFORE_MEMBERREGISTER_EVENT = "before_member_register";
 
@@ -102,6 +116,11 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
 
 
     /**
+     * Name for logging purpose
+     */
+    protected String clusterImpName = "SimpleTcpCluster";
+
+    /**
      * The string manager for this package.
      */
     protected static final StringManager sm = StringManager.getManager(Constants.Package);
@@ -125,16 +144,17 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     /**
      * The property change support for this component.
      */
-    protected final PropertyChangeSupport support = new PropertyChangeSupport(this);
+    protected PropertyChangeSupport support = new PropertyChangeSupport(this);
 
     /**
      * The context name &lt;-&gt; manager association for distributed contexts.
      */
-    protected final Map<String, ClusterManager> managers = new HashMap<>();
+    protected Map<String, ClusterManager> managers =
+        new HashMap<String, ClusterManager>();
 
     protected ClusterManager managerTemplate = new DeltaManager();
 
-    private final List<Valve> valves = new ArrayList<>();
+    private List<Valve> valves = new ArrayList<Valve>();
 
     private ClusterDeployer clusterDeployer;
     private ObjectName onameClusterDeployer;
@@ -142,23 +162,42 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     /**
      * Listeners of messages
      */
-    protected final List<ClusterListener> clusterListeners = new ArrayList<>();
+    protected List<ClusterListener> clusterListeners = new ArrayList<ClusterListener>();
 
     /**
      * Comment for <code>notifyLifecycleListenerOnFailure</code>
      */
     private boolean notifyLifecycleListenerOnFailure = false;
 
+    /**
+     * dynamic sender <code>properties</code>
+     *
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Deprecated
+    private Map<String, Object> properties = new HashMap<String, Object>();
+
     private int channelSendOptions = Channel.SEND_OPTIONS_ASYNCHRONOUS;
 
     private int channelStartOptions = Channel.DEFAULT;
 
-    private final Map<Member,ObjectName> memberOnameMap = new ConcurrentHashMap<>();
+    private final Map<Member,ObjectName> memberOnameMap =
+            new ConcurrentHashMap<Member,ObjectName>();
 
     // ------------------------------------------------------------- Properties
 
     public SimpleTcpCluster() {
         // NO-OP
+    }
+
+    /**
+     * Return descriptive information about this Cluster implementation and the
+     * corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    @Override
+    public String getInfo() {
+        return (info);
     }
 
     /**
@@ -262,7 +301,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
      */
     @Override
     public Valve[] getValves() {
-        return valves.toArray(new Valve[0]);
+        return valves.toArray(new Valve[valves.size()]);
     }
 
     /**
@@ -338,14 +377,6 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
         this.channelSendOptions = channelSendOptions;
     }
 
-    public void setChannelSendOptions(String channelSendOptions) {
-
-        int value = Channel.parseSendOptions(channelSendOptions);
-        if (value > 0) {
-            this.setChannelSendOptions(value);
-        }
-    }
-
     /**
      * has members
      */
@@ -374,6 +405,100 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
         return channel.getLocalMember(true);
     }
 
+    // ------------------------------------------------------------- dynamic
+    // manager property handling
+
+    /**
+     * JMX hack to direct use at jconsole
+     *
+     * @param name
+     * @param value
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Deprecated
+    public boolean setProperty(String name, String value) {
+        return setProperty(name, (Object) value);
+    }
+
+    /**
+     * set config attributes with reflect and propagate to all managers
+     *
+     * @param name
+     * @param value
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Override
+    @Deprecated
+    public boolean setProperty(String name, Object value) {
+        if (log.isTraceEnabled())
+            log.trace(sm.getString("SimpleTcpCluster.setProperty", name, value,properties.get(name)));
+        properties.put(name, value);
+        //using a dynamic way of setting properties is nice, but a security risk
+        //if exposed through JMX. This way you can sit and try to guess property names,
+        //we will only allow explicit property names
+        log.warn("Dynamic setProperty("+name+",value) has been disabled, please use explicit properties for the element you are trying to identify");
+        return false;
+    }
+
+    /**
+     * get current config
+     *
+     * @param key
+     * @return The property
+     *
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Override
+    @Deprecated
+    public Object getProperty(String key) {
+        if (log.isTraceEnabled())
+            log.trace(sm.getString("SimpleTcpCluster.getProperty", key));
+        return properties.get(key);
+    }
+
+    /**
+     * Get all properties keys
+     *
+     * @return An iterator over the property names.
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Override
+    @Deprecated
+    public Iterator<String> getPropertyNames() {
+        return properties.keySet().iterator();
+    }
+
+    /**
+     * remove a configured property.
+     *
+     * @param key
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Override
+    @Deprecated
+    public void removeProperty(String key) {
+        properties.remove(key);
+    }
+
+    /**
+     * transfer properties from cluster configuration to subelement bean.
+     * @param prefix
+     * @param bean
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Deprecated
+    protected void transferProperty(String prefix, Object bean) {
+        if (prefix != null) {
+            for (Iterator<String> iter = getPropertyNames(); iter.hasNext();) {
+                String pkey = iter.next();
+                if (pkey.startsWith(prefix)) {
+                    String key = pkey.substring(prefix.length() + 1);
+                    Object value = getProperty(pkey);
+                    IntrospectionUtils.setProperty(bean, key, value.toString());
+                }
+            }
+        }
+    }
 
     // --------------------------------------------------------- Public Methods
 
@@ -399,19 +524,11 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     }
 
     /**
-     * returns the SendOptions as a comma separated list of names for use by JMX
-     * @return a comma separated list of the option names
-     */
-    public String getChannelSendOptionsName(){
-        return Channel.getSendOptionsAsString(channelSendOptions);
-    }
-
-    /**
      * Create new Manager without add to cluster (comes with start the manager)
      *
      * @param name
      *            Context Name of this manager
-     * @see org.apache.catalina.Cluster#createManager(java.lang.String)
+     * @see org.apache.catalina.Cluster#createManager(String)
      * @see DeltaManager#start()
      */
     @Override
@@ -425,7 +542,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
             manager = managerTemplate.cloneFromTemplate();
             manager.setName(name);
         } catch (Exception x) {
-            log.error(sm.getString("simpleTcpCluster.clustermanager.cloneFailed"), x);
+            log.error("Unable to clone cluster manager, defaulting to org.apache.catalina.ha.session.DeltaManager", x);
             manager = new org.apache.catalina.ha.session.DeltaManager();
         } finally {
             if ( manager != null) manager.setCluster(this);
@@ -437,7 +554,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     public void registerManager(Manager manager) {
 
         if (! (manager instanceof ClusterManager)) {
-            log.warn(sm.getString("simpleTcpCluster.clustermanager.notImplement", manager));
+            log.warn("Manager [ " + manager + "] does not implement ClusterManager, addition to cluster has been aborted.");
             return;
         }
         ClusterManager cmanager = (ClusterManager) manager;
@@ -460,7 +577,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
      */
     @Override
     public void removeManager(Manager manager) {
-        if (manager instanceof ClusterManager) {
+        if (manager != null && manager instanceof ClusterManager ) {
             ClusterManager cmgr = (ClusterManager) manager;
             // Notify our interested LifecycleListeners
             fireLifecycleEvent(BEFORE_MANAGERUNREGISTER_EVENT,manager);
@@ -474,9 +591,9 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     @Override
     public String getManagerName(String name, Manager manager) {
         String clusterName = name ;
-        if (clusterName == null) clusterName = manager.getContext().getName();
+        if (clusterName == null) clusterName = manager.getContainer().getName();
         if (getContainer() instanceof Engine) {
-            Context context = manager.getContext();
+            Context context = (Context) manager.getContainer() ;
             Container host = context.getParent();
             if (host instanceof Host && clusterName != null &&
                     !(clusterName.startsWith(host.getName() +"#"))) {
@@ -499,6 +616,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
      * throwables will be caught and logged.
      * @see org.apache.catalina.ha.deploy.FarmWarDeployer#backgroundProcess()
      * @see org.apache.catalina.tribes.group.GroupChannel#heartbeat()
+     * @see org.apache.catalina.tribes.group.GroupChannel.HeartbeatThread#run()
      *
      */
     @Override
@@ -513,21 +631,34 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     }
 
 
+    /**
+     * Use as base to handle start/stop/periodic Events from host. Currently
+     * only log the messages as trace level.
+     *
+     * @see org.apache.catalina.LifecycleListener#lifecycleEvent(org.apache.catalina.LifecycleEvent)
+     * @deprecated  Unused - will be removed in Tomcat 8.0.x
+     */
+    @Override
+    @Deprecated
+    public void lifecycleEvent(LifecycleEvent lifecycleEvent) {
+        if (log.isTraceEnabled())
+            log.trace(sm.getString("SimpleTcpCluster.event.log", lifecycleEvent.getType(), lifecycleEvent.getData()));
+    }
+
+
     // ------------------------------------------------------ public
 
+    @SuppressWarnings("deprecation")
     @Override
     protected void initInternal() throws LifecycleException {
         super.initInternal();
         if (clusterDeployer != null) {
             StringBuilder name = new StringBuilder("type=Cluster");
             Container container = getContainer();
-            if (container != null) {
-                name.append(container.getMBeanKeyProperties());
-            }
+            name.append(MBeanUtils.getContainerKeyProperties(container));
             name.append(",component=Deployer");
             onameClusterDeployer = register(clusterDeployer, name.toString());
         }
-        channel.setUtilityExecutor(Container.getService(getContainer()).getServer().getUtilityExecutor());
     }
 
 
@@ -541,19 +672,20 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     @Override
     protected void startInternal() throws LifecycleException {
 
-        if (log.isInfoEnabled()) log.info(sm.getString("simpleTcpCluster.start"));
+        if (log.isInfoEnabled()) log.info("Cluster is about to start");
 
         try {
             checkDefaults();
             registerClusterValve();
             channel.addMembershipListener(this);
             channel.addChannelListener(this);
-            channel.setName(getClusterName() + "-Channel");
+            if (channel instanceof GroupChannel)
+                ((GroupChannel)channel).setName(getClusterName() + "-Channel");
             channel.start(channelStartOptions);
             if (clusterDeployer != null) clusterDeployer.start();
             registerMember(channel.getLocalMember(false));
         } catch (Exception x) {
-            log.error(sm.getString("simpleTcpCluster.startUnable"), x);
+            log.error("Unable to start cluster.", x);
             throw new LifecycleException(x);
         }
 
@@ -561,8 +693,11 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     }
 
     protected void checkDefaults() {
-        if ( clusterListeners.size() == 0 && managerTemplate instanceof DeltaManager ) {
-            addClusterListener(new ClusterSessionListener());
+        if ( clusterListeners.size() == 0 ) {
+            addClusterListener(new JvmRouteSessionIDBinderListener());
+            if (managerTemplate instanceof DeltaManager) {
+                addClusterListener(new ClusterSessionListener());
+            }
         }
         if ( valves.size() == 0 ) {
             addValve(new JvmRouteBinderValve());
@@ -571,7 +706,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
         if ( clusterDeployer != null ) clusterDeployer.setCluster(this);
         if ( channel == null ) channel = new GroupChannel();
         if ( channel instanceof GroupChannel && !((GroupChannel)channel).getInterceptors().hasNext()) {
-            channel.addInterceptor(new MessageDispatchInterceptor());
+            channel.addInterceptor(new MessageDispatch15Interceptor());
             channel.addInterceptor(new TcpFailureDetector());
         }
         if (heartbeatBackgroundEnabled) channel.setHeartbeat(false);
@@ -582,8 +717,8 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
      */
     protected void registerClusterValve() {
         if(container != null ) {
-            for (Valve v : valves) {
-                ClusterValve valve = (ClusterValve) v;
+            for (Iterator<Valve> iter = valves.iterator(); iter.hasNext();) {
+                ClusterValve valve = (ClusterValve) iter.next();
                 if (log.isDebugEnabled())
                     log.debug("Invoking addValve on " + getContainer()
                             + " with class=" + valve.getClass().getName());
@@ -599,8 +734,8 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
      * unregister all cluster valve to host or engine
      */
     protected void unregisterClusterValve() {
-        for (Valve v : valves) {
-            ClusterValve valve = (ClusterValve) v;
+        for (Iterator<Valve> iter = valves.iterator(); iter.hasNext();) {
+            ClusterValve valve = (ClusterValve) iter.next();
             if (log.isDebugEnabled())
                 log.debug("Invoking removeValve on " + getContainer()
                         + " with class=" + valve.getClass().getName());
@@ -634,7 +769,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
             channel.removeMembershipListener(this);
             this.unregisterClusterValve();
         } catch (Exception x) {
-            log.error(sm.getString("simpleTcpCluster.stopUnable"), x);
+            log.error("Unable to stop cluster.", x);
         }
     }
 
@@ -654,7 +789,15 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
      */
     @Override
     public String toString() {
-        return ToStringUtil.toString(this);
+        StringBuilder sb = new StringBuilder(this.getClass().getName());
+        sb.append('[');
+        if (container == null) {
+            sb.append("Container is null");
+        } else {
+            sb.append(container.getName());
+        }
+        sb.append(']');
+        return sb.toString();
     }
 
 
@@ -679,18 +822,18 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
      */
     @Override
     public void send(ClusterMessage msg, Member dest) {
-        send(msg, dest, this.channelSendOptions);
-    }
-
-    @Override
-    public void send(ClusterMessage msg, Member dest, int sendOptions) {
         try {
             msg.setAddress(getLocalMember());
+            int sendOptions = channelSendOptions;
+            if (msg instanceof SessionMessage
+                    && ((SessionMessage)msg).getEventType() == SessionMessage.EVT_ALL_SESSION_DATA) {
+                sendOptions = Channel.SEND_OPTIONS_SYNCHRONIZED_ACK|Channel.SEND_OPTIONS_USE_ACK;
+            }
             if (dest != null) {
                 if (!getLocalMember().equals(dest)) {
                     channel.send(new Member[] {dest}, msg, sendOptions);
                 } else
-                    log.error(sm.getString("simpleTcpCluster.unableSend.localMember", msg));
+                    log.error("Unable to send message to local member " + msg);
             } else {
                 Member[] destmembers = channel.getMembers();
                 if (destmembers.length>0)
@@ -699,7 +842,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
                     log.debug("No members in cluster, ignoring message:"+msg);
             }
         } catch (Exception x) {
-            log.error(sm.getString("simpleTcpCluster.sendFailed"), x);
+            log.error("Unable to send message through cluster sender.", x);
         }
     }
 
@@ -712,7 +855,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     public void memberAdded(Member member) {
         try {
             hasMembers = channel.hasMembers();
-            if (log.isInfoEnabled()) log.info(sm.getString("simpleTcpCluster.member.added", member));
+            if (log.isInfoEnabled()) log.info("Replication member added:" + member);
             // Notify our interested LifecycleListeners
             fireLifecycleEvent(BEFORE_MEMBERREGISTER_EVENT, member);
 
@@ -721,7 +864,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
             // Notify our interested LifecycleListeners
             fireLifecycleEvent(AFTER_MEMBERREGISTER_EVENT, member);
         } catch (Exception x) {
-            log.error(sm.getString("simpleTcpCluster.member.addFailed"), x);
+            log.error("Unable to connect to replication system.", x);
         }
 
     }
@@ -735,7 +878,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
     public void memberDisappeared(Member member) {
         try {
             hasMembers = channel.hasMembers();
-            if (log.isInfoEnabled()) log.info(sm.getString("simpleTcpCluster.member.disappeared", member));
+            if (log.isInfoEnabled()) log.info("Received member disappeared:" + member);
             // Notify our interested LifecycleListeners
             fireLifecycleEvent(BEFORE_MEMBERUNREGISTER_EVENT, member);
 
@@ -744,7 +887,7 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
             // Notify our interested LifecycleListeners
             fireLifecycleEvent(AFTER_MEMBERUNREGISTER_EVENT, member);
         } catch (Exception x) {
-            log.error(sm.getString("simpleTcpCluster.member.removeFailed"), x);
+            log.error("Unable remove cluster node from replication system.", x);
         }
     }
 
@@ -782,7 +925,9 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
         //invoke all the listeners
         boolean accepted = false;
         if (message != null) {
-            for (ClusterListener listener : clusterListeners) {
+            for (Iterator<ClusterListener> iter = clusterListeners.iterator();
+                    iter.hasNext();) {
+                ClusterListener listener = iter.next();
                 if (listener.accept(message)) {
                     accepted = true;
                     listener.messageReceived(message);
@@ -802,6 +947,33 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
         }
     }
 
+    // --------------------------------------------------------- Logger
+
+    @Override
+    public Log getLogger() {
+        return log;
+    }
+
+
+    // ------------------------------------------------------------- deprecated
+
+    /**
+     *
+     * @see org.apache.catalina.Cluster#setProtocol(String)
+     */
+    @Override
+    public void setProtocol(String protocol) {
+        // NO-OP
+    }
+
+    /**
+     * @see org.apache.catalina.Cluster#getProtocol()
+     */
+    @Override
+    public String getProtocol() {
+        return null;
+    }
+
     public int getChannelStartOptions() {
         return channelStartOptions;
     }
@@ -813,33 +985,36 @@ public class SimpleTcpCluster extends LifecycleMBeanBase
 
     // --------------------------------------------------------------------- JMX
 
+    @SuppressWarnings("deprecation")
     @Override
     protected String getDomainInternal() {
         Container container = getContainer();
         if (container == null) {
             return null;
         }
-        return container.getDomain();
+        return MBeanUtils.getDomain(container);
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     protected String getObjectNameKeyProperties() {
         StringBuilder name = new StringBuilder("type=Cluster");
 
         Container container = getContainer();
         if (container != null) {
-            name.append(container.getMBeanKeyProperties());
+            name.append(MBeanUtils.getContainerKeyProperties(container));
         }
 
         return name.toString();
     }
 
+    @SuppressWarnings("deprecation")
     private void registerMember(Member member) {
         // JMX registration
         StringBuilder name = new StringBuilder("type=Cluster");
         Container container = getContainer();
         if (container != null) {
-            name.append(container.getMBeanKeyProperties());
+            name.append(MBeanUtils.getContainerKeyProperties(container));
         }
         name.append(",component=Member,name=");
         name.append(ObjectName.quote(member.getName()));

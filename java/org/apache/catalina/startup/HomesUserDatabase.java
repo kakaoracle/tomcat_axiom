@@ -54,7 +54,7 @@ public final class HomesUserDatabase
     /**
      * The set of home directories for all defined users, keyed by username.
      */
-    private final Hashtable<String,String> homes = new Hashtable<>();
+    private Hashtable<String,String> homes = new Hashtable<String,String>();
 
 
     /**
@@ -127,11 +127,11 @@ public final class HomesUserDatabase
             return;
         }
 
-        for (String homeBaseFile : homeBaseFiles) {
-            File homeDir = new File(homeBaseDir, homeBaseFile);
+        for (int i = 0; i < homeBaseFiles.length; i++) {
+            File homeDir = new File(homeBaseDir, homeBaseFiles[i]);
             if (!homeDir.isDirectory() || !homeDir.canRead())
                 continue;
-            homes.put(homeBaseFile, homeDir.toString());
+            homes.put(homeBaseFiles[i], homeDir.toString());
         }
     }
 }

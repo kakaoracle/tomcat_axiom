@@ -92,6 +92,8 @@ public class FastRemovalDequeue<T> {
      * @return an entry for use when the object should be moved.
      * */
     public synchronized Entry push(final T object) {
+        // 将object压入队首，如果队列满了，则弹出队尾元素，并且设置replaced属性，表示队首元素顶替了队尾元素
+        // 方法返回object
         Entry entry = new Entry(object);
         if (size >= maxSize) {
             entry.setReplaced(pop());
@@ -210,6 +212,10 @@ public class FastRemovalDequeue<T> {
      * @param element the entry to move in front.
      * */
     public synchronized void moveFirst(final Entry element) {
+        // 将element元素移到队首
+        // first ----> xxx ----> prev ----> element ----> next ----> xxx ----> last
+        // element ----> first ----> xxx ----> prev ----> next ----> xxx ----> last
+
         if (element.getValid() &&
             element.getPrevious() != null) {
             Entry prev = element.getPrevious();
@@ -231,7 +237,7 @@ public class FastRemovalDequeue<T> {
      * Moves the element to the back.
      *
      * Could also be implemented as remove() and
-     * unpop(), but explicitly coding might be a bit faster.
+     * unpop(), but explicitely coding might be a bit faster.
      *
      * @param element the entry to move to the back.
      * */

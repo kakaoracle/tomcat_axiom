@@ -14,6 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina;
 
 import java.beans.PropertyChangeListener;
@@ -23,11 +25,8 @@ import java.security.cert.X509Certificate;
 
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
-import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
+import org.apache.catalina.deploy.SecurityConstraint;
 import org.ietf.jgss.GSSContext;
-import org.ietf.jgss.GSSCredential;
-import org.ietf.jgss.GSSName;
-
 /**
  * A <b>Realm</b> is a read-only facade for an underlying security realm
  * used to authenticate individual users, and identify the security roles
@@ -37,20 +36,35 @@ import org.ietf.jgss.GSSName;
  *
  * @author Craig R. McClanahan
  */
-public interface Realm extends Contained {
+public interface Realm {
+
+
+    // ------------------------------------------------------------- Properties
+
 
     /**
-     * @return the CredentialHandler configured for this Realm.
+     * Return the Container with which this Realm has been associated.
      */
-    public CredentialHandler getCredentialHandler();
+    public Container getContainer();
 
 
     /**
-     * Set the CredentialHandler to be used by this Realm.
+     * Set the Container with which this Realm has been associated.
      *
-     * @param credentialHandler the {@link CredentialHandler} to use
+     * @param container The associated Container
      */
-    public void setCredentialHandler(CredentialHandler credentialHandler);
+    public void setContainer(Container container);
+
+
+    /**
+     * Return descriptive information about this Realm implementation and
+     * the corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    public String getInfo();
+
+
+    // --------------------------------------------------------- Public Methods
 
 
     /**
@@ -62,44 +76,37 @@ public interface Realm extends Contained {
 
 
     /**
-     * Try to authenticate with the specified username.
+     * Return the Principal associated with the specified username, if there
+     * is one; otherwise return <code>null</code>.
      *
      * @param username Username of the Principal to look up
-     * @return the associated principal, or <code>null</code> if none is
-     *         associated.
      */
     public Principal authenticate(String username);
 
 
     /**
-     * Try to authenticate using the specified username and
-     * credentials.
+     * Return the Principal associated with the specified username and
+     * credentials, if there is one; otherwise return <code>null</code>.
      *
      * @param username Username of the Principal to look up
      * @param credentials Password or other credentials to use in
-     * authenticating this username
-     * @return the associated principal, or <code>null</code> if there is none
+     *  authenticating this username
      */
     public Principal authenticate(String username, String credentials);
 
 
     /**
-     * Try to authenticate with the specified username, which
+     * Return the Principal associated with the specified username, which
      * matches the digest calculated using the given parameters using the
-     * method described in RFC 2617 (which is a superset of RFC 2069).
+     * method described in RFC 2069; otherwise return <code>null</code>.
      *
      * @param username Username of the Principal to look up
      * @param digest Digest which has been submitted by the client
      * @param nonce Unique (or supposedly unique) token which has been used
      * for this request
-     * @param nc the nonce counter
-     * @param cnonce the client chosen nonce
-     * @param qop the "quality of protection" (<code>nc</code> and <code>cnonce</code>
-     *        will only be used, if <code>qop</code> is not <code>null</code>).
      * @param realm Realm name
      * @param md5a2 Second MD5 digest used to calculate the digest :
      * MD5(Method + ":" + uri)
-     * @return the associated principal, or <code>null</code> if there is none.
      */
     public Principal authenticate(String username, String digest,
                                   String nonce, String nc, String cnonce,
@@ -108,38 +115,22 @@ public interface Realm extends Contained {
 
 
     /**
-     * Try to authenticate using a {@link GSSContext}
+     * Return the Principal associated with the specified {@link GSSContext}.
+     * If there is none, return <code>null</code>.
      *
      * @param gssContext The gssContext processed by the {@link Authenticator}.
      * @param storeCreds Should the realm attempt to store the delegated
      *                   credentials in the returned Principal?
-     * @return the associated principal, or <code>null</code> if there is none
      */
     public Principal authenticate(GSSContext gssContext, boolean storeCreds);
 
 
     /**
-     * Try to authenticate using a {@link GSSName}
-     *
-     * Note that this default method will be turned into an abstract one in
-     * Tomcat 10.
-     *
-     * @param gssName The {@link GSSName} of the principal to look up
-     * @param gssCredential The {@link GSSCredential} of the principal, may be
-     *                      {@code null}
-     * @return the associated principal, or {@code null} if there is none
-     */
-    public default Principal authenticate(GSSName gssName, GSSCredential gssCredential) {
-        return null;
-    }
-
-
-    /**
-     * Try to authenticate using {@link X509Certificate}s
+     * Return the Principal associated with the specified chain of X509
+     * client certificates.  If there is none, return <code>null</code>.
      *
      * @param certs Array of client certificates, with the first one in
      *  the array being the certificate of the client itself.
-     * @return the associated principal, or <code>null</code> if there is none
      */
     public Principal authenticate(X509Certificate certs[]);
 
@@ -153,69 +144,61 @@ public interface Realm extends Contained {
 
 
     /**
-     * Find the SecurityConstraints configured to guard the request URI for
-     * this request.
+     * Return the SecurityConstraints configured to guard the request URI for
+     * this request, or <code>null</code> if there is no such constraint.
      *
      * @param request Request we are processing
-     * @param context {@link Context} for this request
-     * @return the configured {@link SecurityConstraint}, of <code>null</code>
-     *         if there is none
      */
     public SecurityConstraint [] findSecurityConstraints(Request request,
-                                                     Context context);
+                                                         Context context);
 
 
     /**
      * Perform access control based on the specified authorization constraint.
+     * Return <code>true</code> if this constraint is satisfied and processing
+     * should continue, or <code>false</code> otherwise.
      *
      * @param request Request we are processing
      * @param response Response we are creating
      * @param constraint Security constraint we are enforcing
      * @param context The Context to which client of this class is attached.
-     * @return <code>true</code> if this constraint is satisfied and processing
-     *         should continue, or <code>false</code> otherwise
      *
      * @exception IOException if an input/output error occurs
      */
     public boolean hasResourcePermission(Request request,
                                          Response response,
-                                         SecurityConstraint [] constraint,
+                                         SecurityConstraint[] constraint,
                                          Context context)
         throws IOException;
 
 
     /**
-     * Check if the specified Principal has the specified
-     * security role, within the context of this Realm.
+     * Return <code>true</code> if the specified Principal has the specified
+     * security role, within the context of this Realm; otherwise return
+     * <code>false</code>.
      *
      * @param wrapper wrapper context for evaluating role
      * @param principal Principal for whom the role is to be checked
      * @param role Security role to be checked
-     * @return <code>true</code> if the specified Principal has the specified
-     *         security role, within the context of this Realm; otherwise return
-     *         <code>false</code>.
      */
     public boolean hasRole(Wrapper wrapper, Principal principal, String role);
 
-
-    /**
+        /**
      * Enforce any user data constraint required by the security constraint
-     * guarding this request URI.
+     * guarding this request URI.  Return <code>true</code> if this constraint
+     * was not violated and processing should continue, or <code>false</code>
+     * if we have created a response already.
      *
      * @param request Request we are processing
      * @param response Response we are creating
      * @param constraint Security constraint being checked
-     * @return <code>true</code> if this constraint
-     *         was not violated and processing should continue, or <code>false</code>
-     *         if we have created a response already.
      *
      * @exception IOException if an input/output error occurs
      */
     public boolean hasUserDataPermission(Request request,
                                          Response response,
-                                         SecurityConstraint []constraint)
+                                         SecurityConstraint[] constraint)
         throws IOException;
-
 
     /**
      * Remove a property change listener from this component.
@@ -225,21 +208,4 @@ public interface Realm extends Contained {
     public void removePropertyChangeListener(PropertyChangeListener listener);
 
 
-    /**
-     * Return roles associated with given principal
-     * @param principal the {@link Principal} to get the roles for.
-     * @return principal roles
-     * @deprecated This will be removed in Tomcat 10.
-     */
-    @Deprecated
-    public String[] getRoles(Principal principal);
-
-
-    /**
-     * Return the availability of the realm for authentication.
-     * @return <code>true</code> if the realm is able to perform authentication
-     */
-    public default boolean isAvailable() {
-        return true;
-    }
 }

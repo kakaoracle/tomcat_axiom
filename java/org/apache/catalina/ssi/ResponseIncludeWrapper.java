@@ -20,13 +20,16 @@ package org.apache.catalina.ssi;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Locale;
+import java.util.TimeZone;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
 
-import org.apache.tomcat.util.http.FastHttpDateFormat;
+import org.apache.tomcat.util.ExceptionUtils;
 
 /**
  * An HttpServletResponseWrapper, used from
@@ -40,15 +43,22 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
      * The names of some headers we want to capture.
      */
     private static final String LAST_MODIFIED = "last-modified";
+    private static final DateFormat RFC1123_FORMAT;
+    private static final String RFC1123_PATTERN = "EEE, dd MMM yyyy HH:mm:ss z";
 
     protected long lastModified = -1;
 
     /**
      * Our ServletOutputStream
      */
-    protected final ServletOutputStream captureServletOutputStream;
+    protected ServletOutputStream captureServletOutputStream;
     protected ServletOutputStream servletOutputStream;
     protected PrintWriter printWriter;
+
+    static {
+        RFC1123_FORMAT = new SimpleDateFormat(RFC1123_PATTERN, Locale.US);
+        RFC1123_FORMAT.setTimeZone(TimeZone.getTimeZone("GMT"));
+    }
 
     /**
      * Initialize our wrapper with the current HttpServletResponse and
@@ -81,15 +91,15 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
 
 
     /**
-     * Return a printwriter, throws and exception if an OutputStream already
+     * Return a printwriter, throws and exception if a OutputStream already
      * been returned.
      *
      * @return a PrintWriter object
-     * @exception java.io.IOException
+     * @exception IOException
      *                if the outputstream already been called
      */
     @Override
-    public PrintWriter getWriter() throws java.io.IOException {
+    public PrintWriter getWriter() throws IOException {
         if (servletOutputStream == null) {
             if (printWriter == null) {
                 setCharacterEncoding(getCharacterEncoding());
@@ -104,15 +114,15 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
 
 
     /**
-     * Return an OutputStream, throws and exception if a printwriter already
+     * Return a OutputStream, throws and exception if a printwriter already
      * been returned.
      *
-     * @return an OutputStream object
-     * @exception java.io.IOException
+     * @return a OutputStream object
+     * @exception IOException
      *                if the printwriter already been called
      */
     @Override
-    public ServletOutputStream getOutputStream() throws java.io.IOException {
+    public ServletOutputStream getOutputStream() throws IOException {
         if (printWriter == null) {
             if (servletOutputStream == null) {
                 servletOutputStream = captureServletOutputStream;
@@ -135,6 +145,17 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
         return lastModified;
     }
 
+    /**
+     * Sets the value of the <code>last-modified</code> header field.
+     *
+     * @param lastModified The number of milliseconds since January 1, 1970 GMT.
+     */
+    public void setLastModified(long lastModified) {
+        this.lastModified = lastModified;
+        ((HttpServletResponse) getResponse()).setDateHeader(LAST_MODIFIED,
+                lastModified);
+    }
+
     @Override
     public void addDateHeader(String name, long value) {
         super.addDateHeader(name, value);
@@ -149,9 +170,12 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
         super.addHeader(name, value);
         String lname = name.toLowerCase(Locale.ENGLISH);
         if (lname.equals(LAST_MODIFIED)) {
-            long lastModified = FastHttpDateFormat.parseDate(value);
-            if (lastModified != -1) {
-                this.lastModified = lastModified;
+            try {
+                synchronized(RFC1123_FORMAT) {
+                    lastModified = RFC1123_FORMAT.parse(value).getTime();
+                }
+            } catch (Throwable ignore) {
+                ExceptionUtils.handleThrowable(ignore);
             }
         }
     }
@@ -170,9 +194,12 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
         super.setHeader(name, value);
         String lname = name.toLowerCase(Locale.ENGLISH);
         if (lname.equals(LAST_MODIFIED)) {
-            long lastModified = FastHttpDateFormat.parseDate(value);
-            if (lastModified != -1) {
-                this.lastModified = lastModified;
+            try {
+                synchronized(RFC1123_FORMAT) {
+                    lastModified = RFC1123_FORMAT.parse(value).getTime();
+                }
+            } catch (Throwable ignore) {
+                ExceptionUtils.handleThrowable(ignore);
             }
         }
     }

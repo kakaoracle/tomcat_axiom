@@ -25,16 +25,13 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
-import java.util.List;
 
 import javax.servlet.ServletContext;
 
 import org.apache.catalina.Context;
-import org.apache.catalina.Globals;
+import org.apache.catalina.Loader;
 import org.apache.catalina.Session;
 import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Concrete implementation of the <b>Store</b> interface that utilizes
@@ -44,10 +41,6 @@ import org.apache.tomcat.util.res.StringManager;
  * @author Craig R. McClanahan
  */
 public final class FileStore extends StoreBase {
-
-    private static final Log log = LogFactory.getLog(FileStore.class);
-    private static final StringManager sm = StringManager.getManager(FileStore.class);
-
 
     // ----------------------------------------------------- Constants
 
@@ -74,10 +67,14 @@ public final class FileStore extends StoreBase {
 
 
     /**
+     * The descriptive information about this implementation.
+     */
+    private static final String info = "FileStore/1.0";
+
+    /**
      * Name to register for this Store, used for logging.
      */
     private static final String storeName = "fileStore";
-
 
     /**
      * Name to register for the background thread.
@@ -108,13 +105,18 @@ public final class FileStore extends StoreBase {
     }
 
 
+    @Override
+    public String getInfo() {
+        return info;
+    }
+
+
     /**
      * @return The thread name for this Store.
      */
     public String getThreadName() {
         return threadName;
     }
-
 
     /**
      * Return the name for this Store, used for logging.
@@ -133,17 +135,17 @@ public final class FileStore extends StoreBase {
     @Override
     public int getSize() throws IOException {
         // Acquire the list of files in our storage directory
-        File dir = directory();
-        if (dir == null) {
-            return 0;
+        File file = directory();
+        if (file == null) {
+            return (0);
         }
-        String files[] = dir.list();
+        String files[] = file.list();
 
         // Figure out which files are sessions
         int keycount = 0;
         if (files != null) {
-            for (String file : files) {
-                if (file.endsWith(FILE_EXT)) {
+            for (int i = 0; i < files.length; i++) {
+                if (files[i].endsWith(FILE_EXT)) {
                     keycount++;
                 }
             }
@@ -162,8 +164,8 @@ public final class FileStore extends StoreBase {
     @Override
     public void clear() throws IOException {
         String[] keys = keys();
-        for (String key : keys) {
-            remove(key);
+        for (int i = 0; i < keys.length; i++) {
+            remove(keys[i]);
         }
     }
 
@@ -178,26 +180,27 @@ public final class FileStore extends StoreBase {
     @Override
     public String[] keys() throws IOException {
         // Acquire the list of files in our storage directory
-        File dir = directory();
-        if (dir == null) {
-            return new String[0];
+        File file = directory();
+        if (file == null) {
+            return (new String[0]);
         }
-        String files[] = dir.list();
+
+        String files[] = file.list();
 
         // Bugzilla 32130
-        if (files == null || files.length < 1) {
-            return new String[0];
+        if((files == null) || (files.length < 1)) {
+            return (new String[0]);
         }
 
         // Build and return the list of session identifiers
-        List<String> list = new ArrayList<>();
+        ArrayList<String> list = new ArrayList<String>();
         int n = FILE_EXT.length();
-        for (String file : files) {
-            if (file.endsWith(FILE_EXT)) {
-                list.add (file.substring(0, file.length() - n));
+        for (int i = 0; i < files.length; i++) {
+            if (files[i].endsWith(FILE_EXT)) {
+                list.add(files[i].substring(0, files[i].length() - n));
             }
         }
-        return list.toArray(new String[0]);
+        return list.toArray(new String[list.size()]);
     }
 
 
@@ -215,33 +218,63 @@ public final class FileStore extends StoreBase {
     public Session load(String id) throws ClassNotFoundException, IOException {
         // Open an input stream to the specified pathname, if any
         File file = file(id);
-        if (file == null || !file.exists()) {
+        if (file == null) {
             return null;
         }
 
-        Context context = getManager().getContext();
-        Log contextLog = context.getLogger();
-
-        if (contextLog.isDebugEnabled()) {
-            contextLog.debug(sm.getString(getStoreName()+".loading", id, file.getAbsolutePath()));
+        if (!file.exists()) {
+            return null;
         }
 
-        ClassLoader oldThreadContextCL = context.bind(Globals.IS_SECURITY_ENABLED, null);
+        Context context = (Context) getManager().getContainer();
+        Log containerLog = context.getLogger();
 
-        try (FileInputStream fis = new FileInputStream(file.getAbsolutePath());
-                ObjectInputStream ois = getObjectInputStream(fis)) {
+        if (containerLog.isDebugEnabled()) {
+            containerLog.debug(sm.getString(getStoreName()+".loading", id, file.getAbsolutePath()));
+        }
+
+        FileInputStream fis = null;
+        ObjectInputStream ois = null;
+        Loader loader = null;
+        ClassLoader classLoader = null;
+        ClassLoader oldThreadContextCL = Thread.currentThread().getContextClassLoader();
+        try {
+            fis = new FileInputStream(file.getAbsolutePath());
+            loader = context.getLoader();
+            if (loader != null) {
+                classLoader = loader.getClassLoader();
+            }
+            if (classLoader != null) {
+                Thread.currentThread().setContextClassLoader(classLoader);
+            }
+            ois = getObjectInputStream(fis);
 
             StandardSession session = (StandardSession) manager.createEmptySession();
             session.readObjectData(ois);
             session.setManager(manager);
             return session;
         } catch (FileNotFoundException e) {
-            if (contextLog.isDebugEnabled()) {
-                contextLog.debug("No persisted data file found");
+            if (containerLog.isDebugEnabled()) {
+                containerLog.debug("No persisted data file found");
             }
             return null;
         } finally {
-            context.unbind(Globals.IS_SECURITY_ENABLED, oldThreadContextCL);
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException f) {
+                    // Ignore
+                }
+            }
+            if (ois != null) {
+                // Close the input stream
+                try {
+                    ois.close();
+                } catch (IOException f) {
+                    // Ignore
+                }
+            }
+            Thread.currentThread().setContextClassLoader(oldThreadContextCL);
         }
     }
 
@@ -261,14 +294,11 @@ public final class FileStore extends StoreBase {
         if (file == null) {
             return;
         }
-        if (manager.getContext().getLogger().isDebugEnabled()) {
-            manager.getContext().getLogger().debug(sm.getString(getStoreName() + ".removing",
+        if (manager.getContainer().getLogger().isDebugEnabled()) {
+            manager.getContainer().getLogger().debug(sm.getString(getStoreName()+".removing",
                              id, file.getAbsolutePath()));
         }
-
-        if (file.exists() && !file.delete()) {
-            throw new IOException(sm.getString("fileStore.deleteSessionFailed", file));
-        }
+        file.delete();
     }
 
 
@@ -287,15 +317,32 @@ public final class FileStore extends StoreBase {
         if (file == null) {
             return;
         }
-        if (manager.getContext().getLogger().isDebugEnabled()) {
-            manager.getContext().getLogger().debug(sm.getString(getStoreName() + ".saving",
+        if (manager.getContainer().getLogger().isDebugEnabled()) {
+            manager.getContainer().getLogger().debug(sm.getString(getStoreName()+".saving",
                              session.getIdInternal(), file.getAbsolutePath()));
         }
-
-        try (FileOutputStream fos = new FileOutputStream(file.getAbsolutePath());
-                ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(fos))) {
-            ((StandardSession)session).writeObjectData(oos);
+        FileOutputStream fos = null;
+        ObjectOutputStream oos = null;
+        try {
+            fos = new FileOutputStream(file.getAbsolutePath());
+            oos = new ObjectOutputStream(new BufferedOutputStream(fos));
+        } catch (IOException e) {
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (IOException f) {
+                    // Ignore
+                }
+            }
+            throw e;
         }
+
+        try {
+            ((StandardSession)session).writeObjectData(oos);
+        } finally {
+            oos.close();
+        }
+
     }
 
 
@@ -316,7 +363,7 @@ public final class FileStore extends StoreBase {
         }
         File file = new File(this.directory);
         if (!file.isAbsolute()) {
-            Context context = manager.getContext();
+            Context context = (Context) manager.getContainer();
             ServletContext servletContext = context.getServletContext();
             File work = (File) servletContext.getAttribute(ServletContext.TEMPDIR);
             file = new File(work, this.directory);
@@ -342,20 +389,11 @@ public final class FileStore extends StoreBase {
      *    used in the file naming.
      */
     private File file(String id) throws IOException {
-        File storageDir = directory();
-        if (storageDir == null) {
+        if (this.directory == null) {
             return null;
         }
-
         String filename = id + FILE_EXT;
-        File file = new File(storageDir, filename);
-
-        // Check the file is within the storage directory
-        if (!file.getCanonicalPath().startsWith(storageDir.getCanonicalPath())) {
-            log.warn(sm.getString("fileStore.invalid", file.getPath(), id));
-            return null;
-        }
-
+        File file = new File(directory(), filename);
         return file;
     }
 }

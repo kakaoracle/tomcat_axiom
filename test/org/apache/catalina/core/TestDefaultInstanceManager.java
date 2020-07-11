@@ -17,9 +17,6 @@
 package org.apache.catalina.core;
 
 import java.io.File;
-import java.lang.reflect.InvocationTargetException;
-
-import javax.naming.NamingException;
 
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -30,7 +27,6 @@ import org.apache.catalina.Wrapper;
 import org.apache.catalina.servlets.DefaultServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
-import org.apache.jasper.servlet.JasperInitializer;
 import org.apache.tomcat.InstanceManager;
 
 
@@ -81,8 +77,6 @@ public class TestDefaultInstanceManager extends TomcatBaseTest {
         File appDir = new File("test/webapp");
         StandardContext ctxt = (StandardContext) tomcat.addContext(
                 null, "/test", appDir.getAbsolutePath());
-
-        ctxt.addServletContainerInitializer(new JasperInitializer(), null);
 
         // Configure the defaults and then tweak the JSP servlet settings
         // Note: Min value for maxLoadedJsps is 2
@@ -139,7 +133,7 @@ public class TestDefaultInstanceManager extends TomcatBaseTest {
     }
 
 
-    private static class InstanceManagerRunnable implements Runnable {
+    private class InstanceManagerRunnable implements Runnable {
 
         private final InstanceManager im;
 
@@ -155,8 +149,8 @@ public class TestDefaultInstanceManager extends TomcatBaseTest {
                     im.newInstance(test);
                     im.destroyInstance(test);
                 }
-            } catch (NamingException | IllegalAccessException | InvocationTargetException ne) {
-                ne.printStackTrace();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
     }

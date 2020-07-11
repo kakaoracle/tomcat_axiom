@@ -44,12 +44,12 @@ public final class CustomObjectInputStream extends ObjectInputStream {
     private static final StringManager sm = StringManager.getManager(CustomObjectInputStream.class);
 
     private static final WeakHashMap<ClassLoader, Set<String>> reportedClassCache =
-            new WeakHashMap<>();
+            new WeakHashMap<ClassLoader, Set<String>>();
 
     /**
      * The class loader we will use to resolve classes.
      */
-    private final ClassLoader classLoader;
+    private ClassLoader classLoader = null;
     private final Set<String> reportedClasses;
     private final Log log;
 
@@ -110,17 +110,9 @@ public final class CustomObjectInputStream extends ObjectInputStream {
         Set<String> reportedClasses;
         synchronized (reportedClassCache) {
             reportedClasses = reportedClassCache.get(classLoader);
-        }
-        if (reportedClasses == null) {
-            reportedClasses = Collections.newSetFromMap(new ConcurrentHashMap<>());
-            Set<String> original;
-            synchronized (reportedClassCache) {
-                original = reportedClassCache.putIfAbsent(classLoader, reportedClasses);
-            }
-            if (original != null) {
-                // Concurrent attempts to create the new Set. Make sure all
-                // threads use the first successfully added Set.
-                reportedClasses = original;
+            if (reportedClasses == null) {
+                reportedClasses = Collections.newSetFromMap(new ConcurrentHashMap<String,Boolean>());
+                reportedClassCache.put(classLoader, reportedClasses);
             }
         }
         this.reportedClasses = reportedClasses;
@@ -185,9 +177,7 @@ public final class CustomObjectInputStream extends ObjectInputStream {
         }
 
         try {
-            // @SuppressWarnings("deprecation") Java 9
-            Class<?> proxyClass = Proxy.getProxyClass(classLoader, cinterfaces);
-            return proxyClass;
+            return Proxy.getProxyClass(classLoader, cinterfaces);
         } catch (IllegalArgumentException e) {
             throw new ClassNotFoundException(null, e);
         }

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -15,9 +15,6 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<!DOCTYPE mbeans-descriptors PUBLIC
-   "-//Apache Software Foundation//DTD Model MBeans Configuration File"
-   "http://jakarta.apache.org/commons/dtds/mbeans-descriptors.dtd">
 <mbeans-descriptors>
 
   <!-- This MBean contains Connector attributes and some common attributes of
@@ -47,22 +44,9 @@
           description="Send AJP flush package for each explicit flush"
                  type="boolean"/>
 
-    <attribute   name="allowedRequestAttributesPattern"
-          description="Regular expression that any custom request attributes muct match else the request will be rejected"
-                 type="java.lang.String"/>
-
     <attribute   name="allowTrace"
           description="Allow disabling TRACE method"
                  type="boolean"/>
-
-    <attribute   name="ciphers"
-          description="Comma-separated list of requested cipher suites"
-                 type="java.lang.String"/>
-
-    <attribute   name="ciphersUsed"
-          description="Array of ciphers suites in use"
-                 type="[Ljava.lang.String;"
-            writeable="false"/>
 
     <attribute   name="className"
           description="Fully qualified class name of the managed object"
@@ -90,7 +74,7 @@
 
     <!-- Common -->
     <attribute   name="keepAliveTimeout"
-          description="The number of milliseconds Tomcat will wait for a subsequent request before closing the connection"
+          description="The number of seconds Tomcat will wait for a subsequent request before closing the connection"
                  type="int"/>
 
     <attribute   name="localPort"
@@ -137,18 +121,8 @@
                  type="int"/>
 
     <attribute   name="port"
-          description="The port number (excluding any offset) on which this connector is configured to listen for requests. The special value of 0 means select a random free port when the socket is bound."
-                 type="int"/>
-
-    <attribute   name="portOffset"
-          description="The offset that will be applied to port to determine the actual port number used."
-                 type="int"
-            writeable="false"/>
-
-    <attribute   name="portWithOffset"
-          description="The actual port number (including any offset) on which this connector is configured to listen for requests."
-                 type="int"
-            writeable="false"/>
+          description="The port number on which this connector is configured to listen for requests. The special value of 0 means select a random free port when the socket is bound."
+                type="int"/>
 
     <!-- Common -->
     <attribute   name="processorCache"
@@ -157,8 +131,7 @@
 
     <attribute   name="protocol"
           description="Coyote protocol handler in use"
-                 type="java.lang.String"
-            writeable="false"/>
+                 type="java.lang.String"/>
 
     <attribute   name="protocolHandlerClassName"
           description="Coyote Protocol handler class name"
@@ -174,26 +147,17 @@
                  type="int"/>
 
     <attribute   name="redirectPort"
-          description="The redirect port (excluding any offset) for non-SSL to SSL redirects"
+          description="The redirect port for non-SSL to SSL redirects"
                  type="int"/>
-
-    <attribute   name="redirectPortWithOffset"
-          description="The actual redirect port (including any offset) for non-SSL to SSL redirects."
-                 type="int"
-            writeable="false"/>
 
     <attribute   name="scheme"
           description="Protocol name for this Connector (http, https)"
                  type="java.lang.String"/>
 
     <attribute   name="secret"
-          description="Authentication secret"
+          description="Authentication secret (I guess ... not in Javadocs)"
             readable = "false"
                  type="java.lang.String"/>
-
-    <attribute   name="secretRequired"
-          description="Must secret be set to a non-null, non-zero-length String?"
-                 type="boolean"/>
 
     <attribute   name="secure"
           description="Is this a secure (SSL) Connector?"
@@ -241,5 +205,17 @@
     <operation name="init" description="Init" impact="ACTION" returnType="void" />
     <operation name="destroy" description="Destroy" impact="ACTION" returnType="void" />
 
+  </mbean>
+
+  <mbean   name="Mapper"
+    description="Maps requests received by the associated connector to Hosts, Contexts and Wrappers"
+         domain="Catalina"
+          group="Mapper"
+           type="org.apache.catalina.connector.MapperListener">
+
+    <attribute name="connectorName"
+        description="Name of the associated connector"
+               type="java.lang.String"
+          writeable="false"/>
   </mbean>
 </mbeans-descriptors>

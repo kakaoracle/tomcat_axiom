@@ -21,7 +21,7 @@ public class CloseReason {
     private final CloseCode closeCode;
     private final String reasonPhrase;
 
-    public CloseReason(CloseReason.CloseCode closeCode, String reasonPhrase) {
+    public CloseReason(CloseCode closeCode, String reasonPhrase) {
         this.closeCode = closeCode;
         this.reasonPhrase = reasonPhrase;
     }
@@ -44,7 +44,7 @@ public class CloseReason {
         int getCode();
     }
 
-    public enum CloseCodes implements CloseReason.CloseCode {
+    public enum CloseCodes implements CloseCode {
 
         NORMAL_CLOSURE(1000),
         GOING_AWAY(1001),

@@ -17,11 +17,10 @@
 
 package org.apache.coyote.ajp;
 
-import java.nio.ByteBuffer;
-
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.CharChunk;
 import org.apache.tomcat.util.buf.HexUtils;
 import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.res.StringManager;
@@ -64,7 +63,7 @@ public class AjpMessage {
     /**
      * Fixed size buffer.
      */
-    protected final byte buf[];
+    protected byte buf[] = null;
 
 
     /**
@@ -169,26 +168,15 @@ public class AjpMessage {
             appendByte(0);
             return;
         }
-        if (mb.getType() != MessageBytes.T_BYTES) {
-            mb.toBytes();
+        if (mb.getType() == MessageBytes.T_BYTES) {
             ByteChunk bc = mb.getByteChunk();
-            // Need to filter out CTLs excluding TAB. ISO-8859-1 and UTF-8
-            // values will be OK. Strings using other encodings may be
-            // corrupted.
-            byte[] buffer = bc.getBuffer();
-            for (int i = bc.getOffset(); i < bc.getLength(); i++) {
-                // byte values are signed i.e. -128 to 127
-                // The values are used unsigned. 0 to 31 are CTLs so they are
-                // filtered (apart from TAB which is 9). 127 is a control (DEL).
-                // The values 128 to 255 are all OK. Converting those to signed
-                // gives -128 to -1.
-                if ((buffer[i] > -1 && buffer[i] <= 31 && buffer[i] != 9) ||
-                        buffer[i] == 127) {
-                    buffer[i] = ' ';
-                }
-            }
+            appendByteChunk(bc);
+        } else if (mb.getType() == MessageBytes.T_CHARS) {
+            CharChunk cc = mb.getCharChunk();
+            appendCharChunk(cc);
+        } else {
+            appendString(mb.toString());
         }
-        appendByteChunk(mb.getByteChunk());
     }
 
 
@@ -211,23 +199,67 @@ public class AjpMessage {
 
 
     /**
-     * Copy a chunk of bytes into the packet, starting at the current
-     * write position.  The chunk of bytes is encoded with the length
-     * in two bytes first, then the data itself, and finally a
-     * terminating \0 (which is <B>not</B> included in the encoded
-     * length).
+     * Write a CharChunk out at the current write position.
+     * A null CharChunk is encoded as a string with length 0.
      *
-     * @param b The array from which to copy bytes.
-     * @param off The offset into the array at which to start copying
-     * @param numBytes The number of bytes to copy.
+     * @param cc The data to write
      */
-    public void appendBytes(byte[] b, int off, int numBytes) {
-        if (checkOverflow(numBytes)) {
+    public void appendCharChunk(CharChunk cc) {
+        if (cc == null) {
+            log.error(sm.getString("ajpmessage.null"),
+                    new NullPointerException());
+            appendInt(0);
+            appendByte(0);
             return;
         }
-        appendInt(numBytes);
-        System.arraycopy(b, off, buf, pos, numBytes);
-        pos += numBytes;
+        int start = cc.getStart();
+        int end = cc.getEnd();
+        appendInt(end - start);
+        char[] cbuf = cc.getBuffer();
+        for (int i = start; i < end; i++) {
+            char c = cbuf[i];
+            // Note:  This is clearly incorrect for many strings,
+            // but is the only consistent approach within the current
+            // servlet framework.  It must suffice until servlet output
+            // streams properly encode their output.
+            if (((c <= 31) && (c != 9)) || c == 127 || c > 255) {
+                c = ' ';
+            }
+            appendByte(c);
+        }
+        appendByte(0);
+    }
+
+
+    /**
+     * Write a String out at the current write position.  Strings are
+     * encoded with the length in two bytes first, then the string, and
+     * then a terminating \0 (which is <B>not</B> included in the
+     * encoded length).  The terminator is for the convenience of the C
+     * code, where it saves a round of copying.  A null string is
+     * encoded as a string with length 0.
+     */
+    public void appendString(String str) {
+        if (str == null) {
+            log.error(sm.getString("ajpmessage.null"),
+                    new NullPointerException());
+            appendInt(0);
+            appendByte(0);
+            return;
+        }
+        int len = str.length();
+        appendInt(len);
+        for (int i = 0; i < len; i++) {
+            char c = str.charAt (i);
+            // Note:  This is clearly incorrect for many strings,
+            // but is the only consistent approach within the current
+            // servlet framework.  It must suffice until servlet output
+            // streams properly encode their output.
+            if (((c <= 31) && (c != 9)) || c == 127 || c > 255) {
+                c = ' ';
+            }
+            appendByte(c);
+        }
         appendByte(0);
     }
 
@@ -239,30 +271,23 @@ public class AjpMessage {
      * terminating \0 (which is <B>not</B> included in the encoded
      * length).
      *
-     * @param b The ByteBuffer from which to copy bytes.
+     * @param b The array from which to copy bytes.
+     * @param off The offset into the array at which to start copying
+     * @param numBytes The number of bytes to copy.
      */
-    public void appendBytes(ByteBuffer b) {
-        int numBytes = b.remaining();
-        if (checkOverflow(numBytes)) {
-            return;
-        }
-        appendInt(numBytes);
-        b.get(buf, pos, numBytes);
-        pos += numBytes;
-        appendByte(0);
-    }
-
-
-    private boolean checkOverflow(int numBytes) {
+    public void appendBytes(byte[] b, int off, int numBytes) {
         if (pos + numBytes + 3 > buf.length) {
             log.error(sm.getString("ajpmessage.overflow", "" + numBytes, "" + pos),
                     new ArrayIndexOutOfBoundsException());
             if (log.isDebugEnabled()) {
                 dump("Overflow/coBytes");
             }
-            return true;
+            return;
         }
-        return false;
+        appendInt(numBytes);
+        System.arraycopy(b, off, buf, pos, numBytes);
+        pos += numBytes;
+        appendByte(0);
     }
 
 
@@ -346,6 +371,20 @@ public class AjpMessage {
     }
 
 
+    public int getHeaderLength() {
+        return Constants.H_SIZE;
+    }
+
+
+    public int getPacketSize() {
+        return buf.length;
+    }
+
+    @Deprecated
+    public int processHeader() {
+        return processHeader(true);
+    }
+
     public int processHeader(boolean toContainer) {
         pos = 0;
         int mark = getInt();
@@ -366,9 +405,12 @@ public class AjpMessage {
     }
 
 
-    private void dump(String prefix) {
+    /**
+     * Dump the contents of the message, prefixed with the given String.
+     */
+    public void dump(String msg) {
         if (log.isDebugEnabled()) {
-            log.debug(prefix + ": " + HexUtils.toHexString(buf) + " " + pos +"/" + (len + 4));
+            log.debug(msg + ": " + HexUtils.toHexString(buf) + " " + pos +"/" + (len + 4));
         }
         int max = pos;
         if (len + 4 > pos)

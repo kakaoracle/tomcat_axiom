@@ -35,11 +35,11 @@ import org.junit.Test;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.authenticator.AuthenticatorBase;
+import org.apache.catalina.deploy.LoginConfig;
+import org.apache.catalina.deploy.SecurityCollection;
+import org.apache.catalina.deploy.SecurityConstraint;
 import org.apache.catalina.servlets.DefaultServlet;
 import org.apache.catalina.startup.Tomcat;
-import org.apache.tomcat.util.descriptor.web.LoginConfig;
-import org.apache.tomcat.util.descriptor.web.SecurityCollection;
-import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
 import org.apache.tomcat.websocket.TesterMessageCountClient.BasicText;
 import org.apache.tomcat.websocket.TesterMessageCountClient.TesterProgrammaticEndpoint;
 
@@ -57,19 +57,22 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterFirehoseServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
 
         tomcat.start();
 
         WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
 
         // BZ 62596
+        final StringBuilder dummyValue = new StringBuilder(4000);
+        for (int i = 0; i < 4000; i++) {
+            dummyValue.append('A');
+        }
         ClientEndpointConfig clientEndpointConfig =
                 ClientEndpointConfig.Builder.create().configurator(new Configurator() {
                     @Override
                     public void beforeRequest(Map<String, List<String>> headers) {
-                        headers.put("Dummy", Collections.singletonList(
-                                String.join("", Collections.nCopies(4000, "A"))));
+                        headers.put("Dummy", Collections.singletonList(dummyValue.toString()));
                         super.beforeRequest(headers);
                     }
                 }).build();
@@ -99,7 +102,6 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
             Assert.assertEquals(TesterFirehoseServer.MESSAGE, message);
         }
     }
-
     @Test
     public void testConnectToRootEndpoint() throws Exception {
         Tomcat tomcat = getTomcatInstance();
@@ -107,11 +109,11 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
         Context ctx2 = tomcat.addContext("/foo", null);
         ctx2.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx2, "default", new DefaultServlet());
-        ctx2.addServletMappingDecoded("/", "default");
+        ctx2.addServletMapping("/", "default");
 
         tomcat.start();
 
@@ -128,10 +130,6 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
         if (clientEndpointConfig == null) {
             clientEndpointConfig = ClientEndpointConfig.Builder.create().build();
         }
-        // Increase default timeout from 5s to 10s to try and reduce errors on
-        // CI systems.
-        clientEndpointConfig.getUserProperties().put(Constants.IO_TIMEOUT_MS_PROPERTY, "10000");
-
         Session wsSession = wsContainer.connectToServer(TesterProgrammaticEndpoint.class,
                 clientEndpointConfig, new URI("ws://localhost:" + getPort() + path));
         CountDownLatch latch = new CountDownLatch(1);
@@ -157,10 +155,10 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
         Context ctx = tomcat.addContext(URI_PROTECTED, null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
 
         SecurityCollection collection = new SecurityCollection();
-        collection.addPatternDecoded("/");
+        collection.addPattern("/");
         String utf8User = "test";
         String utf8Pass = "123\u00A3"; // pound sign
 
@@ -196,10 +194,10 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
         Context ctx = tomcat.addContext(URI_PROTECTED, null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
 
         SecurityCollection collection = new SecurityCollection();
-        collection.addPatternDecoded("/*");
+        collection.addPattern("/*");
 
         tomcat.addUser(USER, PWD);
         tomcat.addRole(USER, ROLE);

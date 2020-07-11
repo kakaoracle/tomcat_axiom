@@ -37,5 +37,5 @@ public interface FunctionMapper {
    * @return the result of the method mapping.  Null means no entry found.
    **/
   public java.lang.reflect.Method resolveFunction(String prefix,
-      String localName);
+                                                  String localName);
 }

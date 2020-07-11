@@ -16,10 +16,8 @@
  */
 package org.apache.catalina.core;
 
-import java.io.File;
-import java.io.IOException;
+
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,24 +25,21 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.regex.Pattern;
 
-import javax.management.ObjectName;
-
 import org.apache.catalina.Container;
 import org.apache.catalina.Context;
-import org.apache.catalina.Engine;
 import org.apache.catalina.Globals;
 import org.apache.catalina.Host;
-import org.apache.catalina.JmxEnabled;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.Valve;
 import org.apache.catalina.loader.WebappClassLoaderBase;
+import org.apache.catalina.mbeans.MBeanUtils;
 import org.apache.catalina.util.ContextName;
-import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
+import org.apache.catalina.valves.ValveBase;
 import org.apache.tomcat.util.ExceptionUtils;
+
 
 /**
  * Standard implementation of the <b>Host</b> interface.  Each
@@ -56,13 +51,15 @@ import org.apache.tomcat.util.ExceptionUtils;
  */
 public class StandardHost extends ContainerBase implements Host {
 
-    private static final Log log = LogFactory.getLog(StandardHost.class);
+    private static final org.apache.juli.logging.Log log=
+        org.apache.juli.logging.LogFactory.getLog( StandardHost.class );
 
     // ----------------------------------------------------------- Constructors
 
 
     /**
      * Create a new StandardHost component with the default basic Valve.
+     * // 构造StandardHost时设置一下管道的最后一个valve-StandardHostValve
      */
     public StandardHost() {
 
@@ -87,17 +84,11 @@ public class StandardHost extends ContainerBase implements Host {
      * The application root for this Host.
      */
     private String appBase = "webapps";
-    private volatile File appBaseFile = null;
 
     /**
      * The XML root for this Host.
      */
     private String xmlBase = null;
-
-    /**
-     * host's default config path
-     */
-    private volatile File hostConfigBase = null;
 
     /**
      * The auto deploy flag for this Host.
@@ -123,12 +114,14 @@ public class StandardHost extends ContainerBase implements Host {
 
     /**
      * The deploy on startup flag for this Host.
+     * 启动时就部署
      */
     private boolean deployOnStartup = true;
 
 
     /**
      * deploy Context XML config files property.
+     * 如果java安全机制开启了，那么则deployXML为false
      */
     private boolean deployXML = !Globals.IS_SECURITY_ENABLED;
 
@@ -148,6 +141,12 @@ public class StandardHost extends ContainerBase implements Host {
     private String errorReportValveClass =
         "org.apache.catalina.valves.ErrorReportValve";
 
+    /**
+     * The descriptive information string for this implementation.
+     */
+    private static final String info =
+        "org.apache.catalina.core.StandardHost/1.0";
+
 
     /**
      * Unpack WARs property.
@@ -164,23 +163,23 @@ public class StandardHost extends ContainerBase implements Host {
     /**
      * Should we create directories upon startup for appBase and xmlBase
      */
-    private boolean createDirs = true;
+     private boolean createDirs = true;
 
 
-    /**
-     * Track the class loaders for the child web applications so memory leaks
-     * can be detected.
-     */
-    private final Map<ClassLoader, String> childClassLoaders =
-            new WeakHashMap<>();
+     /**
+      * Track the class loaders for the child web applications so memory leaks
+      * can be detected.
+      */
+     private Map<ClassLoader, String> childClassLoaders =
+         new WeakHashMap<ClassLoader, String>();
 
 
-    /**
-     * Any file or directory in {@link #appBase} that this pattern matches will
-     * be ignored by the automatic deployment process (both
-     * {@link #deployOnStartup} and {@link #autoDeploy}).
-     */
-    private Pattern deployIgnore = null;
+     /**
+      * Any file or directory in {@link #appBase} that this pattern matches will
+      * be ignored by the automatic deployment process (both
+      * {@link #deployOnStartup} and {@link #autoDeploy}).
+      */
+     private Pattern deployIgnore = null;
 
 
     private boolean undeployOldVersions = false;
@@ -214,36 +213,7 @@ public class StandardHost extends ContainerBase implements Host {
      */
     @Override
     public String getAppBase() {
-        return this.appBase;
-    }
-
-
-    /**
-     * ({@inheritDoc}
-     */
-    @Override
-    public File getAppBaseFile() {
-
-        if (appBaseFile != null) {
-            return appBaseFile;
-        }
-
-        File file = new File(getAppBase());
-
-        // If not absolute, make it absolute
-        if (!file.isAbsolute()) {
-            file = new File(getCatalinaBase(), file.getPath());
-        }
-
-        // Make it canonical if possible
-        try {
-            file = file.getCanonicalFile();
-        } catch (IOException ioe) {
-            // Ignore
-        }
-
-        this.appBaseFile = file;
-        return file;
+        return (this.appBase);
     }
 
 
@@ -262,66 +232,43 @@ public class StandardHost extends ContainerBase implements Host {
         String oldAppBase = this.appBase;
         this.appBase = appBase;
         support.firePropertyChange("appBase", oldAppBase, this.appBase);
-        this.appBaseFile = null;
+
     }
 
 
     /**
-     * ({@inheritDoc}
+     * Return the XML root for this Host.  This can be an absolute
+     * pathname, a relative pathname, or a URL.
+     * If null, defaults to
+     * ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory
      */
     @Override
     public String getXmlBase() {
-        return this.xmlBase;
+        return (this.xmlBase);
+
     }
 
 
     /**
-     * ({@inheritDoc}
+     * Set the Xml root for this Host.  This can be an absolute
+     * pathname, a relative pathname, or a URL.
+     * If null, defaults to
+     * ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory
+     *
+     * @param xmlBase The new XML root
      */
     @Override
     public void setXmlBase(String xmlBase) {
+
         String oldXmlBase = this.xmlBase;
         this.xmlBase = xmlBase;
         support.firePropertyChange("xmlBase", oldXmlBase, this.xmlBase);
+
     }
 
 
     /**
-     * ({@inheritDoc}
-     */
-    @Override
-    public File getConfigBaseFile() {
-        if (hostConfigBase != null) {
-            return hostConfigBase;
-        }
-        String path = null;
-        if (getXmlBase()!=null) {
-            path = getXmlBase();
-        } else {
-            StringBuilder xmlDir = new StringBuilder("conf");
-            Container parent = getParent();
-            if (parent instanceof Engine) {
-                xmlDir.append('/');
-                xmlDir.append(parent.getName());
-            }
-            xmlDir.append('/');
-            xmlDir.append(getName());
-            path = xmlDir.toString();
-        }
-        File file = new File(path);
-        if (!file.isAbsolute())
-            file = new File(getCatalinaBase(), path);
-        try {
-            file = file.getCanonicalFile();
-        } catch (IOException e) {// ignore
-        }
-        this.hostConfigBase = file;
-        return file;
-    }
-
-
-    /**
-     * @return <code>true</code> if the Host will attempt to create directories for appBase and xmlBase
+     * Returns true if the Host will attempt to create directories for appBase and xmlBase
      * unless they already exist.
      */
     @Override
@@ -330,8 +277,8 @@ public class StandardHost extends ContainerBase implements Host {
     }
 
     /**
-     * Set to <code>true</code> if the Host should attempt to create directories for xmlBase and appBase upon startup
-     * @param createDirs the new flag value
+     * Set to true if the Host should attempt to create directories for xmlBase and appBase upon startup
+     * @param createDirs
      */
     @Override
     public void setCreateDirs(boolean createDirs) {
@@ -339,12 +286,14 @@ public class StandardHost extends ContainerBase implements Host {
     }
 
     /**
-     * @return the value of the auto deploy flag.  If true, it indicates that
+     * Return the value of the auto deploy flag.  If true, it indicates that
      * this host's child webapps will be dynamically deployed.
      */
     @Override
     public boolean getAutoDeploy() {
-        return this.autoDeploy;
+
+        return (this.autoDeploy);
+
     }
 
 
@@ -365,12 +314,14 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * @return the Java class name of the context configuration class
+     * Return the Java class name of the context configuration class
      * for new web applications.
      */
     @Override
     public String getConfigClass() {
-        return this.configClass;
+
+        return (this.configClass);
+
     }
 
 
@@ -392,11 +343,13 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * @return the Java class name of the Context implementation class
+     * Return the Java class name of the Context implementation class
      * for new web applications.
      */
     public String getContextClass() {
-        return this.contextClass;
+
+        return (this.contextClass);
+
     }
 
 
@@ -417,13 +370,15 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * @return the value of the deploy on startup flag.  If <code>true</code>, it indicates
+     * Return the value of the deploy on startup flag.  If true, it indicates
      * that this host's child webapps should be discovered and automatically
      * deployed at startup time.
      */
     @Override
     public boolean getDeployOnStartup() {
-        return this.deployOnStartup;
+
+        return (this.deployOnStartup);
+
     }
 
 
@@ -444,28 +399,32 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * @return <code>true</code> if XML context descriptors should be deployed.
+     * Deploy XML Context config files flag accessor.
      */
     public boolean isDeployXML() {
-        return deployXML;
+
+        return (deployXML);
+
     }
 
 
     /**
      * Deploy XML Context config files flag mutator.
-     *
-     * @param deployXML <code>true</code> if context descriptors should be deployed
      */
     public void setDeployXML(boolean deployXML) {
+
         this.deployXML = deployXML;
+
     }
 
 
     /**
-     * @return the copy XML config file flag for this component.
+     * Return the copy XML config file flag for this component.
      */
     public boolean isCopyXML() {
-        return this.copyXML;
+
+        return (this.copyXML);
+
     }
 
 
@@ -475,16 +434,20 @@ public class StandardHost extends ContainerBase implements Host {
      * @param copyXML The new copy XML flag
      */
     public void setCopyXML(boolean copyXML) {
-        this.copyXML = copyXML;
+
+        this.copyXML= copyXML;
+
     }
 
 
     /**
-     * @return the Java class name of the error report valve class
+     * Return the Java class name of the error report valve class
      * for new web applications.
      */
     public String getErrorReportValveClass() {
-        return this.errorReportValveClass;
+
+        return (this.errorReportValveClass);
+
     }
 
 
@@ -506,12 +469,14 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * @return the canonical, fully qualified, name of the virtual host
+     * Return the canonical, fully qualified, name of the virtual host
      * this Container represents.
      */
     @Override
     public String getName() {
-        return name;
+
+        return (name);
+
     }
 
 
@@ -540,44 +505,46 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * @return <code>true</code> if WARs should be unpacked on deployment.
+     * Unpack WARs flag accessor.
      */
     public boolean isUnpackWARs() {
-        return unpackWARs;
+
+        return (unpackWARs);
+
     }
 
 
     /**
      * Unpack WARs flag mutator.
-     *
-     * @param unpackWARs <code>true</code> to unpack WARs on deployment
      */
     public void setUnpackWARs(boolean unpackWARs) {
+
         this.unpackWARs = unpackWARs;
+
     }
 
 
     /**
-     * @return host work directory base.
+     * Host work directory base.
      */
     public String getWorkDir() {
-        return workDir;
+
+        return (workDir);
     }
 
 
     /**
-     * Set host work directory base.
-     *
-     * @param workDir the new base work folder for this host
+     * Host work directory base.
      */
     public void setWorkDir(String workDir) {
+
         this.workDir = workDir;
     }
 
 
     /**
-     * @return the regular expression that defines the files and directories in
-     * the host's {@link #getAppBase} that will be ignored by the automatic
+     * Return the regular expression that defines the files and directories in
+     * the host's {@link #appBase} that will be ignored by the automatic
      * deployment process.
      */
     @Override
@@ -590,8 +557,8 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * @return the compiled regular expression that defines the files and
-     * directories in the host's {@link #getAppBase} that will be ignored by the
+     * Return the compiled regular expression that defines the files and
+     * directories in the host's {@link #appBase} that will be ignored by the
      * automatic deployment process.
      */
     @Override
@@ -602,10 +569,8 @@ public class StandardHost extends ContainerBase implements Host {
 
     /**
      * Set the regular expression that defines the files and directories in
-     * the host's {@link #getAppBase} that will be ignored by the automatic
+     * the host's {@link #appBase} that will be ignored by the automatic
      * deployment process.
-     *
-     * @param deployIgnore the regexp
      */
     @Override
     public void setDeployIgnore(String deployIgnore) {
@@ -626,19 +591,11 @@ public class StandardHost extends ContainerBase implements Host {
     }
 
 
-    /**
-     * @return <code>true</code> if a webapp start should fail if a Servlet startup fails
-     */
     public boolean isFailCtxIfServletStartFails() {
         return failCtxIfServletStartFails;
     }
 
 
-    /**
-     * Change the behavior of Servlet startup errors on web application starts.
-     * @param failCtxIfServletStartFails <code>false</code> to ignore errors on Servlets which
-     *    are stated when the web application starts
-     */
     public void setFailCtxIfServletStartFails(
             boolean failCtxIfServletStartFails) {
         boolean oldFailCtxIfServletStartFails = this.failCtxIfServletStartFails;
@@ -664,12 +621,14 @@ public class StandardHost extends ContainerBase implements Host {
 
         synchronized (aliasesLock) {
             // Skip duplicate aliases
-            for (String s : aliases) {
-                if (s.equals(alias))
+            for (int i = 0; i < aliases.length; i++) {
+                if (aliases[i].equals(alias))
                     return;
             }
             // Add this alias to the list
-            String newAliases[] = Arrays.copyOf(aliases, aliases.length + 1);
+            String newAliases[] = new String[aliases.length + 1];
+            for (int i = 0; i < aliases.length; i++)
+                newAliases[i] = aliases[i];
             newAliases[aliases.length] = alias;
             aliases = newAliases;
         }
@@ -730,37 +689,50 @@ public class StandardHost extends ContainerBase implements Host {
      * This is usually triggered on context reload. Note: This method attempts
      * to force a full garbage collection. This should be used with extreme
      * caution on a production system.
-     *
-     * @return a list of possibly leaking contexts
      */
     public String[] findReloadedContextMemoryLeaks() {
 
         System.gc();
 
-        List<String> result = new ArrayList<>();
+        List<String> result = new ArrayList<String>();
 
         for (Map.Entry<ClassLoader, String> entry :
                 childClassLoaders.entrySet()) {
             ClassLoader cl = entry.getKey();
             if (cl instanceof WebappClassLoaderBase) {
-                if (!((WebappClassLoaderBase) cl).getState().isAvailable()) {
+                if (!((WebappClassLoaderBase) cl).isStarted()) {
                     result.add(entry.getValue());
                 }
             }
         }
 
-        return result.toArray(new String[0]);
+        return result.toArray(new String[result.size()]);
     }
 
     /**
-     * @return the set of alias names for this Host.  If none are defined,
+     * Return the set of alias names for this Host.  If none are defined,
      * a zero length array is returned.
      */
     @Override
     public String[] findAliases() {
+
         synchronized (aliasesLock) {
-            return this.aliases;
+            return (this.aliases);
         }
+
+    }
+
+
+    /**
+     * Return descriptive information about this Container implementation and
+     * the corresponding version number, in the format
+     * <code>&lt;description&gt;/&lt;version&gt;</code>.
+     */
+    @Override
+    public String getInfo() {
+
+        return (info);
+
     }
 
 
@@ -805,6 +777,24 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
+     * Return a String representation of this component.
+     */
+    @Override
+    public String toString() {
+
+        StringBuilder sb = new StringBuilder();
+        if (getParent() != null) {
+            sb.append(getParent().toString());
+            sb.append(".");
+        }
+        sb.append("StandardHost[");
+        sb.append(getName());
+        sb.append("]");
+        return (sb.toString());
+
+    }
+
+    /**
      * Start this component and implement the requirements
      * of {@link org.apache.catalina.util.LifecycleBase#startInternal()}.
      *
@@ -828,7 +818,7 @@ public class StandardHost extends ContainerBase implements Host {
                 }
                 if(!found) {
                     Valve valve =
-                        (Valve) Class.forName(errorValve).getConstructor().newInstance();
+                        (Valve) Class.forName(errorValve).getDeclaredConstructor().newInstance();
                     getPipeline().addValve(valve);
                 }
             } catch (Throwable t) {
@@ -844,24 +834,24 @@ public class StandardHost extends ContainerBase implements Host {
 
     // -------------------- JMX  --------------------
     /**
-     * @return the MBean Names of the Valves associated with this Host
-     *
-     * @exception Exception if an MBean cannot be created or registered
-     */
-    public String[] getValveNames() throws Exception {
-        Valve [] valves = this.getPipeline().getValves();
-        String [] mbeanNames = new String[valves.length];
-        for (int i = 0; i < valves.length; i++) {
-            if (valves[i] instanceof JmxEnabled) {
-                ObjectName oname = ((JmxEnabled) valves[i]).getObjectName();
-                if (oname != null) {
-                    mbeanNames[i] = oname.toString();
-                }
-            }
-        }
+      * Return the MBean Names of the Valves associated with this Host
+      *
+      * @exception Exception if an MBean cannot be created or registered
+      */
+     public String [] getValveNames()
+         throws Exception
+    {
+         Valve [] valves = this.getPipeline().getValves();
+         String [] mbeanNames = new String[valves.length];
+         for (int i = 0; i < valves.length; i++) {
+             if( valves[i] == null ) continue;
+             if( ((ValveBase)valves[i]).getObjectName() == null ) continue;
+             mbeanNames[i] = ((ValveBase)valves[i]).getObjectName().toString();
+         }
 
-        return mbeanNames;
-    }
+         return mbeanNames;
+
+     }
 
     public String[] getAliases() {
         synchronized (aliasesLock) {
@@ -873,7 +863,7 @@ public class StandardHost extends ContainerBase implements Host {
     protected String getObjectNameKeyProperties() {
 
         StringBuilder keyProperties = new StringBuilder("type=Host");
-        keyProperties.append(getMBeanKeyProperties());
+        keyProperties.append(MBeanUtils.getContainerKeyProperties(this));
 
         return keyProperties.toString();
     }

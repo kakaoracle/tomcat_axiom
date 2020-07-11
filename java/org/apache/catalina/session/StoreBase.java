@@ -30,7 +30,6 @@ import org.apache.catalina.Manager;
 import org.apache.catalina.Store;
 import org.apache.catalina.util.CustomObjectInputStream;
 import org.apache.catalina.util.LifecycleBase;
-import org.apache.catalina.util.ToStringUtil;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -44,14 +43,19 @@ public abstract class StoreBase extends LifecycleBase implements Store {
     // ----------------------------------------------------- Instance Variables
 
     /**
+     * The descriptive information about this implementation.
+     */
+    protected static final String info = "StoreBase/1.0";
+
+    /**
      * Name to register for this Store, used for logging.
      */
-    protected static final String storeName = "StoreBase";
+    protected static String storeName = "StoreBase";
 
     /**
      * The property change support for this component.
      */
-    protected final PropertyChangeSupport support = new PropertyChangeSupport(this);
+    protected PropertyChangeSupport support = new PropertyChangeSupport(this);
 
     /**
      * The string manager for this package.
@@ -63,8 +67,16 @@ public abstract class StoreBase extends LifecycleBase implements Store {
      */
     protected Manager manager;
 
-
     // ------------------------------------------------------------- Properties
+
+    /**
+     * @return the info for this Store.
+     */
+    @Override
+    public String getInfo() {
+        return info;
+    }
+
 
     /**
      * @return the name for this Store, used for logging.
@@ -145,18 +157,18 @@ public abstract class StoreBase extends LifecycleBase implements Store {
         try {
             keys = expiredKeys();
         } catch (IOException e) {
-            manager.getContext().getLogger().error("Error getting keys", e);
+            manager.getContainer().getLogger().error("Error getting keys", e);
             return;
         }
-        if (manager.getContext().getLogger().isDebugEnabled()) {
-            manager.getContext().getLogger().debug(getStoreName()+ ": processExpires check number of " + keys.length + " sessions" );
+        if (manager.getContainer().getLogger().isDebugEnabled()) {
+            manager.getContainer().getLogger().debug(getStoreName()+ ": processExpires check number of " + keys.length + " sessions" );
         }
 
         long timeNow = System.currentTimeMillis();
 
-        for (String key : keys) {
+        for (int i = 0; i < keys.length; i++) {
             try {
-                StandardSession session = (StandardSession) load(key);
+                StandardSession session = (StandardSession) load(keys[i]);
                 if (session == null) {
                     continue;
                 }
@@ -164,15 +176,15 @@ public abstract class StoreBase extends LifecycleBase implements Store {
                 if (timeIdle < session.getMaxInactiveInterval()) {
                     continue;
                 }
-                if (manager.getContext().getLogger().isDebugEnabled()) {
-                    manager.getContext().getLogger().debug(getStoreName() + ": processExpires expire store session " + key);
+                if (manager.getContainer().getLogger().isDebugEnabled()) {
+                    manager.getContainer().getLogger().debug(getStoreName()+ ": processExpires expire store session " + keys[i] );
                 }
                 boolean isLoaded = false;
                 if (manager instanceof PersistentManagerBase) {
-                    isLoaded = ((PersistentManagerBase) manager).isLoaded(key);
+                    isLoaded = ((PersistentManagerBase) manager).isLoaded(keys[i]);
                 } else {
                     try {
-                        if (manager.findSession(key) != null) {
+                        if (manager.findSession(keys[i]) != null) {
                             isLoaded = true;
                         }
                     } catch (IOException ioe) {
@@ -186,13 +198,13 @@ public abstract class StoreBase extends LifecycleBase implements Store {
                     // expire swapped out session
                     session.expire();
                 }
-                remove(key);
+                remove(keys[i]);
             } catch (Exception e) {
-                manager.getContext().getLogger().error("Session: " + key + "; ", e);
+                manager.getContainer().getLogger().error("Session: "+keys[i]+"; ", e);
                 try {
-                    remove(key);
+                    remove(keys[i]);
                 } catch (IOException e2) {
-                    manager.getContext().getLogger().error("Error removing key", e2);
+                    manager.getContainer().getLogger().error("Error removing key", e2);
                 }
             }
         }
@@ -222,7 +234,7 @@ public abstract class StoreBase extends LifecycleBase implements Store {
 
         if (manager instanceof ManagerBase) {
             ManagerBase managerBase = (ManagerBase) manager;
-            ois = new CustomObjectInputStream(bis, classLoader, manager.getContext().getLogger(),
+            ois = new CustomObjectInputStream(bis, classLoader, manager.getContainer().getLogger(),
                     managerBase.getSessionAttributeValueClassNamePattern(),
                     managerBase.getWarnOnSessionAttributeFilterFailure());
         } else {
@@ -278,6 +290,14 @@ public abstract class StoreBase extends LifecycleBase implements Store {
      */
     @Override
     public String toString() {
-        return ToStringUtil.toString(this, manager);
+        StringBuilder sb = new StringBuilder(this.getClass().getName());
+        sb.append('[');
+        if (manager == null) {
+            sb.append("Manager is null");
+        } else {
+            sb.append(manager);
+        }
+        sb.append(']');
+        return sb.toString();
     }
 }

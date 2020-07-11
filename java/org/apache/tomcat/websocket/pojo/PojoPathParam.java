@@ -26,7 +26,7 @@ import org.apache.tomcat.websocket.Util;
  * an onXxx method of {@link javax.websocket.Endpoint}. The name is only present
  * for parameters annotated with
  * {@link javax.websocket.server.PathParam}. For the
- * {@link javax.websocket.Session} and {@link java.lang.Throwable} parameters,
+ * {@link javax.websocket.Session} and {@link Throwable} parameters,
  * {@link #getName()} will always return <code>null</code>.
  */
 public class PojoPathParam {

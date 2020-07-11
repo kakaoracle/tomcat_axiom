@@ -14,7 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+
 package org.apache.catalina.startup;
+
 
 import java.io.File;
 import java.io.IOException;
@@ -30,6 +33,7 @@ import java.util.Set;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+
 
 /**
  * <p>Utility class for building class loaders for Catalina.  The factory
@@ -48,6 +52,7 @@ import org.apache.juli.logging.LogFactory;
  *
  * @author Craig R. McClanahan
  */
+
 public final class ClassLoaderFactory {
 
 
@@ -68,7 +73,6 @@ public final class ClassLoaderFactory {
      * or <code>null</code> for no directories of JAR files to be considered
      * @param parent Parent class loader for the new class loader, or
      *  <code>null</code> for the system class loader.
-     * @return the new class loader
      *
      * @exception Exception if an error occurs constructing the class loader
      */
@@ -81,42 +85,40 @@ public final class ClassLoaderFactory {
             log.debug("Creating new class loader");
 
         // Construct the "class path" for this class loader
-        Set<URL> set = new LinkedHashSet<>();
+        Set<URL> set = new LinkedHashSet<URL>();
 
         // Add unpacked directories
         if (unpacked != null) {
-            for (File file : unpacked) {
-                if (!file.canRead()) {
+            for (int i = 0; i < unpacked.length; i++)  {
+                File file = unpacked[i];
+                if (!file.exists() || !file.canRead())
                     continue;
-                }
                 file = new File(file.getCanonicalPath() + File.separator);
                 URL url = file.toURI().toURL();
-                if (log.isDebugEnabled()) {
+                if (log.isDebugEnabled())
                     log.debug("  Including directory " + url);
-                }
                 set.add(url);
             }
         }
 
         // Add packed directory JAR files
         if (packed != null) {
-            for (File directory : packed) {
-                if (!directory.isDirectory() || !directory.canRead()) {
+            for (int i = 0; i < packed.length; i++) {
+                File directory = packed[i];
+                if (!directory.isDirectory() || !directory.exists() ||
+                    !directory.canRead())
                     continue;
-                }
                 String filenames[] = directory.list();
                 if (filenames == null) {
                     continue;
                 }
-                for (String s : filenames) {
-                    String filename = s.toLowerCase(Locale.ENGLISH);
-                    if (!filename.endsWith(".jar")) {
+                for (int j = 0; j < filenames.length; j++) {
+                    String filename = filenames[j].toLowerCase(Locale.ENGLISH);
+                    if (!filename.endsWith(".jar"))
                         continue;
-                    }
-                    File file = new File(directory, s);
-                    if (log.isDebugEnabled()) {
+                    File file = new File(directory, filenames[j]);
+                    if (log.isDebugEnabled())
                         log.debug("  Including jar file " + file.getAbsolutePath());
-                    }
                     URL url = file.toURI().toURL();
                     set.add(url);
                 }
@@ -124,16 +126,15 @@ public final class ClassLoaderFactory {
         }
 
         // Construct the class loader itself
-        final URL[] array = set.toArray(new URL[0]);
+        final URL[] array = set.toArray(new URL[set.size()]);
         return AccessController.doPrivileged(
                 new PrivilegedAction<URLClassLoader>() {
                     @Override
                     public URLClassLoader run() {
-                        if (parent == null) {
+                        if (parent == null)
                             return new URLClassLoader(array);
-                        } else {
+                        else
                             return new URLClassLoader(array, parent);
-                        }
                     }
                 });
     }
@@ -148,7 +149,6 @@ public final class ClassLoaderFactory {
      *                     the class loader.
      * @param parent Parent class loader for the new class loader, or
      *  <code>null</code> for the system class loader.
-     * @return the new class loader
      *
      * @exception Exception if an error occurs constructing the class loader
      */
@@ -160,7 +160,7 @@ public final class ClassLoaderFactory {
             log.debug("Creating new class loader");
 
         // Construct the "class path" for this class loader
-        Set<URL> set = new LinkedHashSet<>();
+        Set<URL> set = new LinkedHashSet<URL>();
 
         if (repositories != null) {
             for (Repository repository : repositories)  {
@@ -202,18 +202,18 @@ public final class ClassLoaderFactory {
                     if (filenames == null) {
                         continue;
                     }
-                    for (String s : filenames) {
-                        String filename = s.toLowerCase(Locale.ENGLISH);
+                    for (int j = 0; j < filenames.length; j++) {
+                        String filename = filenames[j].toLowerCase(Locale.ENGLISH);
                         if (!filename.endsWith(".jar"))
                             continue;
-                        File file = new File(directory, s);
+                        File file = new File(directory, filenames[j]);
                         file = file.getCanonicalFile();
                         if (!validateFile(file, RepositoryType.JAR)) {
                             continue;
                         }
                         if (log.isDebugEnabled())
                             log.debug("    Including glob jar file "
-                                    + file.getAbsolutePath());
+                                + file.getAbsolutePath());
                         URL url = buildClassLoaderUrl(file);
                         set.add(url);
                     }
@@ -222,7 +222,7 @@ public final class ClassLoaderFactory {
         }
 
         // Construct the class loader itself
-        final URL[] array = set.toArray(new URL[0]);
+        final URL[] array = set.toArray(new URL[set.size()]);
         if (log.isDebugEnabled())
             for (int i = 0; i < array.length; i++) {
                 log.debug("  location " + i + " is " + array[i]);
@@ -233,6 +233,7 @@ public final class ClassLoaderFactory {
                     @Override
                     public URLClassLoader run() {
                         if (parent == null)
+                            // URLClassLoader是一个可以从指定目录或网络地址加载class的一个类加载器
                             return new URLClassLoader(array);
                         else
                             return new URLClassLoader(array, parent);
@@ -243,7 +244,7 @@ public final class ClassLoaderFactory {
     private static boolean validateFile(File file,
             RepositoryType type) throws IOException {
         if (RepositoryType.DIR == type || RepositoryType.GLOB == type) {
-            if (!file.isDirectory() || !file.canRead()) {
+            if (!file.exists() || !file.isDirectory() || !file.canRead()) {
                 String msg = "Problem with directory [" + file +
                         "], exists: [" + file.exists() +
                         "], isDirectory: [" + file.isDirectory() +
@@ -268,7 +269,7 @@ public final class ClassLoaderFactory {
                 return false;
             }
         } else if (RepositoryType.JAR == type) {
-            if (!file.canRead()) {
+            if (!file.exists() || !file.canRead()) {
                 log.warn("Problem with JAR file [" + file +
                         "], exists: [" + file.exists() +
                         "], canRead: [" + file.canRead() + "]");
@@ -310,8 +311,8 @@ public final class ClassLoaderFactory {
     }
 
     public static class Repository {
-        private final String location;
-        private final RepositoryType type;
+        private String location;
+        private RepositoryType type;
 
         public Repository(String location, RepositoryType type) {
             this.location = location;

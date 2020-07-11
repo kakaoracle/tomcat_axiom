@@ -38,7 +38,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("mthornton", result.get("username"));
         Assert.assertEquals("optrak.com", result.get("realm"));
@@ -69,7 +69,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("mthornton", result.get("username"));
         Assert.assertEquals("optrak.com", result.get("realm"));
@@ -93,7 +93,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("mthornton", result.get("username"));
         Assert.assertEquals("auth", result.get("qop"));
@@ -107,7 +107,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("mthornton", result.get("username"));
         Assert.assertEquals("auth", result.get("qop"));
@@ -120,7 +120,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("00000001", result.get("nc"));
     }
@@ -131,7 +131,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("10000000", result.get("nc"));
     }
@@ -142,7 +142,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("09abcdef", result.get("nc"));
     }
@@ -153,7 +153,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("fedcba90", result.get("nc"));
     }
@@ -164,7 +164,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("09abcdef", result.get("nc"));
     }
@@ -175,7 +175,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("fedcba90", result.get("nc"));
     }
@@ -186,7 +186,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("00abcdef", result.get("nc"));
     }
@@ -197,7 +197,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("fedcba00", result.get("nc"));
     }
@@ -208,7 +208,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("00abcdef", result.get("nc"));
     }
@@ -219,7 +219,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertEquals("fedcba00", result.get("nc"));
     }
@@ -230,7 +230,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertNull(result);
     }
@@ -241,7 +241,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertNull(result);
     }
@@ -252,7 +252,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
 
         Assert.assertNull(result);
     }
@@ -263,7 +263,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -273,27 +273,17 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
     @Test
-    public void testNonTokenDirective1() throws Exception {
+    public void testNonTokenDirective() throws Exception {
         String header = "Digest user{name=\"test\"";
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
-        Assert.assertNull(result);
-    }
-
-    @Test
-    public void testNonTokenDirective2() throws Exception {
-        String header = "Digest a=b,{name=test";
-
-        StringReader input = new StringReader(header);
-
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -303,7 +293,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertEquals("auth", result.get("qop"));
     }
 
@@ -313,18 +303,8 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertEquals("auth", result.get("qop"));
-    }
-
-    @Test
-    public void testEmptyQop() throws Exception {
-        String header = "Digest qop=";
-
-        StringReader input = new StringReader(header);
-
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
-        Assert.assertNull(result);
     }
 
     @Test
@@ -333,7 +313,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -343,7 +323,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -353,7 +333,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -363,7 +343,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -373,7 +353,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -383,7 +363,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -393,7 +373,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -403,7 +383,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -413,7 +393,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -423,7 +403,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -433,7 +413,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -443,7 +423,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -453,7 +433,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertNull(result);
     }
 
@@ -465,7 +445,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertEquals("b", result.get("a"));
     }
 
@@ -477,41 +457,7 @@ public class TestAuthorizationDigest {
 
         StringReader input = new StringReader(header);
 
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Map<String,String> result = HttpParser.parseAuthorizationDigest(input);
         Assert.assertEquals("b", result.get("a"));
     }
-
-    @Test
-    public void testParseAuthParamBEscaped() throws Exception {
-        // Test for HttpParser.readTokenOrQuotedString()
-        // auth-param = token "=" ( token | quoted-string )
-        String header = "Digest a=\"b\\\"b\"";
-
-        StringReader input = new StringReader(header);
-
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
-        Assert.assertEquals("b\"b", result.get("a"));
-    }
-
-    @Test
-    public void testQuotedStringNoQuotes() throws Exception {
-        String header = "Digest username=a";
-
-        StringReader input = new StringReader(header);
-
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
-        Assert.assertNull(result);
-    }
-
-    @Test
-    public void testNotDigest() throws Exception {
-        String header = "SomethingElse a=b";
-
-        StringReader input = new StringReader(header);
-
-        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
-        Assert.assertNull(result);
-    }
-
-
 }

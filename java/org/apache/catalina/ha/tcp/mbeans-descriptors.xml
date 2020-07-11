@@ -28,12 +28,7 @@
     <attribute
       name="channelSendOptions"
       description="This sets channel behaviour on sent messages."
-      type="java.lang.String"/>
-    <attribute
-      name="channelSendOptionsName"
-      description="channelSendOptions name."
-      writeable="false"
-      type="java.lang.String"/>
+      type="int"/>
     <attribute
       name="channelStartOptions"
       description="This sets channel start behaviour."
@@ -48,6 +43,11 @@
       is="true"
       type="boolean"/>
     <attribute
+      name="info"
+      description="Class version info"
+      type="java.lang.String"
+      writeable="false"/>
+    <attribute
       name="notifyLifecycleListenerOnFailure"
       description="notify lifecycleListener from message transfer failure"
       is="true"
@@ -57,6 +57,20 @@
       description="The name of the LifecycleState that this component is currently in"
       type="java.lang.String"
       writeable="false"/>
+    <operation
+      name="setProperty"
+      description="set a property to all cluster managers (with prefix 'manager.')"
+      impact="ACTION"
+      returnType="void">
+      <parameter
+        name="key"
+        description="Property name"
+        type="java.lang.String"/>
+      <parameter
+        name="value"
+        description="Property value"
+        type="java.lang.String"/>
+    </operation>
     <operation
       name="send"
       description="send message to all cluster members"
@@ -99,6 +113,11 @@
       name="filter"
       description="resource filter to disable session replication check"
       type="java.lang.String"/>
+    <attribute
+      name="info"
+      description="Class version info"
+      type="java.lang.String"
+      writeable="false"/>
     <attribute
       name="lastSendTime"
       description="last replicated request time"

@@ -39,7 +39,6 @@ import javax.naming.OperationNotSupportedException;
 import javax.naming.Reference;
 import javax.naming.Referenceable;
 import javax.naming.spi.NamingManager;
-import javax.naming.spi.ObjectFactory;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -73,7 +72,7 @@ public class NamingContext implements Context {
      * @param env The environment to use to construct the naming context
      * @param name The name of the associated Catalina Context
      */
-    public NamingContext(Hashtable<String,Object> env, String name) {
+    public NamingContext(Hashtable<String,Object> env, String name) throws NamingException {
         this(env, name, new HashMap<String,NamingEntry>());
     }
 
@@ -86,9 +85,9 @@ public class NamingContext implements Context {
      * @param bindings The initial bindings for the naming context
      */
     public NamingContext(Hashtable<String,Object> env, String name,
-            HashMap<String,NamingEntry> bindings) {
+            HashMap<String,NamingEntry> bindings) throws NamingException {
 
-        this.env = new Hashtable<>();
+        this.env = new Hashtable<String,Object>();
         this.name = name;
         // Populating the environment hashtable
         if (env != null ) {
@@ -108,7 +107,7 @@ public class NamingContext implements Context {
     /**
      * Environment.
      */
-    protected final Hashtable<String,Object> env;
+    protected Hashtable<String,Object> env;
 
 
     /**
@@ -120,13 +119,13 @@ public class NamingContext implements Context {
     /**
      * Bindings in this Context.
      */
-    protected final HashMap<String,NamingEntry> bindings;
+    protected HashMap<String,NamingEntry> bindings;
 
 
     /**
      * Name of the associated Catalina Context.
      */
-    protected final String name;
+    protected String name;
 
 
     /**
@@ -696,9 +695,11 @@ public class NamingContext implements Context {
      * @param name a name relative to this context
      * @param prefix the name of this context relative to one of its ancestors
      * @return the composition of prefix and name
+     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public String composeName(String name, String prefix) {
+    public String composeName(String name, String prefix)
+        throws NamingException {
         return prefix + "/" + name;
     }
 
@@ -710,9 +711,11 @@ public class NamingContext implements Context {
      * @param propName the name of the environment property to add; may not
      * be null
      * @param propVal the value of the property to add; may not be null
+     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public Object addToEnvironment(String propName, Object propVal) {
+    public Object addToEnvironment(String propName, Object propVal)
+        throws NamingException {
         return env.put(propName, propVal);
     }
 
@@ -722,9 +725,11 @@ public class NamingContext implements Context {
      *
      * @param propName the name of the environment property to remove;
      * may not be null
+     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public Object removeFromEnvironment(String propName){
+    public Object removeFromEnvironment(String propName)
+        throws NamingException {
         return env.remove(propName);
     }
 
@@ -737,9 +742,11 @@ public class NamingContext implements Context {
      * may be changed using addToEnvironment() and removeFromEnvironment().
      *
      * @return the environment of this context; never null
+     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public Hashtable<?,?> getEnvironment() {
+    public Hashtable<?,?> getEnvironment()
+        throws NamingException {
         return env;
     }
 
@@ -792,21 +799,6 @@ public class NamingContext implements Context {
     // ------------------------------------------------------ Protected Methods
 
 
-    private static final boolean GRAAL;
-
-    static {
-        boolean result = false;
-        try {
-            Class<?> nativeImageClazz = Class.forName("org.graalvm.nativeimage.ImageInfo");
-            result = Boolean.TRUE.equals(nativeImageClazz.getMethod("inImageCode").invoke(null));
-        } catch (ClassNotFoundException e) {
-            // Must be Graal
-        } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            // Should never happen
-        }
-        GRAAL = result;
-    }
-
     /**
      * Retrieves the named object.
      *
@@ -852,19 +844,9 @@ public class NamingContext implements Context {
                 }
             } else if (entry.type == NamingEntry.REFERENCE) {
                 try {
-                    Object obj = null;
-                    if (!GRAAL) {
-                        obj = NamingManager.getObjectInstance(entry.value, name, this, env);
-                    } else {
-                        // NamingManager.getObjectInstance would simply return the reference here
-                        // Use the configured object factory to resolve it directly if possible
-                        // Note: This may need manual constructor reflection configuration
-                        Reference reference = (Reference) entry.value;
-                        Class<?> factoryClass = getClass().getClassLoader().loadClass(reference.getFactoryClassName());
-                        ObjectFactory factory = (ObjectFactory) factoryClass.newInstance();
-                        obj = factory.getObjectInstance(entry.value, name, this, env);
-                    }
-                    if (entry.value instanceof ResourceRef) {
+                    Object obj = NamingManager.getObjectInstance
+                        (entry.value, name, this, env);
+                    if(entry.value instanceof ResourceRef) {
                         boolean singleton = Boolean.parseBoolean(
                                     (String) ((ResourceRef) entry.value).get(
                                         "singleton").getContent());
@@ -986,7 +968,7 @@ public class NamingContext implements Context {
             return true;
         } else {
             if (exceptionOnFailedWrite) {
-                throw new javax.naming.OperationNotSupportedException(
+                throw new OperationNotSupportedException(
                         sm.getString("namingContext.readOnly"));
             }
         }

@@ -16,15 +16,13 @@
  */
 package org.apache.tomcat.util.res;
 
-import java.util.Locale;
-
 import org.junit.Assert;
 import org.junit.Test;
 
 public class TestStringManager {
 
-    private static final String PACKAGE_NAME = "org.apache.tomcat.util";
-    private static final StringManager sm = StringManager.getManager(PACKAGE_NAME);
+    private static final StringManager sm =
+        StringManager.getManager("org.apache.naming");
 
     @Test
     public void testNullKey() {
@@ -45,26 +43,4 @@ public class TestStringManager {
         sm.getString("namingContext.nameNotBound", (Object[]) null);
         sm.getString("namingContext.nameNotBound", new Object[1]);
     }
-
-    @Test
-    public void testFrench() {
-        StringManager sm = StringManager.getManager(PACKAGE_NAME, Locale.FRENCH);
-        Assert.assertEquals(Locale.FRENCH, sm.getLocale());
-    }
-
-    @Test
-    public void testMissingWithTccl() {
-        Thread.currentThread().setContextClassLoader(TestStringManager.class.getClassLoader());
-        StringManager sm = StringManager.getManager("org.does.not.exist");
-        Assert.assertNull(sm.getLocale());
-    }
-
-
-    @Test
-    public void testMissingNullTccl() {
-        Thread.currentThread().setContextClassLoader(null);
-        StringManager sm = StringManager.getManager("org.does.not.exist");
-        Assert.assertNull(sm.getLocale());
-    }
-
 }

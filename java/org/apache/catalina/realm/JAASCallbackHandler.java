@@ -63,8 +63,16 @@ public class JAASCallbackHandler implements CallbackHandler {
     public JAASCallbackHandler(JAASRealm realm, String username,
                                String password) {
 
-        this(realm, username, password, null, null, null, null, null, null,
-                null);
+        super();
+        this.realm = realm;
+        this.username = username;
+
+        if (realm.hasMessageDigest()) {
+            this.password = realm.digest(password);
+        }
+        else {
+            this.password = password;
+        }
     }
 
 
@@ -87,14 +95,7 @@ public class JAASCallbackHandler implements CallbackHandler {
                                String password, String nonce, String nc,
                                String cnonce, String qop, String realmName,
                                String md5a2, String authMethod) {
-        this.realm = realm;
-        this.username = username;
-
-        if (password != null && realm.hasMessageDigest()) {
-            this.password = realm.getCredentialHandler().mutate(password);
-        } else {
-            this.password = password;
-        }
+        this(realm, username, password);
         this.nonce = nonce;
         this.nc = nc;
         this.cnonce = cnonce;
@@ -109,58 +110,59 @@ public class JAASCallbackHandler implements CallbackHandler {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm = StringManager.getManager(JAASCallbackHandler.class);
+    protected static final StringManager sm =
+        StringManager.getManager(Constants.Package);
 
     /**
      * The password to be authenticated with.
      */
-    protected final String password;
+    protected String password = null;
 
 
     /**
      * The associated <code>JAASRealm</code> instance.
      */
-    protected final JAASRealm realm;
+    protected JAASRealm realm = null;
 
     /**
      * The username to be authenticated with.
      */
-    protected final String username;
+    protected String username = null;
 
     /**
      * Server generated nonce.
      */
-    protected final String nonce;
+    protected String nonce = null;
 
     /**
      * Nonce count.
      */
-    protected final String nc;
+    protected String nc = null;
 
     /**
      * Client generated nonce.
      */
-    protected final String cnonce;
+    protected String cnonce = null;
 
     /**
      * Quality of protection applied to the message.
      */
-    protected final String qop;
+    protected String qop;
 
     /**
      * Realm name.
      */
-    protected final String realmName;
+    protected String realmName;
 
     /**
      * Second MD5 digest.
      */
-    protected final String md5a2;
+    protected String md5a2;
 
     /**
      * The authentication method to be used. If null, assume BASIC/FORM.
      */
-    protected final String authMethod;
+    protected String authMethod;
 
     // --------------------------------------------------------- Public Methods
 
@@ -182,53 +184,42 @@ public class JAASCallbackHandler implements CallbackHandler {
     public void handle(Callback callbacks[])
         throws IOException, UnsupportedCallbackException {
 
-        for (Callback callback : callbacks) {
+        for (int i = 0; i < callbacks.length; i++) {
 
-            if (callback instanceof NameCallback) {
+            if (callbacks[i] instanceof NameCallback) {
                 if (realm.getContainer().getLogger().isTraceEnabled())
                     realm.getContainer().getLogger().trace(sm.getString("jaasCallback.username", username));
-                ((NameCallback) callback).setName(username);
-            }
-            else if (callback instanceof PasswordCallback) {
+                ((NameCallback) callbacks[i]).setName(username);
+            } else if (callbacks[i] instanceof PasswordCallback) {
                 final char[] passwordcontents;
                 if (password != null) {
                     passwordcontents = password.toCharArray();
                 } else {
                     passwordcontents = new char[0];
                 }
-                ((PasswordCallback) callback).setPassword
-                        (passwordcontents);
-            }
-            else if (callback instanceof TextInputCallback) {
-                TextInputCallback cb = ((TextInputCallback) callback);
+                ((PasswordCallback) callbacks[i]).setPassword
+                    (passwordcontents);
+            } else if (callbacks[i] instanceof TextInputCallback) {
+                TextInputCallback cb = ((TextInputCallback) callbacks[i]);
                 if (cb.getPrompt().equals("nonce")) {
                     cb.setText(nonce);
-                }
-                else if (cb.getPrompt().equals("nc")) {
+                } else if (cb.getPrompt().equals("nc")) {
                     cb.setText(nc);
-                }
-                else if (cb.getPrompt().equals("cnonce")) {
+                } else if (cb.getPrompt().equals("cnonce")) {
                     cb.setText(cnonce);
-                }
-                else if (cb.getPrompt().equals("qop")) {
+                } else if (cb.getPrompt().equals("qop")) {
                     cb.setText(qop);
-                }
-                else if (cb.getPrompt().equals("realmName")) {
+                } else if (cb.getPrompt().equals("realmName")) {
                     cb.setText(realmName);
-                }
-                else if (cb.getPrompt().equals("md5a2")) {
+                } else if (cb.getPrompt().equals("md5a2")) {
                     cb.setText(md5a2);
-                }
-                else if (cb.getPrompt().equals("authMethod")) {
+                } else if (cb.getPrompt().equals("authMethod")) {
                     cb.setText(authMethod);
-                }
-                else if (cb.getPrompt().equals("catalinaBase")) {
-                    cb.setText(realm.getContainer().getCatalinaBase().getAbsolutePath());
                 } else {
-                    throw new UnsupportedCallbackException(callback);
+                    throw new UnsupportedCallbackException(callbacks[i]);
                 }
             } else {
-                throw new UnsupportedCallbackException(callback);
+                throw new UnsupportedCallbackException(callbacks[i]);
             }
         }
     }

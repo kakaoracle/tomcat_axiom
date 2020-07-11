@@ -63,25 +63,25 @@ public class StatusManagerServlet
     /**
      * Vector of protocol handlers object names.
      */
-    protected final Vector<ObjectName> protocolHandlers = new Vector<>();
+    protected Vector<ObjectName> protocolHandlers = new Vector<ObjectName>();
 
 
     /**
      * Vector of thread pools object names.
      */
-    protected final Vector<ObjectName> threadPools = new Vector<>();
+    protected Vector<ObjectName> threadPools = new Vector<ObjectName>();
 
 
     /**
      * Vector of request processors object names.
      */
-    protected final Vector<ObjectName> requestProcessors = new Vector<>();
+    protected Vector<ObjectName> requestProcessors = new Vector<ObjectName>();
 
 
     /**
      * Vector of global request processors object names.
      */
-    protected final Vector<ObjectName> globalRequestProcessors = new Vector<>();
+    protected Vector<ObjectName> globalRequestProcessors = new Vector<ObjectName>();
 
 
     /**
@@ -363,7 +363,7 @@ public class StatusManagerServlet
 
     @Override
     public void handleNotification(Notification notification,
-                                   java.lang.Object handback) {
+                                   Object handback) {
 
         if (notification instanceof MBeanServerNotification) {
             ObjectName objectName =
@@ -396,7 +396,14 @@ public class StatusManagerServlet
                         requestProcessors.removeElement(objectName);
                     }
                 }
+                String j2eeType = objectName.getKeyProperty("j2eeType");
+                if (j2eeType != null) {
+
+                }
             }
         }
+
     }
+
+
 }

@@ -16,14 +16,8 @@
  */
 package org.apache.tomcat.util.buf;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 import org.junit.Assert;
@@ -39,12 +33,11 @@ public class TestByteChunk {
 
     @Test
     public void testConvertToBytes() throws UnsupportedEncodingException {
-        String string = "HTTP/1.1 100 \r\n\r\n";
+        String string = "HTTP/1.1 100 Continue\r\n";
         byte[] bytes = ByteChunk.convertToBytes(string);
         byte[] expected = string.getBytes("ISO-8859-1");
         Assert.assertTrue(Arrays.equals(bytes, expected));
     }
-
 
     /*
      * Test for {@code findByte} vs. {@code indexOf} methods difference.
@@ -150,25 +143,16 @@ public class TestByteChunk {
 
 
     @Test
-    public void testSerialization() throws Exception {
-        String data = "Hello world!";
-        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+    @Deprecated
+    public void testFindNotBytes() throws UnsupportedEncodingException {
+        byte[] bytes = "Hello\u00a0world".getBytes("ISO-8859-1");
+        final int len = bytes.length;
 
-        ByteChunk bcIn = new ByteChunk();
-        bcIn.setBytes(bytes, 0, bytes.length);
-        bcIn.setCharset(StandardCharsets.UTF_8);
-
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(baos);
-        oos.writeObject(bcIn);
-        oos.close();
-
-        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
-        ObjectInputStream ois = new ObjectInputStream(bais);
-        ByteChunk bcOut = (ByteChunk) ois.readObject();
-
-        Assert.assertArrayEquals(bytes, bcOut.getBytes());
-        Assert.assertEquals(bcIn.getCharset(), bcOut.getCharset());
+        Assert.assertEquals(4, ByteChunk.findNotBytes(bytes, 0, len, new byte[] { 'l',
+                'e', 'H' }));
+        Assert.assertEquals(-1, ByteChunk.findNotBytes(bytes, 0, len, bytes));
+        Assert.assertEquals(-1, ByteChunk.findNotBytes(bytes, 2, 3, new byte[] { 'l',
+                'e', 'H' }));
     }
 
 
@@ -189,30 +173,11 @@ public class TestByteChunk {
     }
 
 
-    public static class Sink implements ByteOutputChannel {
+    public class Sink implements ByteOutputChannel {
 
         @Override
         public void realWriteBytes(byte[] cbuf, int off, int len) throws IOException {
             // NO-OP
         }
-
-        @Override
-        public void realWriteBytes(ByteBuffer from) throws IOException {
-            // NO-OP
-        }
-    }
-
-
-    @Test
-    public void testToString() {
-        ByteChunk bc = new ByteChunk();
-        Assert.assertNull(bc.toString());
-        byte[] data = new byte[8];
-        bc.setBytes(data, 0, data.length);
-        Assert.assertNotNull(bc.toString());
-        bc.recycle();
-        // toString() should behave consistently for new ByteChunk and
-        // immediately after a call to recycle().
-        Assert.assertNull(bc.toString());
     }
 }

@@ -19,8 +19,6 @@ package org.apache.catalina.ssi;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-
-import org.apache.tomcat.util.res.StringManager;
 /**
  * Implements the Server-side #include command
  *
@@ -30,7 +28,6 @@ import org.apache.tomcat.util.res.StringManager;
  * @author David Becker
  */
 public final class SSIInclude implements SSICommand {
-    private static final StringManager sm = StringManager.getManager(SSIInclude.class);
     /**
      * @see SSICommand
      */
@@ -54,11 +51,13 @@ public final class SSIInclude implements SSICommand {
                             virtual);
                     writer.write(text);
                 } else {
-                    ssiMediator.log(sm.getString("ssiCommand.invalidAttribute", paramName));
+                    ssiMediator.log("#include--Invalid attribute: "
+                            + paramName);
                     writer.write(configErrMsg);
                 }
             } catch (IOException e) {
-                ssiMediator.log(sm.getString("ssiInclude.includeFailed", substitutedValue), e);
+                ssiMediator.log("#include--Couldn't include file: "
+                        + substitutedValue, e);
                 writer.write(configErrMsg);
             }
         }

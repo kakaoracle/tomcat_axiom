@@ -57,7 +57,8 @@ public final class ForEach implements TagPlugin {
             ctxt.generateJavaSource("; " + index + "+=");
             ctxt.generateAttribute("step");
             ctxt.generateJavaSource(") {");
-        } else {
+        }
+        else {
             ctxt.generateJavaSource("; " + index + "++) {");
         }
 
@@ -188,13 +189,15 @@ public final class ForEach implements TagPlugin {
         if (hasEnd) {
             if (hasStep) {
                 ctxt.generateJavaSource(indexV + "+=" + stepV + ";");
-            } else {
+            }
+            else {
                 ctxt.generateJavaSource(indexV + "++;");
             }
             if (hasBegin) {
                 ctxt.generateJavaSource("if(" + beginV + "+" + indexV +
                         ">"+ endV + ")");
-            } else {
+            }
+            else {
                 ctxt.generateJavaSource("if(" + indexV + ">" + endV + ")");
             }
             ctxt.generateJavaSource("break;");

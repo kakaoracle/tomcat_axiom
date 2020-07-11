@@ -34,9 +34,33 @@ import org.apache.juli.logging.LogFactory;
  *
  * @author Craig R. McClanahan
  */
+
 public final class RemoteAddrValve extends RequestFilterValve {
 
     private static final Log log = LogFactory.getLog(RemoteAddrValve.class);
+
+
+    // ----------------------------------------------------- Instance Variables
+
+    /**
+     * The descriptive information related to this implementation.
+     */
+    private static final String info =
+        "org.apache.catalina.valves.RemoteAddrValve/1.0";
+
+
+    // ------------------------------------------------------------- Properties
+
+
+    /**
+     * Return descriptive information about this Valve implementation.
+     */
+    @Override
+    public String getInfo() {
+
+        return (info);
+
+    }
 
 
     // --------------------------------------------------------- Public Methods
@@ -45,8 +69,7 @@ public final class RemoteAddrValve extends RequestFilterValve {
     public void invoke(Request request, Response response) throws IOException, ServletException {
         String property;
         if (getAddConnectorPort()) {
-            property = request.getRequest().getRemoteAddr() + ";" +
-                    request.getConnector().getPortWithOffset();
+            property = request.getRequest().getRemoteAddr() + ";" + request.getConnector().getPort();
         } else {
             property = request.getRequest().getRemoteAddr();
         }

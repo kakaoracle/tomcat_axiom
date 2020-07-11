@@ -33,7 +33,6 @@ import org.apache.el.lang.EvaluationContext;
 /**
  * @author Jacob Hookom [jacob@hookom.net]
  */
-@SuppressWarnings("all") // Ignore warnings in generated code
 public interface Node {
 
   /** This method is called after the node has been made the current
@@ -70,7 +69,7 @@ public interface Node {
   public MethodInfo getMethodInfo(EvaluationContext ctx, Class<?>[] paramTypes)
           throws ELException;
   public Object invoke(EvaluationContext ctx, Class<?>[] paramTypes,
-          Object[] paramValues) throws ELException;
+                       Object[] paramValues) throws ELException;
 
   /**
    * @since EL 2.2

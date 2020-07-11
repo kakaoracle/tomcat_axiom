@@ -21,7 +21,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.util.Map;
 import java.util.StringTokenizer;
 
 import org.apache.jasper.Constants;
@@ -90,7 +89,7 @@ public class AntCompiler extends Compiler {
 
     public static class JasperAntLogger extends DefaultLogger {
 
-        protected final StringBuilder reportBuf = new StringBuilder();
+        protected StringBuilder reportBuf = new StringBuilder();
 
         @Override
         protected void printMessage(final String message,
@@ -101,7 +100,7 @@ public class AntCompiler extends Compiler {
         @Override
         protected void log(String message) {
             reportBuf.append(message);
-            reportBuf.append(System.lineSeparator());
+            reportBuf.append(Constants.NEWLINE);
         }
 
         protected String getReport() {
@@ -118,7 +117,7 @@ public class AntCompiler extends Compiler {
      * Compile the servlet from .java file to .class file
      */
     @Override
-    protected void generateClass(Map<String,SmapStratum> smaps)
+    protected void generateClass(String[] smap)
         throws FileNotFoundException, JasperException, Exception {
 
         long t1 = 0;
@@ -197,6 +196,7 @@ public class AntCompiler extends Compiler {
         javac.setDebug(ctxt.getOptions().getClassDebugInfo());
         javac.setSrcdir(srcPath);
         javac.setTempdir(options.getScratchDir());
+        javac.setOptimize(! ctxt.getOptions().getClassDebugInfo() );
         javac.setFork(ctxt.getOptions().getFork());
         info.append("    srcDir=" + srcPath + "\n" );
 
@@ -243,16 +243,13 @@ public class AntCompiler extends Compiler {
         // Stop capturing the System.err output for this thread
         String errorCapture = SystemLogHandler.unsetThread();
         if (errorCapture != null) {
-            errorReport.append(System.lineSeparator());
+            errorReport.append(Constants.NEWLINE);
             errorReport.append(errorCapture);
         }
 
         if (!ctxt.keepGenerated()) {
             File javaFile = new File(javaFileName);
-            if (!javaFile.delete()) {
-                throw new JasperException(Localizer.getMessage(
-                        "jsp.warning.compiler.javafile.delete.fail", javaFile));
-            }
+            javaFile.delete();
         }
 
         if (be != null) {
@@ -281,8 +278,8 @@ public class AntCompiler extends Compiler {
         }
 
         // JSR45 Support
-        if (!options.isSmapSuppressed()) {
-            SmapUtil.installSmap(smaps);
+        if (! options.isSmapSuppressed()) {
+            SmapUtil.installSmap(smap);
         }
     }
 
@@ -328,24 +325,33 @@ public class AntCompiler extends Compiler {
         /**
          * Wrapped PrintStream.
          */
-        protected final PrintStream wrapped;
+        protected PrintStream wrapped = null;
 
 
         /**
          * Thread &lt;-&gt; PrintStream associations.
          */
-        protected static final ThreadLocal<PrintStream> streams =
-                new ThreadLocal<>();
+        protected static ThreadLocal<PrintStream> streams =
+            new ThreadLocal<PrintStream>();
 
 
         /**
          * Thread &lt;-&gt; ByteArrayOutputStream associations.
          */
-        protected static final ThreadLocal<ByteArrayOutputStream> data =
-                new ThreadLocal<>();
+        protected static ThreadLocal<ByteArrayOutputStream> data =
+            new ThreadLocal<ByteArrayOutputStream>();
 
 
         // --------------------------------------------------------- Public Methods
+
+
+        /**
+         * @deprecated Unused. Will be removed in Tomcat 8.0.x.
+         */
+        @Deprecated
+        public PrintStream getWrapped() {
+          return wrapped;
+        }
 
         /**
          * Start capturing thread's output.

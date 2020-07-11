@@ -21,6 +21,7 @@ public class StandardSessionIdGenerator extends SessionIdGeneratorBase {
     @Override
     public String generateSessionId(String route) {
 
+        // sessionId的长度为16个字节
         byte random[] = new byte[16];
         int sessionIdLength = getSessionIdLength();
 

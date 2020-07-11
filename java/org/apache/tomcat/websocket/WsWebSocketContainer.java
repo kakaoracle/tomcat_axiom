@@ -307,7 +307,7 @@ public class WsWebSocketContainer
         }
 
         // Create the initial HTTP request to open the WebSocket connection
-        Map<String, List<String>> reqHeaders = createRequestHeaders(host, port,
+        Map<String, List<String>> reqHeaders = createRequestHeaders(host, port, secure,
                 clientEndpointConfiguration);
         clientEndpointConfiguration.getConfigurator().beforeRequest(reqHeaders);
         if (Constants.DEFAULT_ORIGIN_HEADER_VALUE != null
@@ -472,9 +472,7 @@ public class WsWebSocketContainer
 
                     return connectToServerRecursive(endpoint, clientEndpointConfiguration, path, redirectSet);
 
-                }
-
-                else {
+                } else {
                     throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidStatus",
                             Integer.toString(httpResponse.status)));
                 }
@@ -524,26 +522,19 @@ public class WsWebSocketContainer
 
             success = true;
         } catch (ExecutionException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", path), e);
         } catch (InterruptedException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", path), e);
         } catch (AuthenticationException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", path), e);
         } catch (SSLException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", path), e);
         } catch (EOFException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", path), e);
         } catch (TimeoutException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", path), e);
         } catch (URISyntaxException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", path), e);
         } finally {
             if (!success) {
                 channel.close();
@@ -689,7 +680,7 @@ public class WsWebSocketContainer
     }
 
     private static Map<String, List<String>> createRequestHeaders(String host, int port,
-            ClientEndpointConfig clientEndpointConfiguration) {
+            boolean secure, ClientEndpointConfig clientEndpointConfiguration) {
 
         Map<String, List<String>> headers = new HashMap<String, List<String>>();
         List<Extension> extensions = clientEndpointConfiguration.getExtensions();
@@ -704,7 +695,8 @@ public class WsWebSocketContainer
 
         // Host header
         List<String> hostValues = new ArrayList<String>(1);
-        if (port == -1) {
+        if (port == 80 && !secure || port == 443 && secure) {
+            // Default ports. Do not include port in host header
             hostValues.add(host);
         } else {
             hostValues.add(host + ':' + port);
@@ -866,9 +858,17 @@ public class WsWebSocketContainer
             response.clear();
             // Blocking read
             Future<Integer> read = channel.read(response);
-            Integer bytesRead = read.get(timeout, TimeUnit.MILLISECONDS);
+            Integer bytesRead;
+            try {
+                bytesRead = read.get(timeout, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                TimeoutException te = new TimeoutException(
+                        sm.getString("wsWebSocketContainer.responseFail", Integer.toString(status), headers));
+                te.initCause(e);
+                throw te;
+            }
             if (bytesRead.intValue() == -1) {
-                throw new EOFException();
+                throw new EOFException(sm.getString("wsWebSocketContainer.responseFail", Integer.toString(status), headers));
             }
             response.flip();
             while (response.hasRemaining() && !readHeaders) {

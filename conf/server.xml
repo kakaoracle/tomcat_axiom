@@ -70,7 +70,7 @@
     -->
     <Connector port="8080" protocol="HTTP/1.1"
                connectionTimeout="20000"
-               redirectPort="8443"/>
+               redirectPort="8443" />
     <!-- A "Connector" using the shared thread pool-->
     <!--
     <Connector executor="tomcatThreadPool"
@@ -90,8 +90,12 @@
     -->
 
     <!-- Define an AJP 1.3 Connector on port 8009 -->
-    <Connector port="8009" protocol="AJP/1.3" redirectPort="8443" />
-
+    <!--
+    <Connector protocol="AJP/1.3"
+               address="::1"
+               port="8009"
+               redirectPort="8443" />
+    -->
 
     <!-- An Engine represents the entry point (within Catalina) that processes
          every request.  The Engine implementation for Tomcat stand alone
@@ -122,16 +126,6 @@
                resourceName="UserDatabase"/>
       </Realm>
 
-<!--      <Host name="shouji.tmall.com" appBase="shouji">-->
-<!--        <Context/>-->
-<!--        -->
-<!--      </Host>-->
-
-<!--      <Host name="fuzhuang.tmall.com" appBase="fuzhuang">-->
-
-<!--        <Context path="/HelloLuban" docBase="/Users/renyong/IdeaProjects/HelloServlet/target/HelloServlet"/>-->
-<!--      </Host>-->
-
       <Host name="localhost"  appBase="webapps"
             unpackWARs="true" autoDeploy="true">
 
@@ -141,25 +135,6 @@
         <Valve className="org.apache.catalina.authenticator.SingleSignOn" />
         -->
 
-<!--        <Context path="/HelloLuban" relaodable="false" docBase="/Users/renyong/IdeaProjects/HelloServlet/target/HelloServlet"/>-->
-
-<!--        <Context path="/ServletDemoHello##1" docBase="D:\IdeaProjects\ServletDemo\target\classes" />-->
-<!--        <Context path="/ServletDemoHello##2" docBase="D:\IdeaProjects\ServletDemo\target\classes" />-->
-
-<!--        <Context path="/ServletDemo"  docBase="C:\Users\周瑜\IdeaProjects\ServletDemo\target\ServletDemoServerXml" >-->
-<!--          <Resource-->
-<!--                  name="jdbc/myDB"-->
-<!--                  auth="Container"-->
-<!--                  type="javax.sql.DataSource"-->
-<!--                  driverClassName="com.mysql.jdbc.Driver"-->
-<!--                  url="jdbc:mysql://192.168.99.100:33306/test"-->
-<!--                  username="root"-->
-<!--                  password="123456"-->
-<!--                  maxActive="5"-->
-<!--                  maxIdle="2"-->
-<!--                  maxWait="10000"/>-->
-<!--        </Context>-->
-
         <!-- Access log processes all example.
              Documentation at: /docs/config/valve.html
              Note: The pattern used is equivalent to using pattern="common" -->
@@ -167,10 +142,7 @@
                prefix="localhost_access_log." suffix=".txt"
                pattern="%h %l %u %t &quot;%r&quot; %s %b" />
 
-<!--        <Valve className="com.luban.TestValve"/>-->
-
       </Host>
-
     </Engine>
   </Service>
 </Server>

@@ -30,19 +30,16 @@
 
 
 // These permissions apply to javac
-// ${java.home}/lib/目录以及子目录下具有所有权限
 grant codeBase "file:${java.home}/lib/-" {
         permission java.security.AllPermission;
 };
 
 // These permissions apply to all shared system extensions
-// ${java.home}/jre/lib/ext/目录以及子目录下具有所有权限
 grant codeBase "file:${java.home}/jre/lib/ext/-" {
         permission java.security.AllPermission;
 };
 
-// These permissions apply to javac when ${java.home] points at $JAVA_HOME/jre
-// 当${java.home}指向的是jre时
+// These permissions apply to javac when ${java.home} points at $JAVA_HOME/jre
 grant codeBase "file:${java.home}/../lib/-" {
         permission java.security.AllPermission;
 };
@@ -58,7 +55,6 @@ grant codeBase "file:${java.home}/lib/ext/-" {
 
 
 // These permissions apply to the daemon code
-// ${catalina.home}/bin/commons-daemon.jar拥有所有权限
 grant codeBase "file:${catalina.home}/bin/commons-daemon.jar" {
         permission java.security.AllPermission;
 };
@@ -67,8 +63,6 @@ grant codeBase "file:${catalina.home}/bin/commons-daemon.jar" {
 // Note: If tomcat-juli.jar is in ${catalina.base} and not in ${catalina.home},
 // update this section accordingly.
 //  grant codeBase "file:${catalina.base}/bin/tomcat-juli.jar" {..}
-// ${catalina.home}/bin/tomcat-juli.jar拥有一下权限
-// 读取${java.home}/lib/logging.properties
 grant codeBase "file:${catalina.home}/bin/tomcat-juli.jar" {
         permission java.io.FilePermission
          "${java.home}${file.separator}lib${file.separator}logging.properties", "read";
@@ -271,5 +265,4 @@ grant codeBase "file:${catalina.home}/webapps/host-manager/-" {
 // grant codeBase "jar:file:${catalina.base}/webapps/examples/WEB-INF/lib/scrape.jar!/-" {
 //      permission java.net.SocketPermission "*.noaa.gov:80", "connect";
 // };
-
 

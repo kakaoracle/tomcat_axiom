@@ -39,6 +39,8 @@ import org.apache.catalina.Server;
 import org.apache.catalina.core.StandardContext;
 import org.apache.catalina.security.SecurityConfig;
 import org.apache.juli.ClassLoaderLogManager;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.digester.Rule;
@@ -159,6 +161,7 @@ public class Catalina {
     // ------------------------------------------------------------- Properties
 
     /**
+     * @param file The configuration file
      * @deprecated  Use {@link #setConfigFile(String)}
      */
     @Deprecated
@@ -197,9 +200,8 @@ public class Catalina {
     }
 
     public ClassLoader getParentClassLoader() {
-        // parentClassLoader会被设置为sharedLoader
         if (parentClassLoader != null) {
-            return (parentClassLoader);
+            return parentClassLoader;
         }
         return ClassLoader.getSystemClassLoader();
     }
@@ -215,10 +217,10 @@ public class Catalina {
 
 
     /**
-     * Return true if naming is enabled.
+     * @return <code>true</code> if naming is enabled.
      */
     public boolean isUseNaming() {
-        return (this.useNaming);
+        return this.useNaming;
     }
 
 
@@ -243,55 +245,53 @@ public class Catalina {
 
 
     /**
-     * Process the specified command line arguments, and return
-     * <code>true</code> if we should continue processing; otherwise
-     * return <code>false</code>.
+     * Process the specified command line arguments.
      *
      * @param args Command line arguments to process
+     * @return <code>true</code> if we should continue processing
      */
-    // 解析命令行输入的参数，所以我们能从这里知道命令行里能添加哪些参数
     protected boolean arguments(String args[]) {
 
         boolean isConfig = false;
 
         if (args.length < 1) {
             usage();
-            return (false);
+            return false;
         }
 
-        for (int i = 0; i < args.length; i++) {
+        for (String arg : args) {
             if (isConfig) {
-                configFile = args[i];
+                configFile = arg;
                 isConfig = false;
-            } else if (args[i].equals("-config")) {
+            } else if (arg.equals("-config")) {
                 isConfig = true;
-            } else if (args[i].equals("-nonaming")) {
-                setUseNaming( false );
-            } else if (args[i].equals("-help")) {
+            } else if (arg.equals("-nonaming")) {
+                setUseNaming(false);
+            } else if (arg.equals("-help")) {
                 usage();
-                return (false);
-            } else if (args[i].equals("start")) {
+                return false;
+            } else if (arg.equals("start")) {
                 starting = true;
                 stopping = false;
-            } else if (args[i].equals("configtest")) {
+            } else if (arg.equals("configtest")) {
                 starting = true;
                 stopping = false;
-            } else if (args[i].equals("stop")) {
+            } else if (arg.equals("stop")) {
                 starting = false;
                 stopping = true;
             } else {
                 usage();
-                return (false);
+                return false;
             }
         }
 
-        return (true);
-
+        return true;
     }
 
 
     /**
      * Return a File object representing our configuration file.
+     * @return the main configuration file
      */
     protected File configFile() {
 
@@ -299,13 +299,14 @@ public class Catalina {
         if (!file.isAbsolute()) {
             file = new File(System.getProperty(Globals.CATALINA_BASE_PROP), configFile);
         }
-        return (file);
+        return file;
 
     }
 
 
     /**
      * Create and configure the Digester we will be using for startup.
+     * @return the main digester to parse server.xml
      */
     protected Digester createStartDigester() {
         long t1=System.currentTimeMillis();
@@ -325,14 +326,10 @@ public class Catalina {
         digester.setUseContextClassLoader(true);
 
         // Configure the actions we will be using
-
-        // 将<Server>节点，解析为一个org.apache.catalina.core.StandardServer对象，如果配置了className属性，则会解析对应的类对象。
         digester.addObjectCreate("Server",
                                  "org.apache.catalina.core.StandardServer",
                                  "className");
-        // 将<Server>节点中的属性，使用StandardServer对象对应的set方法进行属性初始化
         digester.addSetProperties("Server");
-        // 将<Server>节点对应的对象，调用<Server>节点的父节点对象的setServer(org.apache.catalina.Server params)方法，Server的父对象为this，后面会设置，也就Catalina对象。
         digester.addSetNext("Server",
                             "setServer",
                             "org.apache.catalina.Server");
@@ -344,7 +341,6 @@ public class Catalina {
                             "setGlobalNamingResources",
                             "org.apache.catalina.deploy.NamingResources");
 
-        // 对于Server/Listener节点，比如配置对于的实现类。
         digester.addObjectCreate("Server/Listener",
                                  null, // MUST be specified in the element
                                  "className");
@@ -379,13 +375,11 @@ public class Catalina {
                             "addExecutor",
                             "org.apache.catalina.Executor");
 
-        // 创建Connector对象，在里面会初始化executor
+
         digester.addRule("Server/Service/Connector",
                          new ConnectorCreateRule());
-        // 根据Connector节点的属性，调用set方法进行初始化，除开executor属性。
         digester.addRule("Server/Service/Connector",
                          new SetAllPropertiesRule(new String[]{"executor"}));
-        // 将Connector对象通过调用Service.addConnector方法添加到Service中去，addConnector方法并不是简单的实现，还有其他逻辑，后面在详细的介绍。
         digester.addSetNext("Server/Service/Connector",
                             "addConnector",
                             "org.apache.catalina.connector.Connector");
@@ -400,7 +394,6 @@ public class Catalina {
                             "org.apache.catalina.LifecycleListener");
 
         // Add RuleSets for nested elements
-        // addRuleSet方法实现也不复杂，就是调用NamingRuleSet、EngineRuleSet这些类的addRuleInstances方法
         digester.addRuleSet(new NamingRuleSet("Server/GlobalNamingResources/"));
         digester.addRuleSet(new EngineRuleSet("Server/Service/"));
         digester.addRuleSet(new HostRuleSet("Server/Service/Engine/"));
@@ -409,16 +402,15 @@ public class Catalina {
         digester.addRuleSet(new NamingRuleSet("Server/Service/Engine/Host/Context/"));
 
         // When the 'engine' is found, set the parentClassLoader.
-        // 在解析Engine节点的时候，设置parentClassLoader为Catalina.class的类加载器, parentClassLoader为sharedClassLoader
         digester.addRule("Server/Service/Engine",
-                         new SetParentClassLoaderRule(parentClassLoader));  // shareClassLoader
+                         new SetParentClassLoaderRule(parentClassLoader));
         addClusterRuleSet(digester, "Server/Service/Engine/Cluster/");
 
         long t2=System.currentTimeMillis();
         if (log.isDebugEnabled()) {
             log.debug("Digester for server.xml created " + ( t2-t1 ));
         }
-        return (digester);
+        return digester;
 
     }
 
@@ -446,6 +438,7 @@ public class Catalina {
 
     /**
      * Create and configure the Digester we will be using for shutdown.
+     * @return the digester to process the stop operation
      */
     protected Digester createStopDigester() {
 
@@ -462,7 +455,7 @@ public class Catalina {
                             "setServer",
                             "org.apache.catalina.Server");
 
-        return (digester);
+        return digester;
 
     }
 
@@ -478,7 +471,7 @@ public class Catalina {
         }
 
         Server s = getServer();
-        if( s == null ) {
+        if (s == null) {
             // Create and execute our Digester
             Digester digester = createStopDigester();
             File file = configFile();
@@ -570,24 +563,20 @@ public class Catalina {
 
         long t1 = System.nanoTime();
 
-        // 如果catalinaHome和catalinaBase是相对路径，那么在这里会转化为绝对路径
         initDirs();
 
         // Before digester - it may be needed
-
         initNaming();
 
         // Create and execute our Digester
-        // 初始化server.xml文件解析器
         Digester digester = createStartDigester();
 
         InputSource inputSource = null;
         InputStream inputStream = null;
         File file = null;
         try {
-            // 先从文件系统获取server.xml
             try {
-                file = configFile(); // 获取catalina.base目录下的conf/server.xml文件
+                file = configFile();
                 inputStream = new FileInputStream(file);
                 inputSource = new InputSource(file.toURI().toURL().toString());
             } catch (Exception e) {
@@ -595,7 +584,6 @@ public class Catalina {
                     log.debug(sm.getString("catalina.configFail", file), e);
                 }
             }
-            // 如果文件系统没有，则从classloader中获取server.xml
             if (inputStream == null) {
                 try {
                     inputStream = getClass().getClassLoader()
@@ -613,7 +601,6 @@ public class Catalina {
 
             // This should be included in catalina.jar
             // Alternative: don't bother with xml, just create it manually.
-            // 如果没找到server.xml，那么则从classloader中找server-embed.xml
             if( inputStream==null ) {
                 try {
                     inputStream = getClass().getClassLoader()
@@ -629,8 +616,7 @@ public class Catalina {
                 }
             }
 
-            // 如果没找到server.xml或server-embed.xml，那么告警
-            // 如果文件存在，判断文件没有可读权限
+
             if (inputStream == null || inputSource == null) {
                 if  (file == null) {
                     log.warn(sm.getString("catalina.configFail",
@@ -646,7 +632,6 @@ public class Catalina {
             }
 
             try {
-                // 解析server.xml或server-embed.xml文件
                 inputSource.setByteStream(inputStream);
                 digester.push(this);
                 digester.parse(inputSource);
@@ -668,15 +653,12 @@ public class Catalina {
             }
         }
 
-        // 解析完server.xml或server-embed.xml后，将catalina设置到StandardServer中
         getServer().setCatalina(this);
 
         // Stream redirection
-        // 把System.out和System.err替换成SystemLogHandler对象
         initStreams();
 
         // Start the new server
-        // 解析完配置文件，开始初始化Server，而从初始化Server开始，就包括了一系列的子组件的初始化
         try {
             getServer().init();
         } catch (LifecycleException e) {
@@ -685,14 +667,12 @@ public class Catalina {
             } else {
                 log.error("Catalina.start", e);
             }
-
         }
 
         long t2 = System.nanoTime();
         if(log.isInfoEnabled()) {
             log.info("Initialization processed in " + ((t2 - t1) / 1000000) + " ms");
         }
-
     }
 
 
@@ -729,7 +709,7 @@ public class Catalina {
 
         // Start the new server
         try {
-            getServer().start(); //
+            getServer().start();
         } catch (LifecycleException e) {
             log.fatal(sm.getString("catalina.serverStartFail"), e);
             try {
@@ -762,10 +742,9 @@ public class Catalina {
             }
         }
 
-        // 是否需要阻塞，await标记是在通过Bootstrap类启动时设置为true的
-        if (await) {  // true
-            await();  // 使用ServerSocket来监听shutdown命令来阻塞
-            stop();  // 如果阻塞被解开，那么开始停止流程
+        if (await) {
+            await();
+            stop();
         }
     }
 
@@ -778,7 +757,6 @@ public class Catalina {
         try {
             // Remove the ShutdownHook first so that server.stop()
             // doesn't get invoked twice
-            // 如果使用了关闭钩子，那么先移除钩子，避免执行两次
             if (useShutdownHook) {
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
 
@@ -883,11 +861,9 @@ public class Catalina {
         }
 
         String temp = System.getProperty("java.io.tmpdir");
-        if (temp == null || (!(new File(temp)).exists())
-                || (!(new File(temp)).isDirectory())) {
+        if (temp == null || (!(new File(temp)).isDirectory())) {
             log.error(sm.getString("embedded.notmp", temp));
         }
-
     }
 
 
@@ -967,8 +943,7 @@ public class Catalina {
     }
 
 
-    private static final org.apache.juli.logging.Log log=
-        org.apache.juli.logging.LogFactory.getLog( Catalina.class );
+    private static final Log log = LogFactory.getLog(Catalina.class);
 
 }
 

@@ -30,13 +30,25 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.connector.Connector;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 
 public class TestAbstractAjpProcessor extends TomcatBaseTest {
+
+    @Before
+    @Override
+    public void setUp() throws Exception {
+        super.setUp();
+
+        Connector c = getTomcatInstance().getConnector();
+        c.setProperty("secretRequired", "false");
+        c.setProperty("allowedRequestAttributesPattern", "MYATTRIBUTE.*");
+    }
 
     @Override
     protected String getProtocol() {

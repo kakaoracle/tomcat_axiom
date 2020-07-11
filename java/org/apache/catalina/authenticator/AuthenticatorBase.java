@@ -19,7 +19,9 @@ package org.apache.catalina.authenticator;
 import java.io.IOException;
 import java.security.Principal;
 import java.security.cert.X509Certificate;
+import java.util.Locale;
 
+import javax.servlet.DispatcherType;
 import javax.servlet.ServletException;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
@@ -30,14 +32,16 @@ import org.apache.catalina.Container;
 import org.apache.catalina.Context;
 import org.apache.catalina.Globals;
 import org.apache.catalina.LifecycleException;
-import org.apache.catalina.Manager;
 import org.apache.catalina.Realm;
 import org.apache.catalina.Session;
 import org.apache.catalina.Valve;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
+import org.apache.catalina.deploy.FilterDef;
+import org.apache.catalina.deploy.FilterMap;
 import org.apache.catalina.deploy.LoginConfig;
 import org.apache.catalina.deploy.SecurityConstraint;
+import org.apache.catalina.filters.CorsFilter;
 import org.apache.catalina.filters.RemoteIpFilter;
 import org.apache.catalina.realm.GenericPrincipal;
 import org.apache.catalina.util.SessionIdGeneratorBase;
@@ -49,6 +53,7 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.http.FastHttpDateFormat;
+import org.apache.tomcat.util.http.RequestUtil;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -200,10 +205,18 @@ public abstract class AuthenticatorBase extends ValveBase
      */
     protected SingleSignOn sso = null;
 
-
+    private AllowCorsPreflight allowCorsPreflight = AllowCorsPreflight.NEVER;
 
 
     // ------------------------------------------------------------- Properties
+
+    public String getAllowCorsPreflight() {
+        return allowCorsPreflight.name().toLowerCase(Locale.ENGLISH);
+    }
+
+    public void setAllowCorsPreflight(String allowCorsPreflight) {
+        this.allowCorsPreflight = AllowCorsPreflight.valueOf(allowCorsPreflight.trim().toUpperCase(Locale.ENGLISH));
+    }
 
     public boolean getAlwaysUseSession() {
         return alwaysUseSession;
@@ -474,7 +487,7 @@ public abstract class AuthenticatorBase extends ValveBase
 
         if (constraints == null && !context.getPreemptiveAuthentication() && !authRequired) {
             if (log.isDebugEnabled()) {
-                log.debug(" Not subject to any constraint");
+                log.debug("Not subject to any constraint");
             }
             getNext().invoke(request, response);
             return;
@@ -497,11 +510,11 @@ public abstract class AuthenticatorBase extends ValveBase
         if (constraints != null) {
             // Enforce any user data constraint for this security constraint
             if (log.isDebugEnabled()) {
-                log.debug(" Calling hasUserDataPermission()");
+                log.debug("Calling hasUserDataPermission()");
             }
             if (!realm.hasUserDataPermission(request, response, constraints)) {
                 if (log.isDebugEnabled()) {
-                    log.debug(" Failed hasUserDataPermission() test");
+                    log.debug("Failed hasUserDataPermission() test");
                 }
                 /*
                  * ASSERT: Authenticator already set the appropriate HTTP status
@@ -543,13 +556,21 @@ public abstract class AuthenticatorBase extends ValveBase
             authRequired = certs != null && certs.length > 0;
         }
 
+        if ((authRequired || constraints != null) && allowCorsPreflightBypass(request)) {
+            if (log.isDebugEnabled()) {
+                log.debug("CORS Preflight request bypassing authentication");
+            }
+            getNext().invoke(request, response);
+            return;
+        }
+
         if (authRequired) {
             if (log.isDebugEnabled()) {
-                log.debug(" Calling authenticate()");
+                log.debug("Calling authenticate()");
             }
             if (!authenticate(request, response, config)) {
                 if (log.isDebugEnabled()) {
-                    log.debug(" Failed authenticate() test");
+                    log.debug("Failed authenticate() test");
                 }
                 /*
                  * ASSERT: Authenticator already set the appropriate HTTP status
@@ -562,11 +583,11 @@ public abstract class AuthenticatorBase extends ValveBase
 
         if (constraints != null) {
             if (log.isDebugEnabled()) {
-                log.debug(" Calling accessControl()");
+                log.debug("Calling accessControl()");
             }
             if (!realm.hasResourcePermission(request, response, constraints, this.context)) {
                 if (log.isDebugEnabled()) {
-                    log.debug(" Failed accessControl() test");
+                    log.debug("Failed accessControl() test");
                 }
                 /*
                  * ASSERT: AccessControl method has already set the appropriate
@@ -578,10 +599,68 @@ public abstract class AuthenticatorBase extends ValveBase
 
         // Any and all specified constraints have been satisfied
         if (log.isDebugEnabled()) {
-            log.debug(" Successfully passed all security constraints");
+            log.debug("Successfully passed all security constraints");
         }
         getNext().invoke(request, response);
 
+    }
+
+
+    protected boolean allowCorsPreflightBypass(Request request) {
+        boolean allowBypass = false;
+
+        if (allowCorsPreflight != AllowCorsPreflight.NEVER) {
+            // First check to see if this is a CORS Preflight request
+            // This is a subset of the tests in CorsFilter.checkRequestType
+            if ("OPTIONS".equals(request.getMethod())) {
+                String originHeader = request.getHeader(CorsFilter.REQUEST_HEADER_ORIGIN);
+                if (originHeader != null &&
+                        !originHeader.isEmpty() &&
+                        RequestUtil.isValidOrigin(originHeader) &&
+                        !RequestUtil.isSameOrigin(request, originHeader)) {
+                    String accessControlRequestMethodHeader =
+                            request.getHeader(CorsFilter.REQUEST_HEADER_ACCESS_CONTROL_REQUEST_METHOD);
+                    if (accessControlRequestMethodHeader != null &&
+                            !accessControlRequestMethodHeader.isEmpty()) {
+                        // This appears to be a CORS Preflight request
+                        if (allowCorsPreflight == AllowCorsPreflight.ALWAYS) {
+                            allowBypass = true;
+                        } else if (allowCorsPreflight == AllowCorsPreflight.FILTER) {
+                            if (DispatcherType.REQUEST == request.getDispatcherType()) {
+                                // Look at Filter configuration for the Context
+                                // Can't cache this unless we add a listener to
+                                // the Context to clear the cache on reload
+                                for (FilterDef filterDef : request.getContext().findFilterDefs()) {
+                                    if (CorsFilter.class.getName().equals(filterDef.getFilterClass())) {
+                                        for (FilterMap filterMap : context.findFilterMaps()) {
+                                            if (filterMap.getFilterName().equals(filterDef.getFilterName())) {
+                                                if ((filterMap.getDispatcherMapping() & FilterMap.REQUEST) > 0) {
+                                                    for (String urlPattern : filterMap.getURLPatterns()) {
+                                                        if ("/*".equals(urlPattern)) {
+                                                            allowBypass = true;
+                                                            // No need to check other patterns
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                // Found mappings for CORS filter.
+                                                // No need to look further
+                                                break;
+                                            }
+                                        }
+                                        // Found the CORS filter. No need to look further.
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            // Unexpected enum type
+                        }
+                    }
+                }
+            }
+        }
+        return allowBypass;
     }
 
 
@@ -776,7 +855,7 @@ public abstract class AuthenticatorBase extends ValveBase
             associate(ssoId, request.getSessionInternal(true));
 
             if (log.isDebugEnabled()) {
-                log.debug(" Reauthenticated cached principal '" +
+                log.debug("Reauthenticated cached principal '" +
                         request.getUserPrincipal().getName() +
                         "' with auth type '" + request.getAuthType() + "'");
             }
@@ -827,17 +906,11 @@ public abstract class AuthenticatorBase extends ValveBase
         if (session != null) {
             // If the principal is null then this is a logout. No need to change
             // the session ID. See BZ 59043.
-            if (changeSessionIdOnAuthentication && principal != null) {
-                String oldId = null;
-                if (log.isDebugEnabled()) {
-                    oldId = session.getId();
-                }
-                Manager manager = request.getContext().getManager();
-                manager.changeSessionId(session);
-                request.changeSessionId(session.getId());
-                if (log.isDebugEnabled()) {
-                    log.debug(sm.getString("authenticator.changeSessionId",
-                            oldId, session.getId()));
+            if (getChangeSessionIdOnAuthentication() && principal != null) {
+                String newSessionId = changeSessionID(request, session);
+                // If the current session ID is being tracked, update it.
+                if (session.getNote(Constants.SESSION_ID_NOTE) != null) {
+                    session.setNote(Constants.SESSION_ID_NOTE, newSessionId);
                 }
             }
         } else if (alwaysUseSession) {
@@ -845,21 +918,9 @@ public abstract class AuthenticatorBase extends ValveBase
         }
 
         // Cache the authentication information in our session, if any
-        if (cache) {
-            if (session != null) {
-                session.setAuthType(authType);
-                session.setPrincipal(principal);
-                if (username != null) {
-                    session.setNote(Constants.SESS_USERNAME_NOTE, username);
-                } else {
-                    session.removeNote(Constants.SESS_USERNAME_NOTE);
-                }
-                if (password != null) {
-                    session.setNote(Constants.SESS_PASSWORD_NOTE, password);
-                } else {
-                    session.removeNote(Constants.SESS_PASSWORD_NOTE);
-                }
-            }
+        if (session != null && cache) {
+            session.setAuthType(authType);
+            session.setPrincipal(principal);
         }
 
         // Construct a cookie to be returned to the client
@@ -925,6 +986,20 @@ public abstract class AuthenticatorBase extends ValveBase
 
     }
 
+
+    protected String changeSessionID(Request request, Session session) {
+        String oldId = null;
+        if (log.isDebugEnabled()) {
+            oldId = session.getId();
+        }
+        String newId = request.changeSessionId();
+        if (log.isDebugEnabled()) {
+            log.debug(sm.getString("authenticator.changeSessionId", oldId, newId));
+        }
+        return newId;
+    }
+
+
     @Override
     public void login(String username, String password, Request request) throws ServletException {
         Principal principal = doLogin(request, username, password);
@@ -987,9 +1062,9 @@ public abstract class AuthenticatorBase extends ValveBase
         Container parent = context.getParent();
         while ((sso == null) && (parent != null)) {
             Valve valves[] = parent.getPipeline().getValves();
-            for (int i = 0; i < valves.length; i++) {
-                if (valves[i] instanceof SingleSignOn) {
-                    sso = (SingleSignOn) valves[i];
+            for (Valve valve : valves) {
+                if (valve instanceof SingleSignOn) {
+                    sso = (SingleSignOn) valve;
                     break;
                 }
             }
@@ -1027,5 +1102,12 @@ public abstract class AuthenticatorBase extends ValveBase
         super.stopInternal();
 
         sso = null;
+    }
+
+
+    protected enum AllowCorsPreflight {
+        NEVER,
+        FILTER,
+        ALWAYS
     }
 }

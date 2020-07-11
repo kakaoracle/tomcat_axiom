@@ -47,6 +47,8 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.junit.Assert;
+
 import org.apache.catalina.Context;
 import org.apache.catalina.authenticator.SSLAuthenticator;
 import org.apache.catalina.connector.Connector;
@@ -57,7 +59,6 @@ import org.apache.catalina.deploy.SecurityConstraint;
 import org.apache.catalina.startup.TestTomcat.MapRealm;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.tomcat.jni.SSL;
-import org.apache.tomcat.util.compat.TLS;
 
 public final class TesterSupport {
 
@@ -73,6 +74,7 @@ public final class TesterSupport {
     public static final String CA_CERT_PEM = RESOURCE_PATH + CA_ALIAS + "-cert.pem";
     public static final String LOCALHOST_CERT_PEM = RESOURCE_PATH + "localhost-cert.pem";
     public static final String LOCALHOST_KEY_PEM = RESOURCE_PATH + "localhost-key.pem";
+    public static final boolean TLSV13_AVAILABLE;
 
     public static final String ROLE = "testrole";
 
@@ -98,6 +100,18 @@ public final class TesterSupport {
             // Assume no RFC 5746 support
         }
         RFC_5746_SUPPORTED = result;
+
+        result = false;
+        try {
+            SSLContext.getInstance(Constants.SSL_PROTO_TLSv1_3);
+            result = true;
+        } catch (NoSuchAlgorithmException ex) {
+        }
+        TLSV13_AVAILABLE = result;
+    }
+
+    public static boolean isTlsv13Available() {
+        return TLSV13_AVAILABLE;
     }
 
     public static void initSsl(Tomcat tomcat) {
@@ -115,33 +129,31 @@ public final class TesterSupport {
             connector.setProperty("sslProtocol", "tls");
             java.net.URL keyStoreUrl = cl.getResource(keystore);
             File keystoreFile = toFile(keyStoreUrl);
-            connector.setAttribute("keystoreFile",
-                    keystoreFile.getAbsolutePath());
+            Assert.assertTrue(connector.setProperty("keystoreFile", keystoreFile.getAbsolutePath()));
             java.net.URL truststoreUrl = cl.getResource(CA_JKS);
             File truststoreFile = toFile(truststoreUrl);
-            connector.setAttribute("truststoreFile",
-                    truststoreFile.getAbsolutePath());
+            Assert.assertTrue(connector.setProperty("truststoreFile", truststoreFile.getAbsolutePath()));
 
             if (keystorePass != null) {
-                connector.setAttribute("keystorePass", keystorePass);
+                Assert.assertTrue(connector.setProperty("keystorePass", keystorePass));
             }
             if (keyPass != null) {
-                connector.setAttribute("keyPass", keyPass);
+                Assert.assertTrue(connector.setProperty("keyPass", keyPass));
             }
         } else {
             java.net.URL keyStoreUrl = cl.getResource(LOCALHOST_CERT_PEM);
             File keystoreFile = toFile(keyStoreUrl);
-            tomcat.getConnector().setAttribute("SSLCertificateFile",
-                    keystoreFile.getAbsolutePath());
+            Assert.assertTrue(tomcat.getConnector().setProperty("SSLCertificateFile",
+                    keystoreFile.getAbsolutePath()));
 
             java.net.URL sslCertificateKeyUrl = cl.getResource(LOCALHOST_KEY_PEM);
             File sslCertificateKeyFile = toFile(sslCertificateKeyUrl);
-            tomcat.getConnector().setAttribute("SSLCertificateKeyFile",
-                    sslCertificateKeyFile.getAbsolutePath());
+            Assert.assertTrue(tomcat.getConnector().setProperty("SSLCertificateKeyFile",
+                    sslCertificateKeyFile.getAbsolutePath()));
 
             java.net.URL caUrl = cl.getResource(TesterSupport.CA_CERT_PEM);
             File caFile = toFile(caUrl);
-            tomcat.getConnector().setAttribute("SSLCACertificateFile", caFile.getAbsolutePath());
+            Assert.assertTrue(tomcat.getConnector().setProperty("SSLCACertificateFile", caFile.getAbsolutePath()));
         }
         tomcat.getConnector().setSecure(true);
         tomcat.getConnector().setProperty("SSLEnabled", "true");
@@ -410,7 +422,7 @@ public final class TesterSupport {
      */
     public static String getDefaultTLSProtocolForTesting(Connector connector) {
         // Clients always use JSSE
-        if (!TLS.isTlsv13Available()) {
+        if (!TLSV13_AVAILABLE) {
             // Client doesn't support TLS 1.3 so we have to use TLS 1.2
             return Constants.SSL_PROTO_TLSv1_2;
         }

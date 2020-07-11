@@ -16,6 +16,8 @@
  */
 package org.apache.tomcat.util;
 
+import java.util.Properties;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -62,8 +64,7 @@ public class TestIntrospectionUtils {
 
     @Test
     public void testIsInstanceStandardContext06() {
-        // This interface doesn't exist in 7.0.x
-        Assert.assertFalse(IntrospectionUtils.isInstance(
+        Assert.assertTrue(IntrospectionUtils.isInstance(
                 StandardContext.class, "org.apache.catalina.JmxEnabled"));
     }
 
@@ -103,12 +104,45 @@ public class TestIntrospectionUtils {
                 StandardContext.class, "javax.management.NotificationBroadcaster"));
     }
 
-    // And one to check that non-matches return false
 
+    // And one to check that non-matches return false
 
     @Test
     public void testIsInstanceStandardContext12() {
         Assert.assertFalse(IntrospectionUtils.isInstance(
                 StandardContext.class, "com.example.Other"));
+    }
+
+
+    @Test
+    public void testReplaceProperties() {
+        Properties properties = new Properties();
+
+        Assert.assertEquals("no-expression", IntrospectionUtils.replaceProperties(
+                "no-expression", properties, null, null));
+
+        Assert.assertEquals("${normal}", IntrospectionUtils.replaceProperties(
+                "${normal}", properties, null, null));
+
+        properties.setProperty("normal", "value1");
+        Assert.assertEquals("value1", IntrospectionUtils.replaceProperties(
+                "${normal}", properties, null, null));
+
+        Assert.assertEquals("abcvalue1xyz", IntrospectionUtils.replaceProperties(
+                "abc${normal}xyz", properties, null, null));
+
+        properties.setProperty("prop_with:-colon", "value2");
+        Assert.assertEquals("value2", IntrospectionUtils.replaceProperties(
+                "${prop_with:-colon}", properties, null, null));
+
+        Assert.assertEquals("value1", IntrospectionUtils.replaceProperties(
+                "${normal:-default}", properties, null, null));
+
+        properties.remove("normal");
+        Assert.assertEquals("default", IntrospectionUtils.replaceProperties(
+                "${normal:-default}", properties, null, null));
+
+        Assert.assertEquals("abc${normal}xyz", IntrospectionUtils.replaceProperties(
+                "abc${normal}xyz", properties, null, null));
     }
 }

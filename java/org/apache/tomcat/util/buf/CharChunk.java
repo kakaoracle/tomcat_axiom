@@ -40,6 +40,10 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         /**
          * Read new characters.
          *
+         * @param cbuf Buffer to read the characters into
+         * @param off  Offset for target buffer
+         * @param len  length of data to read
+         *
          * @return The number of characters read
          *
          * @throws IOException If an I/O error occurs during reading
@@ -92,6 +96,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     // --------------------
 
     /**
+     * @return {@link #clone()}
      * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
      */
     @Deprecated
@@ -194,7 +199,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
     // -------------------- Adding data to the buffer --------------------
 
-    public void append(char b) throws IOException {
+    public void append(char c) throws IOException {
         makeSpace(1);
         int limit = getLimitInternal();
 
@@ -202,7 +207,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         if (end >= limit) {
             flushBuffer();
         }
-        buff[end++] = b;
+        buff[end++] = c;
     }
 
 
@@ -338,7 +343,6 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         int sEnd = off + len;
         while (sOff < sEnd) {
             int d = min(limit - end, sEnd - sOff);
-            // 将字符串s的sOff位置到sOff+d的位置之间的数据复制到buff中
             s.getChars(sOff, sOff + d, buff, end);
             sOff += d;
             end += d;
@@ -360,6 +364,12 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
+     * @param src Destination for subtracted data
+     *
+     * @return count of bytes removed
+     *
+     * @throws IOException If an I/O error occurs
+     *
      * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
      */
     @Deprecated
@@ -422,7 +432,6 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         if (out == null) {
             throw new IOException("Buffer overflow, no sink " + getLimit() + " " + buff.length);
         }
-        // 将buff中的数据写出去
         out.realWriteChars(buff, start, end - start);
         end = start;
     }
@@ -497,6 +506,8 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
+     * @return Buffer content parsed into an int
+     *
      * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
      */
     @Deprecated
@@ -590,6 +601,13 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
+     * @param b2    Byte array to test
+     * @param off2  Offset for byte array
+     * @param len2  Length of byte array
+     *
+     * @return {@code true} if the contents of the provided byte array are
+     *         equal to the contents of this object
+     *
      * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
      */
     @Deprecated
@@ -687,6 +705,8 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
+     * @return case insensitive (all lower case) hash code
+     *
      * @deprecated Unused. Will be removed in Tomcat 8.0.x onwards.
      */
     @Deprecated

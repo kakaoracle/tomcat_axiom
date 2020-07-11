@@ -86,7 +86,6 @@ public abstract class SessionIdGeneratorBase extends LifecycleBase
 
 
     /** Number of bytes in a session ID. Defaults to 16. */
-    // sessionId的长度为16个字节
     private int sessionIdLength = 16;
 
 
@@ -165,7 +164,6 @@ public abstract class SessionIdGeneratorBase extends LifecycleBase
      */
     @Override
     public String generateSessionId() {
-        // jvmRoute是用来区分集群环境下不同的jvm的，jvmRoute是配置在Engine节点上的
         return generateSessionId(jvmRoute);
     }
 

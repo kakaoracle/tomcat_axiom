@@ -116,7 +116,6 @@ public class InternalOutputBuffer extends AbstractOutputBuffer<Socket>
         super.flush();
 
         // Flush the current buffer
-        // 上面的流程目的是把数据发送给socket，但是如果使用了socketBuffer，那么就只会把数据发送给socketbuffer，所以这里要调用socketbuffer最终发送数据
         if (useSocketBuffer) {
             socketBuffer.flushBuffer();
         }
@@ -156,10 +155,7 @@ public class InternalOutputBuffer extends AbstractOutputBuffer<Socket>
     @Override
     public void endRequest()
         throws IOException {
-
-        super.endRequest(); // 先调用父类去发送请求头 OutputFileter.end()
-
-        // 如果使用了socketbuffer，则将socketbuffer中的数据发送出去
+        super.endRequest();
         if (useSocketBuffer) {
             socketBuffer.flushBuffer();
         }
@@ -199,7 +195,7 @@ public class InternalOutputBuffer extends AbstractOutputBuffer<Socket>
         response.setCommitted(true);
 
         if (pos > 0) {
-            // Sending the response header buffer，如果用了socketbuffer则写写到socketbuffer中，如果没有则直接通过socketoutputstream返回
+            // Sending the response header buffer
             if (useSocketBuffer) {
                 socketBuffer.append(buf, 0, pos);
             } else {
@@ -239,7 +235,6 @@ public class InternalOutputBuffer extends AbstractOutputBuffer<Socket>
         public int doWrite(ByteChunk chunk, Response res) throws IOException {
             try {
                 int length = chunk.getLength();
-                // 如果再次发送到缓冲区中，则该缓冲区慢了之后就会发送，或者当前请求要结束时发送
                 if (useSocketBuffer) {
                     socketBuffer.append(chunk.getBuffer(), chunk.getStart(),
                                         length);

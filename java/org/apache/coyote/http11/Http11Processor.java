@@ -51,7 +51,7 @@ public class Http11Processor extends AbstractHttp11Processor<Socket> {
    // ------------------------------------------------------------ Constructor
 
 
-    public Http11Processor(int headerBufferSize, boolean rejectIllegalHeaderName,
+    public Http11Processor(int headerBufferSize, boolean rejectIllegalHeader,
             JIoEndpoint endpoint, int maxTrailerSize, Set<String> allowedTrailerHeaders,
             int maxExtensionSize, int maxSwallowSize, String relaxedPathChars,
             String relaxedQueryChars) {
@@ -60,17 +60,13 @@ public class Http11Processor extends AbstractHttp11Processor<Socket> {
 
         httpParser = new HttpParser(relaxedPathChars, relaxedQueryChars);
 
-        inputBuffer = new InternalInputBuffer(request, headerBufferSize, rejectIllegalHeaderName,
+        inputBuffer = new InternalInputBuffer(request, headerBufferSize, rejectIllegalHeader,
                 httpParser);
         request.setInputBuffer(inputBuffer);
 
         outputBuffer = new InternalOutputBuffer(response, headerBufferSize);
         response.setOutputBuffer(outputBuffer);
 
-        // 初始化过滤器，这里不是Servlet规范中的Filter，而是Tomcat中的Filter
-        // 包括InputFilter和OutputFilter
-        // InputFilter是用来处理请求体的
-        // OutputFilter是用来处理响应体的
         initializeFilters(maxTrailerSize, allowedTrailerHeaders, maxExtensionSize, maxSwallowSize);
     }
 
@@ -133,11 +129,9 @@ public class Http11Processor extends AbstractHttp11Processor<Socket> {
         int maxThreads, threadsBusy;
         if ((maxThreads = endpoint.getMaxThreadsWithExecutor()) > 0
                 && (threadsBusy = endpoint.getCurrentThreadsBusy()) > 0) {
-            // threadRatio = （线程池中活跃的线程数/线程池最大的线程数）*100
             threadRatio = (threadsBusy * 100) / maxThreads;
         }
         // Disable keep-alive if we are running low on threads
-        // 如果活跃的线程数占线程池最大线程数的比例大于75%，则关闭KeepAlive
         if (threadRatio > getDisableKeepAlivePercentage()) {
             return true;
         }
@@ -158,18 +152,14 @@ public class Http11Processor extends AbstractHttp11Processor<Socket> {
          * This is a little hacky but better than exposing the socket
          * and the timeout info to the InputBuffer
          */
-        // 最近一次访问的时间
         if (inputBuffer.lastValid == 0 && socketWrapper.getLastAccess() > -1) {
             int firstReadTimeout;
-            // 如果长连接没有超时时间，那么从socket中读数据也没有超时时间
             if (keepAliveTimeout == -1) {
                 firstReadTimeout = 0;
             } else {
-                // 一个socket在被处理之前会调用一下access方法，所以queueTime表示的是socket创建好了到真正被处理这段过程的排队时间
                 long queueTime =
                     System.currentTimeMillis() - socketWrapper.getLastAccess();
 
-                // 如果排队时间大于keepAliveTimeout，表示该socket已经超时了不需要被处理了，设置一个最小的超时时间，当从这个socket上读取数据时会立刻超时
                 if (queueTime >= keepAliveTimeout) {
                     // Queued for longer than timeout but there might be
                     // data so use shortest possible timeout
@@ -177,29 +167,20 @@ public class Http11Processor extends AbstractHttp11Processor<Socket> {
                 } else {
                     // Cast is safe since queueTime must be less than
                     // keepAliveTimeout which is an int
-                    // 如果排队时间还没有超过keepAliveTimeout，那么第一次从socket中读取数据的超时时间就是所剩下的时间了
                     firstReadTimeout = keepAliveTimeout - (int) queueTime;
                 }
             }
-            // 设置socket的超时时间，然后开始读数据，该时间就是每次读取数据的超时时间
             socketWrapper.getSocket().setSoTimeout(firstReadTimeout);
-            if (!inputBuffer.fill()) {      // 会从inputStream中获取数据,会阻塞，如果在firstReadTimeout的时间内没有读到数据则抛Eof异常 , 数据会被读到buf中
-                // eof是End Of File的意思
+            if (!inputBuffer.fill()) {
                 throw new EOFException(sm.getString("iib.eof.error"));
             }
             // Once the first byte has been read, the standard timeout should be
             // used so restore it here.
-            // 当第一次读取数据完成后，设置socket的超时时间为原本的超时时间
             if (endpoint.getSoTimeout()> 0) {
                 setSocketTimeout(endpoint.getSoTimeout());
             } else {
                 setSocketTimeout(0);
             }
-
-            // 这里的场景有点像工作，我现在要做一个任务，规定是5天内要完成，但是其中由于客观原因有1天不能工作，所以那一天不算在5天之内，而客观原因解决之后，以后每次做任务就仍然按5天来限制
-            // 任务的就是read
-            // 5天就是timeout
-            // 客观原因就是tomcat的调度
         }
     }
 
@@ -384,10 +365,7 @@ public class Http11Processor extends AbstractHttp11Processor<Socket> {
             break;
         }
         case ASYNC_COMPLETE: {
-
-
             if (asyncStateMachine.asyncComplete()) {
-                // 当调用complete方法时
                 ((JIoEndpoint) endpoint).processSocketAsync(this.socketWrapper,
                         SocketStatus.OPEN_READ);
             }

@@ -46,7 +46,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -59,6 +58,7 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.catalina.valves.TesterAccessLogValve;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.EncodedSolidusHandling;
 import org.easymock.EasyMock;
 
 public class TestAsyncContextImpl extends TomcatBaseTest {
@@ -146,7 +146,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
 
         // Give the async thread a chance to finish (but not too long)
         int counter = 0;
-        while (!servlet.isDone() && counter < 10) {
+        while (!servlet.isDone() && counter < 20) {
             Thread.sleep(1000);
             counter++;
         }
@@ -165,8 +165,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // Minimise pauses during test
-        tomcat.getConnector().setAttribute(
-                "connectionTimeout", Integer.valueOf(3000));
+        Assert.assertTrue(tomcat.getConnector().setProperty("connectionTimeout", "3000"));
 
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);
@@ -283,7 +282,21 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
                         resp.getWriter().print("OK");
                         req.getAsyncContext().complete();
                         result.append('5');
-                        result.append(req.isAsyncStarted());
+                        try {
+                            // Once complete() has been called on a
+                            // non-container thread it is not safe to
+                            // continue to use the request object as it
+                            // may be recycled at any point. Normally
+                            // there is enough time for this call to
+                            // complete but not always. If this call
+                            // fails in Tomcat an NPE will result so
+                            // handle this here with a hack. What we are
+                            // really checking here is that it does not
+                            // return true.
+                            result.append(req.isAsyncStarted());
+                        } catch (NullPointerException npe) {
+                            result.append("false");
+                        }
                         done = true;
                     } catch (InterruptedException e) {
                         result.append(e);
@@ -307,7 +320,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
 
         private volatile boolean done = false;
 
-        private StringBuilder result;
+        private volatile StringBuilder result;
 
         public static final long THREAD_SLEEP_TIME = 1000;
 
@@ -347,7 +360,21 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
                                 resp.getWriter().print("OK");
                                 req.getAsyncContext().complete();
                                 result.append('5');
-                                result.append(req.isAsyncStarted());
+                                try {
+                                    // Once complete() has been called on a
+                                    // non-container thread it is not safe to
+                                    // continue to use the request object as it
+                                    // may be recycled at any point. Normally
+                                    // there is enough time for this call to
+                                    // complete but not always. If this call
+                                    // fails in Tomcat an NPE will result so
+                                    // handle this here with a hack. What we are
+                                    // really checking here is that it does not
+                                    // return true.
+                                    result.append(req.isAsyncStarted());
+                                } catch (NullPointerException npe) {
+                                    result.append("false");
+                                }
                                 done = true;
                             } catch (InterruptedException e) {
                                 result.append(e);
@@ -552,19 +579,25 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             alv.validateAccessLog(1, 200, timeoutDelay,
                     timeoutDelay + TIMEOUT_MARGIN + REQUEST_TIME);
         }
+
+        Assert.assertTrue(timeout.isAsyncStartedCorrect());
     }
 
     private static class TimeoutServlet extends HttpServlet {
         private static final long serialVersionUID = 1L;
 
         private final Boolean completeOnTimeout;
-        private final String dispatchUrl;
+        private final TrackingListener trackingListener;
 
         public static final long ASYNC_TIMEOUT = 3000;
 
         public TimeoutServlet(Boolean completeOnTimeout, String dispatchUrl) {
             this.completeOnTimeout = completeOnTimeout;
-            this.dispatchUrl = dispatchUrl;
+            if (completeOnTimeout == null) {
+                this.trackingListener = null;
+            } else {
+                this.trackingListener = new TrackingListener(false, completeOnTimeout.booleanValue(), dispatchUrl);
+            }
         }
 
         @Override
@@ -576,12 +609,18 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
                 ac.setTimeout(ASYNC_TIMEOUT);
 
                 if (completeOnTimeout != null) {
-                    ac.addListener(new TrackingListener(false,
-                            completeOnTimeout.booleanValue(), dispatchUrl));
+                    ac.addListener(trackingListener);
                 }
             } else {
                 resp.getWriter().print("FAIL: Async unsupported");
             }
+        }
+
+        public boolean isAsyncStartedCorrect() {
+            if (trackingListener == null) {
+                return true;
+            }
+            return trackingListener.isAsyncStartedCorrect();
         }
     }
 
@@ -667,6 +706,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             count ++;
         }
         Assert.assertEquals(expectedTrack, getTrack());
+        Assert.assertTrue(dispatch.isAsyncStartedCorrect());
 
         // Check the access log
         alv.validateAccessLog(1, 200, 0, REQUEST_TIME);
@@ -677,13 +717,15 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
         private static final String ITER_PARAM = "iter";
         private static final String DISPATCH_CHECK = "check";
-        private boolean addTrackingListener = false;
-        private boolean completeOnError = false;
+        private final TrackingListener trackingListener;
 
         public DispatchingServlet(boolean addTrackingListener,
                 boolean completeOnError) {
-            this.addTrackingListener = addTrackingListener;
-            this.completeOnError = completeOnError;
+            if (addTrackingListener) {
+                trackingListener = new TrackingListener(completeOnError, true, null);
+            } else {
+                trackingListener = null;
+            }
         }
 
         @Override
@@ -698,10 +740,8 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             track("DispatchingServletGet-");
             final int iter = Integer.parseInt(req.getParameter(ITER_PARAM)) - 1;
             final AsyncContext ctxt = req.startAsync();
-            if (addTrackingListener) {
-                TrackingListener listener =
-                    new TrackingListener(completeOnError, true, null);
-                ctxt.addListener(listener);
+            if (trackingListener != null) {
+                ctxt.addListener(trackingListener);
             }
             Runnable run = new Runnable() {
                 @Override
@@ -719,6 +759,13 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             } else {
                 run.run();
             }
+        }
+
+        public boolean isAsyncStartedCorrect() {
+            if (trackingListener == null) {
+                return true;
+            }
+            return trackingListener.isAsyncStartedCorrect();
         }
     }
 
@@ -824,6 +871,9 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         private final boolean completeOnError;
         private final boolean completeOnTimeout;
         private final String dispatchUrl;
+        // Assumes listener is fired after container thread that initiated async
+        // has exited.
+        private boolean asyncStartedCorrect = true;
 
         public TrackingListener(boolean completeOnError,
                 boolean completeOnTimeout, String dispatchUrl) {
@@ -839,26 +889,43 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
 
         @Override
         public void onTimeout(AsyncEvent event) throws IOException {
+            boolean expectedAsyncStarted = true;
+
             TestAsyncContextImpl.track("onTimeout-");
             if (completeOnTimeout){
                 event.getAsyncContext().complete();
+                expectedAsyncStarted = false;
             }
             if (dispatchUrl != null) {
                 event.getAsyncContext().dispatch(dispatchUrl);
+                expectedAsyncStarted = false;
             }
+
+            ServletRequest req = event.getSuppliedRequest();
+            asyncStartedCorrect = (expectedAsyncStarted == req.isAsyncStarted());
         }
 
         @Override
         public void onError(AsyncEvent event) throws IOException {
+            boolean expectedAsyncStarted = true;
+
             TestAsyncContextImpl.track("onError-");
             if (completeOnError) {
                 event.getAsyncContext().complete();
+                expectedAsyncStarted = false;
             }
+
+            ServletRequest req = event.getSuppliedRequest();
+            asyncStartedCorrect = (expectedAsyncStarted == req.isAsyncStarted());
         }
 
         @Override
         public void onStartAsync(AsyncEvent event) throws IOException {
             TestAsyncContextImpl.track("onStartAsync-");
+        }
+
+        public boolean isAsyncStartedCorrect() {
+            return asyncStartedCorrect;
         }
     }
 
@@ -1010,6 +1077,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             count ++;
         }
         Assert.assertEquals(expectedTrack, getTrack());
+        Assert.assertTrue(dispatch.isAsyncStartedCorrect());
 
         // Check the access log
         alv.validateAccessLog(1, 500, 0, REQUEST_TIME);
@@ -1674,7 +1742,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
                 REQUEST_TIME);
     }
 
-    private static enum ErrorPageAsyncMode {
+    private enum ErrorPageAsyncMode {
         NO_COMPLETE,
         COMPLETE,
         DISPATCH
@@ -1836,7 +1904,8 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         Context ctx = tomcat.addContext("", null);
-        Wrapper w = tomcat.addServlet("", "async", new Bug59219Servlet());
+        Bug59219Servlet bug59219Servlet = new Bug59219Servlet();
+        Wrapper w = tomcat.addServlet("", "async", bug59219Servlet);
         w.setAsyncSupported(true);
         ctx.addServletMapping("/async", "async");
 
@@ -1859,6 +1928,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
 
         private static final long serialVersionUID = 1L;
 
+        private final TrackingListener trackingListener = new TrackingListener(true, false, "/async");
         @Override
         protected void doGet(HttpServletRequest req, HttpServletResponse resp)
                 throws ServletException, IOException {
@@ -1866,7 +1936,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             track("doGet-");
             AsyncContext ctx = req.startAsync();
             ctx.setTimeout(3000);
-            ctx.addListener(new TrackingListener(true, false, "/async"));
+            ctx.addListener(trackingListener);
 
             String loopsParam = req.getParameter("loops");
             Integer loopsAttr = (Integer) req.getAttribute("loops");
@@ -1885,7 +1955,6 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             } else
                 throw new ServletException();
         }
-
     }
 
     @Test
@@ -2306,8 +2375,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
                 throws ServletException, IOException {
             if (req.getAttribute("timeout") != null) {
                 resp.sendError(503);
-            }
-            else {
+            } else {
                 final AsyncContext context = req.startAsync();
                 context.setTimeout(5000);
                 context.addListener(new AsyncListener() {
@@ -2508,20 +2576,12 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
     }
 
 
-    @Override
-    @Before
-    public void setUp() throws Exception {
-        super.setUp();
-        // Required by testBug61185()
-        // Does not impact other tests in this class
-        System.setProperty("org.apache.tomcat.util.buf.UDecoder.ALLOW_ENCODED_SLASH", "true");
-    }
-
-
     @Test
     public void testBug61185() throws Exception {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
+
+        tomcat.getConnector().setEncodedSolidusHandling(EncodedSolidusHandling.DECODE.getValue());
 
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);

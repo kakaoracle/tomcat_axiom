@@ -23,6 +23,8 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.LogManager;
 
 import javax.websocket.ClientEndpointConfig;
 import javax.websocket.ClientEndpointConfig.Configurator;
@@ -117,10 +119,17 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
 
         tomcat.start();
 
-        echoTester("",null);
-        echoTester("/",null);
-        echoTester("/foo",null);
-        echoTester("/foo/",null);
+        LogManager.getLogManager().getLogger("org.apache.coyote").setLevel(Level.ALL);
+        LogManager.getLogManager().getLogger("org.apache.tomcat.util.net").setLevel(Level.ALL);
+        try {
+            echoTester("",null);
+            echoTester("/",null);
+            echoTester("/foo",null);
+            echoTester("/foo/",null);
+        } finally {
+            LogManager.getLogManager().getLogger("org.apache.coyote").setLevel(Level.ALL);
+            LogManager.getLogManager().getLogger("org.apache.tomcat.util.net").setLevel(Level.INFO);
+        }
     }
 
     public void echoTester(String path, ClientEndpointConfig clientEndpointConfig)
@@ -130,6 +139,10 @@ public class TestWebSocketFrameClient extends WebSocketBaseTest {
         if (clientEndpointConfig == null) {
             clientEndpointConfig = ClientEndpointConfig.Builder.create().build();
         }
+        // Increase default timeout from 5s to 10s to try and reduce errors on
+        // CI systems.
+        clientEndpointConfig.getUserProperties().put(WsWebSocketContainer.IO_TIMEOUT_MS_PROPERTY, "10000");
+
         Session wsSession = wsContainer.connectToServer(TesterProgrammaticEndpoint.class,
                 clientEndpointConfig, new URI("ws://localhost:" + getPort() + path));
         CountDownLatch latch = new CountDownLatch(1);

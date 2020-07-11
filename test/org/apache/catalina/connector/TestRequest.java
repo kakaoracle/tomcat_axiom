@@ -37,7 +37,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -52,17 +51,12 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.unittest.TesterRequest;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.EncodedSolidusHandling;
 
 /**
  * Test case for {@link Request}.
  */
 public class TestRequest extends TomcatBaseTest {
-
-    @BeforeClass
-    public static void setup() {
-        // Some of these tests need this and it used statically so set it once
-        System.setProperty("org.apache.tomcat.util.buf.UDecoder.ALLOW_ENCODED_SLASH", "true");
-    }
 
     /**
      * Test case for https://bz.apache.org/bugzilla/show_bug.cgi?id=37794
@@ -527,14 +521,13 @@ public class TestRequest extends TomcatBaseTest {
 
                 java.util.Arrays.sort(values);
 
-                for(int i=0; i<values.length; ++i)
-                {
-                    if(first)
+                for (String value : values) {
+                    if (first)
                         first = false;
                     else
                         out.print(",");
 
-                    out.print(name + "=" + values[i]);
+                    out.print(name + "=" + value);
                 }
             }
         }
@@ -811,12 +804,12 @@ public class TestRequest extends TomcatBaseTest {
 
     @Test
     public void testBug57215c() throws Exception {
-        doBug56501("/path", "/%2Fpath", "/%2Fpath");
+        doBug56501("/path", "/%2Fpath", "/%2Fpath", EncodedSolidusHandling.DECODE);
     }
 
     @Test
     public void testBug57215d() throws Exception {
-        doBug56501("/path", "/%2Fpath%2F", "/%2Fpath");
+        doBug56501("/path", "/%2Fpath%2F", "/%2Fpath", EncodedSolidusHandling.DECODE);
     }
 
     @Test
@@ -826,14 +819,21 @@ public class TestRequest extends TomcatBaseTest {
 
     @Test
     public void testBug57215f() throws Exception {
-        doBug56501("/path", "/foo/..%2fpath", "/foo/..%2fpath");
+        doBug56501("/path", "/foo/..%2fpath", "/foo/..%2fpath", EncodedSolidusHandling.DECODE);
     }
 
-    private void doBug56501(String deployPath, String requestPath, String expected)
-            throws Exception {
+    private void doBug56501(String deployPath, String requestPath, String expected) throws Exception {
+        doBug56501(deployPath, requestPath, expected, EncodedSolidusHandling.REJECT);
+    }
+
+
+    private void doBug56501(String deployPath, String requestPath, String expected,
+            EncodedSolidusHandling encodedSolidusHandling) throws Exception {
 
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
+
+        tomcat.getConnector().setEncodedSolidusHandling(encodedSolidusHandling.getValue());
 
         // No file system docBase required
         Context ctx = tomcat.addContext(deployPath, null);

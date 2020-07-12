@@ -46,3 +46,5 @@ modules/jdbc-pool/includes
 webapps/docs/jdbc-pool.xml
 target/
 .idea/
+/.idea/
+/target/

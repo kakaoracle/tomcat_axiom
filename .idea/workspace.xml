@@ -1,41 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="7da8b7d0-88a5-4268-96a3-ceb275f053b8" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/BUILDING.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/CONTRIBUTING.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/KEYS" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/LICENSE" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/NOTICE" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/RELEASE-NOTES" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/RUNNING.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/STATUS.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/build.properties.default" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/build.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/cglib-2.2.2/cglib-nodep-2.2.2.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/commons-daemon-1.2.2/commons-daemon-1.2.2-javadoc.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/commons-daemon-1.2.2/commons-daemon-1.2.2-sources.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/commons-daemon-1.2.2/commons-daemon-1.2.2-test-sources.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/commons-daemon-1.2.2/commons-daemon-1.2.2-tests.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/commons-daemon-1.2.2/commons-daemon-1.2.2.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/easymock-3.2/easymock-3.2.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/ecj-4.15/ecj-4.15.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/hamcrest-1.3/hamcrest-core-1.3.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/jaxrpc-1.1-rc4/geronimo-spec-jaxrpc-1.1-rc4.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/junit-4.13/junit-4.13.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/objenesis-1.2/objenesis-1.2.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/saaj-api-1.3.5/saaj-api-1.3.5.jar" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tomcat-build-libs/wsdl4j-1.6.3/wsdl4j-1.6.3.jar" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitattributes" beforeDir="false" afterPath="$PROJECT_DIR$/.gitattributes" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/libraries/Maven__junit_junit_4_11.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_eclipse_jdt_core_compiler_ecj_4_6_1.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/tomcat.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/tomcat.iml" afterDir="false" />
+    <list default="true" id="7da8b7d0-88a5-4268-96a3-ceb275f053b8" name="Default Changelist" comment="udpate">
+      <change afterPath="$PROJECT_DIR$/com/kaka/Test1.class" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/java/com/kaka/MyClassLoader.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/java/com/kaka/Test1.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/test-classes/META-INF/tomcat.kotlin_module" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -52,7 +23,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="7.0.x" />
+        <entry key="$PROJECT_DIR$" value="master" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -94,6 +65,12 @@
     <property name="settings.editor.selected.configurable" value="reference.projectsettings.compiler.javacompiler" />
   </component>
   <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\githubrepository\axiom_tomcat\com\kaka" />
+    </key>
+    <key name="CopyClassDialog.RECENTS_KEY">
+      <recent name="com.kaka" />
+    </key>
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\githubrepository\axiom_tomcat9.0.36" />
       <recent name="D:\githubrepository\axiom_tomcat9.0.36\webapps" />
@@ -101,7 +78,7 @@
       <recent name="D:\githubrepository\axiom_tomcat9.0.36\resources\META-INF.services" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Application.MyClassLoader">
     <configuration name="Bootstrap" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
       <option name="MAIN_CLASS_NAME" value="org.apache.catalina.startup.Bootstrap" />
       <module name="tomcat" />
@@ -115,10 +92,36 @@
         <option name="Make" enabled="true" />
       </method>
     </configuration>
+    <configuration name="ClassloaderTest" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="com.luban.ClassloaderTest" />
+      <module name="tomcat" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="com.luban.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="MyClassLoader" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="com.kaka.MyClassLoader" />
+      <module name="tomcat" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="com.kaka.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Application.Bootstrap" />
-        <item itemvalue="Application.Bootstrap" />
+        <item itemvalue="Application.MyClassLoader" />
+        <item itemvalue="Application.ClassloaderTest" />
         <item itemvalue="Application.Bootstrap" />
         <item itemvalue="Application.Bootstrap" />
         <item itemvalue="Application.Bootstrap" />
@@ -185,10 +188,10 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="690" y="274" key="#com.intellij.util.ui.classpath.ChooseLibrariesDialog/0.0.1920.1040@0.0.1920.1040" timestamp="1592485132213" />
-    <state x="585" y="112" key="CommitChangelistDialog2" timestamp="1594223708731">
+    <state x="585" y="112" key="CommitChangelistDialog2" timestamp="1596985035251">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="585" y="112" key="CommitChangelistDialog2/0.0.1920.1040@0.0.1920.1040" timestamp="1594223708731" />
+    <state x="585" y="112" key="CommitChangelistDialog2/0.0.1920.1040@0.0.1920.1040" timestamp="1596985035251" />
     <state x="714" y="235" key="DetectedRootsChooserDialog" timestamp="1594218784665">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
@@ -197,22 +200,38 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="375" y="247" key="FileChooserDialogImpl/0.0.1920.1040@0.0.1920.1040" timestamp="1594222663530" />
-    <state width="1877" height="337" key="GridCell.Tab.0.bottom" timestamp="1594492294096">
+    <state width="1780" height="371" key="GridCell.Tab.0.bottom" timestamp="1596986031186">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="337" key="GridCell.Tab.0.bottom/0.0.1920.1040@0.0.1920.1040" timestamp="1594492294096" />
-    <state width="1877" height="337" key="GridCell.Tab.0.center" timestamp="1594492294095">
+    <state width="1780" height="371" key="GridCell.Tab.0.bottom/0.0.1920.1040@0.0.1920.1040" timestamp="1596986031186" />
+    <state width="1780" height="371" key="GridCell.Tab.0.center" timestamp="1596986031186">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="337" key="GridCell.Tab.0.center/0.0.1920.1040@0.0.1920.1040" timestamp="1594492294095" />
-    <state width="1877" height="337" key="GridCell.Tab.0.left" timestamp="1594492294095">
+    <state width="1780" height="371" key="GridCell.Tab.0.center/0.0.1920.1040@0.0.1920.1040" timestamp="1596986031186" />
+    <state width="1780" height="371" key="GridCell.Tab.0.left" timestamp="1596986031186">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="337" key="GridCell.Tab.0.left/0.0.1920.1040@0.0.1920.1040" timestamp="1594492294095" />
-    <state width="1877" height="337" key="GridCell.Tab.0.right" timestamp="1594492294095">
+    <state width="1780" height="371" key="GridCell.Tab.0.left/0.0.1920.1040@0.0.1920.1040" timestamp="1596986031186" />
+    <state width="1780" height="371" key="GridCell.Tab.0.right" timestamp="1596986031186">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state width="1877" height="337" key="GridCell.Tab.0.right/0.0.1920.1040@0.0.1920.1040" timestamp="1594492294095" />
+    <state width="1780" height="371" key="GridCell.Tab.0.right/0.0.1920.1040@0.0.1920.1040" timestamp="1596986031186" />
+    <state width="1877" height="348" key="GridCell.Tab.1.bottom" timestamp="1596985957902">
+      <screen x="0" y="0" width="1920" height="1040" />
+    </state>
+    <state width="1877" height="348" key="GridCell.Tab.1.bottom/0.0.1920.1040@0.0.1920.1040" timestamp="1596985957902" />
+    <state width="1877" height="348" key="GridCell.Tab.1.center" timestamp="1596985957902">
+      <screen x="0" y="0" width="1920" height="1040" />
+    </state>
+    <state width="1877" height="348" key="GridCell.Tab.1.center/0.0.1920.1040@0.0.1920.1040" timestamp="1596985957902" />
+    <state width="1877" height="348" key="GridCell.Tab.1.left" timestamp="1596985957901">
+      <screen x="0" y="0" width="1920" height="1040" />
+    </state>
+    <state width="1877" height="348" key="GridCell.Tab.1.left/0.0.1920.1040@0.0.1920.1040" timestamp="1596985957901" />
+    <state width="1877" height="348" key="GridCell.Tab.1.right" timestamp="1596985957902">
+      <screen x="0" y="0" width="1920" height="1040" />
+    </state>
+    <state width="1877" height="348" key="GridCell.Tab.1.right/0.0.1920.1040@0.0.1920.1040" timestamp="1596985957902" />
     <state x="389" y="188" key="SettingsEditor" timestamp="1594491957247">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
@@ -225,5 +244,16 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="656" y="252" width="607" height="536" key="find.popup/0.0.1920.1040@0.0.1920.1040" timestamp="1592486147057" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="java-line">
+          <url>file://$PROJECT_DIR$/java/com/kaka/MyClassLoader.java</url>
+          <line>57</line>
+          <option name="timeStamp" value="2" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

@@ -1873,7 +1873,8 @@ public abstract class WebappClassLoaderBase extends URLClassLoader
             }
 
             // (0) Check our previously loaded local class cache
-            // 先检查该类是否已经被Webapp类加载器加载。
+            // 先检查该类是否已经被Webapp类加载器加载。tomcat自己的缓存中
+
             clazz = findLoadedClass0(name); // map
             if (clazz != null) {
                 if (log.isDebugEnabled())

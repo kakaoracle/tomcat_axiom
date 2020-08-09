@@ -24,10 +24,17 @@ public class MyClassLoader extends ClassLoader {
     }
 
     @Override
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
+    public Class<?> loadClass(String name)  {
         ClassLoader system = getSystemClassLoader().getParent();
 
-        Class<?> clazz = system.loadClass(name);
+        // 这块重点就是不能抛出异常,第一轮loadObject正常
+        // 第二轮查询Test1查不到也要继续执行下去
+        Class<?> clazz = null;
+        try {
+            clazz = system.loadClass(name);
+        } catch (ClassNotFoundException e) {
+
+        }
 
         if (clazz != null) {
             return clazz;
